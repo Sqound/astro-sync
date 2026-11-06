@@ -1,0 +1,440 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/capture-variant.schema.json",
+  "title": "Astro Portal API v1 — one image of a capture (the main image or a variant)",
+  "description": "A capture has one main image and variants, never a history: `capture.variant_limit` counts the variants besides the main image (`0`: the main image only). A new image sent for an existing capture (`captureId` with another SHA-256) arrives as a variant, not main, private. From the web session only: `PATCH /v1/manage/captures/{id}/variants/{imageId}` `{ \"main\": true }` makes it the main image (its automatic check must have passed; the former main image becomes a variant and keeps its visibility), `{ \"public\": true | false }` sets a variant's visibility (public only while the capture is public): `{ \"title\" }` or `{ \"description\" }` names an image (the main one or a variant; `null` for « by default »); `DELETE` on the same path deletes a variant (the main image is never deleted alone, `409 main_image`, nor therefore the last image). The automatic check belongs to each image (`automaticCheck`); the visibility and the verification of the capture stay on the capture. A visitor sees the main image, then the variants that are public while the capture is. Every image counts in the space's storage. An image is selected on the media routes by `?imageId=` (`variant=thumbnail|preview` is a size, unrelated). See api/v1.md, « Images of a capture ».",
+  "$defs": {
+    "source": {
+      "description": "Where the image came from: `phone` (the phone's upload), `web` (the web session's), `astro-sync` (Astro Sync's final image), `stacking` (Astro Sync's stacking). `null` for the main image of a capture stored before the migration that introduced the images, whose source was never recorded.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["phone", "web", "astro-sync", "stacking"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "generatedTitle": {
+      "description": "Additive: the title a producer generated for an image (Astro Sync: the name of the processing and its settings), in the ten languages of the locale registry, English required, each 90 characters at most. Kept apart from the owner's `title` (only what he types): a reader shows the owner's `title` when there is one, else the entry of its language (the tag the registry's device rule matches: `pt` reads `pt-BR`, `zh-TW` reads `zh-Hant`), else English, else the name by default. Fixed when sent: a later change of the processing's name does not change an image already online.",
+      "type": "object",
+      "required": ["en"],
+      "properties": {
+        "en": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "fr": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "de": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "es": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "it": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "ja": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "pt-BR": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "ru": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "zh-Hans": { "type": "string", "minLength": 1, "maxLength": 90 },
+        "zh-Hant": { "type": "string", "minLength": 1, "maxLength": 90 }
+      },
+      "additionalProperties": false
+    },
+    "generatedDescription": {
+      "description": "Additive: the description a producer generated for an image (Astro Sync: the description of the processing), in the ten languages of the locale registry, English required, each 280 characters at most. Kept apart from the owner's `description` (only what he types): a reader shows the owner's `description` when there is one, else the entry of its language (the tag the registry's device rule matches: `pt` reads `pt-BR`, `zh-TW` reads `zh-Hant`), else English, else nothing. Fixed when sent: a later change of the processing's name does not change an image already online.",
+      "type": "object",
+      "required": ["en"],
+      "properties": {
+        "en": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "fr": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "de": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "es": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "it": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "ja": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "pt-BR": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "ru": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "zh-Hans": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "zh-Hant": { "type": "string", "minLength": 1, "maxLength": 280 }
+      },
+      "additionalProperties": false
+    },
+    "variant": {
+      "type": "object",
+      "required": [
+        "id",
+        "main",
+        "sha256",
+        "byteSize",
+        "originalName",
+        "width",
+        "height",
+        "source",
+        "public",
+        "automaticCheck",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "main": {
+          "type": "boolean",
+          "description": "Whether this is the capture's main image (exactly one per capture): the galleries, the thumbnails and the public page serve it first."
+        },
+        "sha256": {
+          "$ref": "capture.schema.json#/$defs/sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "originalName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "width": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Pixels, once the processing has read them (`null` before, or for a file it cannot read)."
+        },
+        "height": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "public": {
+          "type": "boolean",
+          "description": "A variant's own visibility: `false` on arrival; a visitor sees it while it is `true` and its capture is public. The main image follows its capture (its own value is not read)."
+        },
+        "automaticCheck": {
+          "description": "The automatic check of this image, `null` until it has run (it runs on each image after its upload).",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["sky", "undetermined", "other"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "title": {
+          "description": "The owner's title of the image — only what the owner typed, 90 characters at most; `null` while he typed none: a reader then shows `generatedTitle` in its language, else the name by default — « Image principale » for the main image, « Variante N » for a variant, N its `arrivalRank`. Clearing it brings the generated title back. Always written by the service; optional so that a reader of an earlier answer still validates.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 90
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "description": "The owner's description of the image — only what the owner typed, 280 characters at most, shown under the image in the galleries while the image is shown there; `null` while he typed none: a reader then shows `generatedDescription` in its language, else nothing.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 280
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generatedTitle": {
+          "description": "Additive: the title a producer generated (`#/$defs/generatedTitle`), kept whatever the owner typed; `null` or absent when none was.",
+          "anyOf": [{ "$ref": "#/$defs/generatedTitle" }, { "type": "null" }]
+        },
+        "generatedDescription": {
+          "description": "Additive: the description a producer generated (`#/$defs/generatedDescription`), kept whatever the owner typed; `null` or absent when none was.",
+          "anyOf": [
+            { "$ref": "#/$defs/generatedDescription" },
+            { "type": "null" }
+          ]
+        },
+        "titleSource": {
+          "description": "Where `title` came from — `import` (a producer's proposal in one language: the labels of the old portal), `owner` (typed by the owner), `astro-sync` (an image named before Astro Sync generated its texts apart, until it sends them); `null` while the image has no title. Optional so that a reader of an earlier answer still validates; never in a gallery.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["astro-sync", "import", "owner"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edited": {
+          "description": "Whether the owner wrote the image's title or description (a proposal never changes them afterwards). Optional; never in a gallery.",
+          "type": "boolean"
+        },
+        "arrivalRank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The rank of arrival of the image in its capture (the first sent is 1), computed from the images it holds at the time of the answer and never stored: the number of its name by default (« Variante 2 »). On the answers that list every image of a capture."
+        },
+        "thumbnail": {
+          "type": "boolean",
+          "description": "On the owner's routes: whether the image has its thumbnail (`?variant=thumbnail&variantId=` of the media routes)."
+        },
+        "skySolved": {
+          "type": "boolean",
+          "description": "On the owner's routes: whether this image has its sky solution (`sky-solution.schema.json`); a solution belongs to the image it was computed on."
+        },
+        "role": {
+          "description": "`progression` for a milestone of the night Astro Sync stacked (the history of the capture, never in `variants`, never its main image, private), `null` for the main image and the variants. Optional.",
+          "anyOf": [{ "const": "progression" }, { "type": "null" }]
+        },
+        "frameCount": {
+          "description": "The light frames a progression image stacks; `null` for any other image. Optional.",
+          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        },
+        "quality": {
+          "description": "Additive: the quality of this stacked image as Astro Sync measured it when it sent it (`capture.schema.json` `imageQuality`: the stars of the image itself, on the master before any stretch); `null` when none was measured — a photo, an image processed elsewhere, a space without `analysis.logs` when it was sent. On the owner's routes; the owner's resource repeats the main image's as `quality`. Reading it is never held by a right. Optional so that a reader of an earlier answer still validates.",
+          "anyOf": [
+            { "$ref": "capture.schema.json#/$defs/imageQuality" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "patch": {
+      "description": "`PATCH /v1/manage/captures/{id}/variants/{imageId}`, the web session only: exactly one change. `{ \"title\" }` (90 characters at most) or `{ \"description\" }` (280 at most), a string or `null`; a blank or `null` value gives back the generated text (`generatedTitle`, `generatedDescription`), else the name by default; the outer spaces are trimmed, nothing else changes. The owner never writes nor clears the generated texts.",
+      "oneOf": [
+        {
+          "required": ["main"],
+          "properties": {
+            "main": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["public"],
+          "properties": {
+            "public": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["title"],
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 90
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["description"],
+          "properties": {
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 280
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The title and the description together, one request — the owner's hand (`titleSource: owner`, `edited`: a producer never changes them afterwards).",
+          "required": ["title", "description"],
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 90
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 280
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "deviceTexts": {
+      "description": "`PATCH /v1/captures/{id}/variants/{imageId}` by a device token with no `source` — the owner's hand on the phone: the title or the description of an image, or both in one request, a string (90 and 280 characters at most, the outer spaces trimmed, nothing else changed) or `null` (a blank or `null` text gives the image's generated text back, else the name by default). It overwrites what is there, a producer's proposal and the owner's own text alike, and is the owner's (`titleSource: owner`, `edited`). The request may carry `If-Match: \"<revision>\"` (`manage-captures.schema.json` `ifMatch`): refused with `409 capture_conflict` (`error.field: \"imageTexts\"`, `error.line`: the image) only if the title or the description of that image changed after that revision. A write that leaves both texts as they were moves nothing. The generated texts are never written by it. Answers `{ capture, skipped: [] }` (manage-captures.schema.json `proposedAnswer`); the bounds and the other refusals are those of the web route (`patch`): `400 invalid_request` (`field`, `limit`), `403 entitlement_read_only`, `404 capture_not_found`, `404 image_not_found`.",
+      "type": "object",
+      "allOf": [
+        {
+          "anyOf": [{ "required": ["title"] }, { "required": ["description"] }]
+        }
+      ],
+      "properties": {
+        "title": {
+          "anyOf": [{ "type": "string", "maxLength": 90 }, { "type": "null" }]
+        },
+        "description": {
+          "anyOf": [{ "type": "string", "maxLength": 280 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposal": {
+      "description": "`PATCH /v1/captures/{id}/variants/{imageId}` by a device token — a producer's title and description of an image that exists, by a producer (a body with a `source`): never over an image whose texts the owner wrote (answered in `skipped`), the same body twice changes nothing, nothing cleared. Additive: `imageQuality` too, the quality of the image measured by the producer (`capture.schema.json` `imageQuality`; alone it is a valid body): kept under the capability `analysis.logs`, else dropped and listed in `skipped` with the reason `capability`; it replaces the quality of an earlier measure of the same image (a quality is a measure, not a text the owner wrote). The route takes no `If-Match` and moves the capture's revision when the quality or a text changed. `main`, `public` or a body without `source` from a device: `403 web_session_required` (`visibility_web_only` for `public`); the web session here: `403 device_required`. Additive: `generatedTitle` and `generatedDescription`, the texts the producer generated in the ten languages: the producer's own fields, written whatever the owner typed (they never show over his texts), each replaced whole by a later proposal, never cleared, never listed in `skipped`. When they arrive on an image whose `title` came from the same producer (`titleSource`, never the owner's), that title is cleared — and the description too while the owner never wrote (`edited` false): they were the earlier, one-language form of the generated texts. Astro Sync sends only these and `processing`, never `title` nor `description`. Answers `{ capture, skipped }` (manage-captures.schema.json `proposedAnswer`). The same route takes, with no `source`, the owner's hand on the phone: `#/$defs/deviceTexts`.",
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": ["title"]
+            },
+            {
+              "required": ["description"]
+            },
+            {
+              "required": ["imageQuality"]
+            },
+            {
+              "required": ["generatedTitle"]
+            },
+            {
+              "required": ["generatedDescription"]
+            },
+            {
+              "required": ["processing"]
+            }
+          ]
+        }
+      ],
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "enum": ["astro-sync", "import"]
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 90
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 280
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generatedTitle": { "$ref": "#/$defs/generatedTitle" },
+        "generatedDescription": { "$ref": "#/$defs/generatedDescription" },
+        "processing": {
+          "description": "Additive: what made this image (`software` 120 characters at most, `steps` 500 at most), the image's own, kept with it and replaced whole by a later proposal. The capture shows the steps of its main image: proposed on the main image they are the capture's too (never over what the owner wrote, listed in `skipped` as `processing.steps` / `processing.software` with the reason `edited`); on a variant they wait, and become the capture's when the owner picks that image as the main one.",
+          "$ref": "capture.schema.json#/$defs/proposedProcessing"
+        },
+        "imageQuality": {
+          "anyOf": [
+            { "$ref": "capture.schema.json#/$defs/imageQuality" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "400 `invalid_request`; 401 `authentication_required`; 403 `csrf_invalid`, `web_session_required` (a device bearer), `capture_public_unavailable`, `publishing_blocked`; 404 `capture_not_found`, `image_not_found`; 409 `main_image` (the main image is not deleted alone, nor given its own visibility), `capture_not_public` (a variant is public only while its capture is), `variant_check_not_passed` (the image has not passed its automatic check: it cannot become the main image nor be made public), `not_showable`; 503 `shared_copy_failed`, `capture_storage_unavailable`.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "authentication_required",
+                "csrf_invalid",
+                "web_session_required",
+                "capture_public_unavailable",
+                "publishing_blocked",
+                "capture_not_found",
+                "image_not_found",
+                "main_image",
+                "capture_not_public",
+                "variant_check_not_passed",
+                "not_showable",
+                "shared_copy_failed",
+                "capture_storage_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "publishingBlockedUntil": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/variant"
+    },
+    {
+      "$ref": "#/$defs/patch"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

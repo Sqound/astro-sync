@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/calibration-consent.schema.json",
+  "title": "Astro Portal API v1 consent to the project's sky-brightness calibration set",
+  "description": "GET, PUT and DELETE /v1/space/calibration (docs/CONTRIBUTION_RULES.md; packages/portal/src/persistence/calibration-contribution-repository.js, tables calibration_contributions and calibration_ledger; packages/portal-app/src/routes/api/v1/space/calibration/route.js). With the observer's explicit consent — off by default, asked only in the section of their space — the service keeps an anonymised record of each sky-background value the space holds (each night measured by Astro Sync at a place, POST /v1/place-sky-measures, and each place's entered value, `skyEntered`): the seven fields of `record`, never a place, a coordinate, a name, a path or an identifier. GET reads the consent of the credential's space; PUT `{ enabled }` switches it (on: the values the space already holds are kept at once; off: nothing new is kept, what is kept stays); DELETE withdraws: the space's records and its ledger are deleted and the consent is switched off. A release of the set already made cannot be recalled. Either credential (a device bearer, or a web session with its CSRF token for PUT and DELETE). A private server answers 404 `not_available` and never contributes. Errors: 400 invalid_request, 404 not_available, 503 calibration_storage_unavailable.",
+  "$defs": {
+    "instant": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "consent": {
+      "description": "The consent of the space: whether it is on, since when (`null` when off), how many records the space has in the set (`kept`) and when the last one was kept or replaced (`lastKeptAt`, `null` without any).",
+      "type": "object",
+      "required": ["enabled", "consentedAt", "kept", "lastKeptAt"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "consentedAt": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/instant"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kept": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lastKeptAt": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/instant"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "status": {
+      "description": "200 of GET and PUT.",
+      "type": "object",
+      "required": ["consent"],
+      "properties": {
+        "consent": {
+          "$ref": "#/$defs/consent"
+        }
+      },
+      "additionalProperties": false
+    },
+    "update": {
+      "description": "The body of PUT: the switch, and nothing else.",
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "withdrawn": {
+      "description": "200 of DELETE: how many records were deleted, and the consent after (off, nothing kept).",
+      "type": "object",
+      "required": ["withdrawn", "consent"],
+      "properties": {
+        "withdrawn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consent": {
+          "$ref": "#/$defs/consent"
+        }
+      },
+      "additionalProperties": false
+    },
+    "record": {
+      "description": "One contribution: the whole of what is kept (docs/CONTRIBUTION_RULES.md). `band` is `camera` for a measured value and `sqm` for an entered one; `radianceLevel` is the sky-quality raster's own 256-level log encoding of the place's cell; `region` the calibration region (`global` outside every region); `year` only; `methodVersion` for a measured value, `null` for an entered one.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/measuredRecord"
+        },
+        {
+          "$ref": "#/$defs/enteredRecord"
+        }
+      ]
+    },
+    "measuredRecord": {
+      "type": "object",
+      "required": [
+        "kind",
+        "sqm",
+        "band",
+        "radianceLevel",
+        "region",
+        "year",
+        "methodVersion"
+      ],
+      "properties": {
+        "kind": {
+          "const": "measured"
+        },
+        "sqm": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 25
+        },
+        "band": {
+          "const": "camera"
+        },
+        "radianceLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "year": {
+          "type": "integer",
+          "minimum": 2000,
+          "maximum": 2999
+        },
+        "methodVersion": {
+          "type": "string",
+          "pattern": "^astro-sync-sky/[1-9][0-9]{0,5}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "enteredRecord": {
+      "type": "object",
+      "required": [
+        "kind",
+        "sqm",
+        "band",
+        "radianceLevel",
+        "region",
+        "year",
+        "methodVersion"
+      ],
+      "properties": {
+        "kind": {
+          "const": "entered"
+        },
+        "sqm": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 25
+        },
+        "band": {
+          "const": "sqm"
+        },
+        "radianceLevel": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "region": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "year": {
+          "type": "integer",
+          "minimum": 2000,
+          "maximum": 2999
+        },
+        "methodVersion": {
+          "type": "null"
+        }
+      },
+      "additionalProperties": false
+    },
+    "release": {
+      "description": "One release of the set: a version, the instant it was made, and the records in a random order — no row key, no ledger.",
+      "type": "object",
+      "required": ["dataset", "version", "generatedAt", "records"],
+      "properties": {
+        "dataset": {
+          "const": "astro-portal-sky-calibration"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/record"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "payload_too_large",
+                "not_available",
+                "calibration_storage_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/status"
+    },
+    {
+      "$ref": "#/$defs/update"
+    },
+    {
+      "$ref": "#/$defs/withdrawn"
+    },
+    {
+      "$ref": "#/$defs/release"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ]
+}

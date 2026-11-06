@@ -1,0 +1,95 @@
+/*
+ * « Fichiers de traitement » of Réglages › Général: a box with a line per
+ * category, the size on the right and, in grey, where it lies. Every value is
+ * a `var(--as-*)` reference, never a colour literal.
+ */
+
+.as-files {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+}
+
+.as-files__row {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  min-width: 0;
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-size: 0.875rem;
+}
+
+.as-files__row + .as-files__row {
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-files__row--total {
+  font-weight: 600;
+}
+
+.as-files__name {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-files__note {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.as-files__size {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.as-files__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--as-space-md);
+}
+
+.as-files__stamp {
+  flex: 1;
+  margin: 0;
+}
+
+.as-option__size {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* « Supprimés, ils ne sont nulle part ailleurs » : amber, never red. */
+.as-files__warn {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  color: var(--as-color-warning);
+}
+
+.as-files__warn-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* « Conservé dans tous les cas ». */
+.as-files__kept {
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}

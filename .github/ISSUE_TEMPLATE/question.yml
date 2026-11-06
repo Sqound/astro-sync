@@ -1,0 +1,20 @@
+name: Question
+description: How to install, connect or use Astro Sync.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking, have a look at the README. Please leave out personal
+        data, your portal's address and any code or token.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: The version, your system, the portal you connect to (private server or hosted service), what you already tried.

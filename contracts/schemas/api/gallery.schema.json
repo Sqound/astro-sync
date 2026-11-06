@@ -1,0 +1,1031 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/gallery.schema.json",
+  "title": "Astro Portal API v1 — the public gallery",
+  "description": "What a visitor reads of the public captures of every space: `GET /v1/gallery` (a page of the home gallery, newest night first) and `GET /v1/gallery/{captureId}` (one public capture, its detail page). Built field by field by `packages/portal/src/captures/public-capture-view.js`; `additionalProperties: false` at every level, so that nothing it does not name may leave: never the place, its name nor its coordinates, the day of the night (the month only), an e-mail address, a space or a person, the original file name, a device (the signature is the space's « Nom public », `null` without it). The published file is `GET /v1/gallery/{captureId}/media` (the copy without location, `?variant=thumbnail` its thumbnail). A capture that is not public answers 404 `capture_not_found`, the same as an identifier that never existed. See api/v1.md, section \"The public gallery\".",
+  "$defs": {
+    "month": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+      "description": "The month of the night, `YYYY-MM`: the session's start, otherwise the upload's date; for the image of a multi-night plan, the month of the first night it combines. Never the day."
+    },
+    "nullableText": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target": {
+      "type": "object",
+      "description": "A target of the catalogue: its designation, its name in the requested language, its first alias, its object type and constellation (the catalogue's stable French keys) and its J2000 position in degrees — the target's, never the place's.",
+      "required": [
+        "id",
+        "designation",
+        "name",
+        "aliases",
+        "type",
+        "constellation",
+        "ra",
+        "dec"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "designation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "aliases": {
+          "type": "array",
+          "maxItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "type": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "constellation": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "ra": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 360
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "tag": {
+      "enum": [
+        "Galaxie",
+        "Nébuleuse",
+        "Amas",
+        "Lune",
+        "Planète",
+        "Soleil",
+        "Étoile",
+        "Comète",
+        "Grand champ"
+      ],
+      "description": "A generic tag of the galleries, derived from the object type of the first target (« Grand champ »: a capture without a catalogue target); the page translates it. The generic tags have **keys** (`x-keys`, the contract's word for each, shared by the web and the phone: the phone's ARB catalogues name them `genericTag<Key>`), and the French word stays the stored and transmitted value — `capture_tags.tag`, `galleryLabel`, a personal target's `label`, `tag` and `tags` here, `tags` and `ownTags` of the private gallery — so that no stored row nor installed app breaks. A capture takes its target's tag by default among its own tags, at its creation (`GET /v1/captures`: `tags`); an owner's own word that is none of these is written as it is, never translated nor normalised. `Messier` (key `messier`) is a generic word too, said of a target of that catalogue, never a default nor a label.",
+      "x-keys": {
+        "Galaxie": "galaxy",
+        "Nébuleuse": "nebula",
+        "Amas": "cluster",
+        "Lune": "moon",
+        "Planète": "planet",
+        "Soleil": "sun",
+        "Étoile": "star",
+        "Comète": "comet",
+        "Grand champ": "wide_field",
+        "Messier": "messier"
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "description": "The integration of the capture, when it carries it (no source today: always `null`).",
+      "required": ["frames", "seconds", "totalSeconds"],
+      "properties": {
+        "frames": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "totalSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "media": {
+      "type": "object",
+      "required": ["image", "thumbnail"],
+      "properties": {
+        "image": {
+          "type": "string",
+          "pattern": "^/api/v1/gallery/[^/?#]+/media$"
+        },
+        "thumbnail": {
+          "type": "string",
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "variantMedia": {
+      "type": "object",
+      "description": "The two files of a public variant, selected on the media route by `imageId` (`variant=thumbnail` is the size).",
+      "required": ["image", "thumbnail"],
+      "properties": {
+        "image": {
+          "type": "string",
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?imageId=[^&#]+$"
+        },
+        "thumbnail": {
+          "type": "string",
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail&imageId=[^&#]+$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "description": "One card of the home gallery.",
+      "required": [
+        "id",
+        "targets",
+        "tag",
+        "tags",
+        "telescope",
+        "exposure",
+        "nightMonth",
+        "signature",
+        "media"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targets": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/tag"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/tag"
+              },
+              {
+                "const": "Messier"
+              }
+            ]
+          }
+        },
+        "telescope": {
+          "$ref": "#/$defs/nullableText"
+        },
+        "exposure": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/exposure"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nightMonth": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/month"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nightMonthEnd": {
+          "description": "Additive: the last month of the nights a capture combines, only for the image of a multi-night plan whose nights span several months (`nightMonth` is then the first): the capture says « Août – septembre 2026 ». Absent for a capture of one night and for a plan whose nights fall in one month. Months only, never a day.",
+          "$ref": "#/$defs/month"
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The space's « Nom public », as its owner wrote it; `null`: the capture is unsigned."
+        },
+        "media": {
+          "$ref": "#/$defs/media"
+        }
+      },
+      "additionalProperties": false
+    },
+    "equipmentItem": {
+      "type": "object",
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {
+          "enum": ["telescope", "camera", "mount", "filter"]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "skyQuality": {
+      "type": "object",
+      "description": "The sky quality of the place as a Bortle class and where it comes from (measured at the place, typed by the observer, or the modelled estimate); never the place itself.",
+      "required": ["bortle", "source"],
+      "properties": {
+        "bortle": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9
+        },
+        "source": {
+          "enum": ["measured", "entered", "model"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "image": {
+      "type": "object",
+      "description": "The pixel size of the published file.",
+      "required": ["width", "height"],
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "imageQuality": {
+      "description": "The quality of an image as Astro Sync measured it on the stacked master, as a gallery says it — only while the owner's switch of that gallery is on (`captures.quality_public`, on for a capture created since this rule and off for older ones until their owner turns it on, for this public gallery; `quality_private`, on by default, for the private one), absent otherwise. `fwhmPixels` is the median full width at half maximum of the stars in pixels, `fwhmArcsec` the same in arcseconds (`null` when the pixel scale is not known), `eccentricity` between 0 and 1 (`null` when not measured), `starCount` the stars measured, `measuredOn` on what (`linear`: the master before any stretch), `measuredAt` when, `tool` the program and its version (`null` when unknown). Never a path, a file name, a night or a place.",
+      "type": "object",
+      "required": [
+        "fwhmPixels",
+        "fwhmArcsec",
+        "eccentricity",
+        "starCount",
+        "measuredOn",
+        "measuredAt",
+        "tool"
+      ],
+      "properties": {
+        "fwhmPixels": { "type": "number", "exclusiveMinimum": 0 },
+        "fwhmArcsec": {
+          "anyOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "eccentricity": {
+          "anyOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "starCount": { "type": "integer", "minimum": 0 },
+        "measuredOn": { "enum": ["linear", "stretched"] },
+        "measuredAt": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "tool": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name", "version"],
+              "properties": {
+                "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+                "version": { "type": "string", "minLength": 1, "maxLength": 40 }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "progressionStep": {
+      "type": "object",
+      "description": "One milestone of a capture's progression: the image Astro Sync stacked with `frameCount` frames (for the image of a multi-night plan, the image stacked after one night, `frameCount` the frames stacked up to that night). Its two files are selected on the media route by `imageId`, like a variant's. Never a date, a file name or a place.",
+      "required": ["id", "frameCount", "image", "media"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "frameCount": {
+          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+        },
+        "image": { "anyOf": [{ "$ref": "#/$defs/image" }, { "type": "null" }] },
+        "media": { "$ref": "#/$defs/variantMedia" }
+      },
+      "additionalProperties": false
+    },
+    "night": {
+      "type": "object",
+      "description": "What one night the capture combines says, as Astro Sync read it: the medians of the measured frames (`skyBackgroundAdu` the sky background in ADU, `fwhmArcsec` the stars' FWHM in arc seconds, `eccentricity` 0–1, `measuredFrames` the frames measured) and the guiding PHD2 logged (`rmsTotalArcsec`, `rmsRaArcsec`, `rmsDecArcsec` in arc seconds, `meridianFlips`), `null` where the report says nothing. Never a date, a session's identifier or a place: the page names the nights « Nuit 1 », « Nuit 2 » in their order.",
+      "required": [
+        "skyBackgroundAdu",
+        "fwhmArcsec",
+        "eccentricity",
+        "measuredFrames",
+        "guiding"
+      ],
+      "properties": {
+        "skyBackgroundAdu": {
+          "anyOf": [{ "type": "number" }, { "type": "null" }]
+        },
+        "fwhmArcsec": {
+          "anyOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }]
+        },
+        "eccentricity": {
+          "anyOf": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "null" }
+          ]
+        },
+        "measuredFrames": {
+          "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }]
+        },
+        "guiding": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "rmsTotalArcsec",
+                "rmsRaArcsec",
+                "rmsDecArcsec",
+                "meridianFlips"
+              ],
+              "properties": {
+                "rmsTotalArcsec": {
+                  "anyOf": [
+                    { "type": "number", "minimum": 0 },
+                    { "type": "null" }
+                  ]
+                },
+                "rmsRaArcsec": {
+                  "anyOf": [
+                    { "type": "number", "minimum": 0 },
+                    { "type": "null" }
+                  ]
+                },
+                "rmsDecArcsec": {
+                  "anyOf": [
+                    { "type": "number", "minimum": 0 },
+                    { "type": "null" }
+                  ]
+                },
+                "meridianFlips": { "type": "integer", "minimum": 0 }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualityCharts": {
+      "type": "object",
+      "description": "The catalogue's quality charts of the nights the capture combines (« Qualité des captures » and « Guidage et journal de la nuit », `CaptureQuality.js`), read from the nights' analyses with the Journal's functions: `series` the measured frames grouped in chronological points (48 at most for one night, 36 for several), each with its sky background relative to the darkest point (`backgroundRelativePercent`, 100 = the darkest), its median FWHM in pixels and eccentricity; `sessionTelemetry` one entry per night with guiding: its RMS, its counts of dithers, expired settles, focus runs and meridian flips, its guiding trace (`guideSeries`: the mean RA and Dec offsets and the RMS of each point, in arc seconds; empty when the night kept no raw sample) and its events. Every time is `fromMinute` / `toMinute` / `minute`, minutes since the night's first measure (several nights follow one another on one axis in `series`): never a date, a clock time, a session's identifier or a place.",
+      "required": ["frameCount", "summary", "series", "sessionTelemetry"],
+      "properties": {
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "summary": {
+          "type": "object",
+          "required": ["medianFwhmPixels", "medianEccentricity"],
+          "properties": {
+            "medianFwhmPixels": {
+              "anyOf": [{ "type": "number" }, { "type": "null" }]
+            },
+            "medianEccentricity": {
+              "anyOf": [{ "type": "number" }, { "type": "null" }]
+            }
+          },
+          "additionalProperties": false
+        },
+        "series": {
+          "type": "array",
+          "maxItems": 48,
+          "items": {
+            "type": "object",
+            "required": [
+              "night",
+              "fromMinute",
+              "toMinute",
+              "backgroundRelativePercent",
+              "fwhmPixels",
+              "eccentricity",
+              "frameCount"
+            ],
+            "properties": {
+              "night": { "type": "integer", "minimum": 1 },
+              "fromMinute": { "type": "number" },
+              "toMinute": { "type": "number" },
+              "backgroundRelativePercent": {
+                "anyOf": [{ "type": "number" }, { "type": "null" }]
+              },
+              "fwhmPixels": {
+                "anyOf": [{ "type": "number" }, { "type": "null" }]
+              },
+              "eccentricity": {
+                "anyOf": [{ "type": "number" }, { "type": "null" }]
+              },
+              "frameCount": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "sessionTelemetry": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "night",
+              "durationMinutes",
+              "summary",
+              "guideSeries",
+              "events"
+            ],
+            "properties": {
+              "id": { "type": "string", "pattern": "^night-[0-9]+$" },
+              "night": { "type": "integer", "minimum": 1 },
+              "durationMinutes": { "type": "integer", "minimum": 0 },
+              "summary": {
+                "type": "object",
+                "required": [
+                  "rmsRaArcsec",
+                  "rmsDecArcsec",
+                  "rmsTotalArcsec",
+                  "ditherCount",
+                  "settleTimeoutCount",
+                  "autofocusCount",
+                  "autofocusSuccessCount",
+                  "meridianFlipCount"
+                ],
+                "properties": {
+                  "rmsRaArcsec": {
+                    "anyOf": [{ "type": "number" }, { "type": "null" }]
+                  },
+                  "rmsDecArcsec": {
+                    "anyOf": [{ "type": "number" }, { "type": "null" }]
+                  },
+                  "rmsTotalArcsec": {
+                    "anyOf": [{ "type": "number" }, { "type": "null" }]
+                  },
+                  "ditherCount": { "type": "integer", "minimum": 0 },
+                  "settleTimeoutCount": { "type": "integer", "minimum": 0 },
+                  "autofocusCount": { "type": "integer", "minimum": 0 },
+                  "autofocusSuccessCount": { "type": "integer", "minimum": 0 },
+                  "meridianFlipCount": { "type": "integer", "minimum": 0 }
+                },
+                "additionalProperties": false
+              },
+              "guideSeries": {
+                "type": "array",
+                "maxItems": 120,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "fromMinute",
+                    "toMinute",
+                    "raArcsec",
+                    "decArcsec",
+                    "rmsTotalArcsec",
+                    "sampleCount"
+                  ],
+                  "properties": {
+                    "fromMinute": { "type": "number" },
+                    "toMinute": { "type": "number" },
+                    "raArcsec": { "type": "number" },
+                    "decArcsec": { "type": "number" },
+                    "rmsTotalArcsec": { "type": "number" },
+                    "sampleCount": { "type": "integer", "minimum": 0 }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["type", "minute"],
+                  "properties": {
+                    "type": { "enum": ["meridian-flip", "autofocus"] },
+                    "minute": { "type": "number" },
+                    "temperatureC": { "type": "number" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "description": "`GET /v1/gallery/{captureId}`: the card, plus the equipment of the night by kind, the sky quality and the pixel size of the published file. A row with no value is `null` (or an empty list) and is not drawn.",
+      "required": [
+        "id",
+        "targets",
+        "tag",
+        "tags",
+        "telescope",
+        "exposure",
+        "nightMonth",
+        "signature",
+        "media",
+        "equipment",
+        "skyQuality",
+        "image"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/item/properties/id"
+        },
+        "targets": {
+          "$ref": "#/$defs/item/properties/targets"
+        },
+        "tag": {
+          "$ref": "#/$defs/item/properties/tag"
+        },
+        "tags": {
+          "$ref": "#/$defs/item/properties/tags"
+        },
+        "telescope": {
+          "$ref": "#/$defs/item/properties/telescope"
+        },
+        "exposure": {
+          "$ref": "#/$defs/item/properties/exposure"
+        },
+        "nightMonth": {
+          "$ref": "#/$defs/item/properties/nightMonth"
+        },
+        "nightMonthEnd": {
+          "$ref": "#/$defs/item/properties/nightMonthEnd"
+        },
+        "signature": {
+          "$ref": "#/$defs/item/properties/signature"
+        },
+        "media": {
+          "$ref": "#/$defs/media"
+        },
+        "equipment": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/equipmentItem"
+          }
+        },
+        "skyQuality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/skyQuality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/image"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mainImage": {
+          "description": "The main image's own names — the first option of the menu « Image affichée » and the description under the image while it is shown. Written by the service; optional so that a reader of an earlier answer still validates.",
+          "type": "object",
+          "required": ["id", "title", "description", "arrivalRank"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "description": "The owner's title of this image (what he typed), `null` while he typed none: the reader then shows `generatedTitle` in its language, else the name by default (« Variante N », N its `arrivalRank`; « Image principale » for the main image): an option of the menu « Image affichée ».",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 90
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "description": "The owner's description of this image, (what he typed), drawn under the image while it is the one shown; `null` while he typed none: the reader then shows `generatedDescription` in its language, else nothing.",
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 280
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "generatedTitle": {
+              "description": "Additive: the title a producer generated for this image in the ten languages (capture-variant.schema.json `generatedTitle`); absent when none was. Shown in the reader's language while `title` is `null`.",
+              "$ref": "capture-variant.schema.json#/$defs/generatedTitle"
+            },
+            "generatedDescription": {
+              "description": "Additive: the description a producer generated for this image in the ten languages (capture-variant.schema.json `generatedDescription`); absent when none was. Shown in the reader's language while `description` is `null`.",
+              "$ref": "capture-variant.schema.json#/$defs/generatedDescription"
+            },
+            "arrivalRank": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "The rank of arrival of the image in its capture (every image counted, the private ones included), the number of its name by default; never a date, a file or a count."
+            }
+          },
+          "additionalProperties": false
+        },
+        "variants": {
+          "description": "After the main image, the variants of the capture its owner made public, newest first — their two files (`?imageId=` of the media route) and their pixel size, nothing else. Written by the service; optional so that a reader of an earlier answer still validates.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/variantImage"
+          }
+        },
+        "skySolution": {
+          "description": "The sky solution of the main image, present only while it exists and the owner's switch « Afficher le plate solving » is on; absent otherwise (the page is the one of before).",
+          "$ref": "sky-solution.schema.json#/$defs/public"
+        },
+        "progression": {
+          "description": "Additive: the progression of the capture, its milestones from the fewest frames to the most, shown with the capture (no switch of its own) and drawn by the panel's « Progression de la nuit » with its timed playback (`plan`: the image of a multi-night plan, each milestone after one night, « Progression de l’empilement »). Absent when the capture has none.",
+          "type": "object",
+          "required": ["plan", "steps"],
+          "properties": {
+            "plan": { "type": "boolean" },
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 500,
+              "items": { "$ref": "#/$defs/progressionStep" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "nights": {
+          "description": "Additive: the nights the capture combines, in their order, under the same switch as `quality` (« Afficher la qualité en public »); absent while it is off or no night was analysed. Drawn in « La nuit » / « Les nuits » and « Guidage » after « Qualité ».",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/night" }
+        },
+        "qualityCharts": {
+          "description": "Additive: the charts of what moves through the nights the capture combines (`qualityCharts`), under the same switch as `quality`, drawn above the values of `nights`; absent while it is off or no night was analysed.",
+          "$ref": "#/$defs/qualityCharts"
+        },
+        "quality": {
+          "description": "The quality of the main image, present only while it was measured and the owner's switch « Afficher la qualité en public » is on (on for a new capture); absent otherwise. Drawn in the « Qualité » section of the panel.",
+          "$ref": "#/$defs/imageQuality"
+        },
+        "metadata": {
+          "description": "The capture's metadata for a visitor; absent on an answer written before it. Optional so that a reader of an earlier answer still validates.",
+          "$ref": "#/$defs/visitorMetadata"
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "description": "`GET /v1/gallery?locale=&query=&tag=&offset=&limit=&order=`: a page (24 by default, 48 at most) of the public captures, newest night first (`order=oldest` reverses it); `total` after the filters, `publicTotal` every public capture; `tags` the generic tags present.",
+      "required": ["captures", "total", "publicTotal", "nextOffset", "tags"],
+      "properties": {
+        "captures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "publicTotal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/tag"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "variantImage": {
+      "type": "object",
+      "required": ["id", "media", "image"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "media": {
+          "$ref": "#/$defs/variantMedia"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/image"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "title": {
+          "description": "The owner's title of this image (what he typed), `null` while he typed none: the reader then shows `generatedTitle` in its language, else the name by default (« Variante N », N its `arrivalRank`; « Image principale » for the main image): an option of the menu « Image affichée ».",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 90
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "description": "The owner's description of this image, (what he typed), drawn under the image while it is the one shown; `null` while he typed none: the reader then shows `generatedDescription` in its language, else nothing.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 280
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "generatedTitle": {
+          "description": "Additive: the title a producer generated for this image in the ten languages (capture-variant.schema.json `generatedTitle`); absent when none was. Shown in the reader's language while `title` is `null`.",
+          "$ref": "capture-variant.schema.json#/$defs/generatedTitle"
+        },
+        "generatedDescription": {
+          "description": "Additive: the description a producer generated for this image in the ten languages (capture-variant.schema.json `generatedDescription`); absent when none was. Shown in the reader's language while `description` is `null`.",
+          "$ref": "capture-variant.schema.json#/$defs/generatedDescription"
+        },
+        "arrivalRank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The rank of arrival of the image in its capture (every image counted, the private ones included), the number of its name by default; never a date, a file or a count."
+        },
+        "private": {
+          "description": "Additive, only in the answer to the owner of a private gallery (`GET /p/{token}/{captureId}`): `true` for a variant that is not public — the owner reads every variant of his capture there, a draft included — drawn with the badge « privée ». Never written for a visitor, who is given the public variants only; absent means public.",
+          "const": true
+        },
+        "skySolution": {
+          "description": "The sky solution of this public variant, under the main image's rule; a variant without one shows no annotations and hides nothing of the main image's.",
+          "$ref": "sky-solution.schema.json#/$defs/public"
+        },
+        "quality": {
+          "description": "The quality of this public variant, under the main image's rule (the owner's switch « Afficher la qualité en public » is on and Astro Sync measured it); absent otherwise.",
+          "$ref": "#/$defs/imageQuality"
+        }
+      },
+      "additionalProperties": false
+    },
+    "visitorMetadata": {
+      "type": "object",
+      "description": "A capture's metadata as a visitor reads it — its own title (`null`: the targets' label) and description, the acquisition per filter (no origin), its total, the calibration, the sensor, the processing, the filters' names and the Moon's illumination at the night's date. **Never** the place, the notes, an origin, `edited`, `finalizedAt`, the file name, the fingerprint or the dates of sending. A value absent has no line.",
+      "required": [
+        "title",
+        "description",
+        "acquisition",
+        "totalIntegrationSeconds",
+        "calibration",
+        "sensor",
+        "processing",
+        "filters",
+        "moonIllumination"
+      ],
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acquisition": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "filter",
+              "frameCount",
+              "exposureSeconds",
+              "gain",
+              "integrationSeconds"
+            ],
+            "properties": {
+              "filter": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "frameCount": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "exposureSeconds": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "gain": {
+                "type": ["integer", "null"]
+              },
+              "integrationSeconds": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "totalIntegrationSeconds": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "calibration": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sensor": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["temperatureC", "binning"],
+              "properties": {
+                "temperatureC": {
+                  "type": ["number", "null"]
+                },
+                "binning": {
+                  "type": ["integer", "null"],
+                  "minimum": 1,
+                  "maximum": 8
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "processing": {
+          "type": "object",
+          "required": ["software", "steps"],
+          "properties": {
+            "software": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "moonIllumination": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

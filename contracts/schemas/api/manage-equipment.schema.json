@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/manage-equipment.schema.json",
+  "title": "Astro Portal API v1 — the owner's equipment",
+  "description": "« Mon espace » → « Matériel » (packages/portal/src/equipment/manage-equipment.js; packages/portal-app/src/routes/api/v1/manage/equipment/). GET /v1/manage/equipment (a web session, or a paired device) answers `read`; POST answers `item` (201) — and so does POST /v1/equipment, the same body `{ equipment }` sent by a paired device allowed to write; PATCH /v1/manage/equipment answers `read` (`importRead` for an import); PATCH and DELETE /v1/manage/equipment/{id} answer `item`. Writes take a web session with its CSRF token, or a paired device's bearer (never the restore of an archived item: `web_session_required`); a device's write is refused `403` `entitlement_read_only` in the read-only window of an ended subscription. GET and PUT /v1/manage/default-configuration (« Ma configuration par défaut ») answer `configurationRead`; PUT takes `configurationWrite`, with the same credentials as the other writes. Refusals use the v1 error envelope: `invalid_request` (400), `invalid_equipment_order` (400), `equipment_not_found` (404: a default row or another space's item is unknown here), `web_session_required` (403), `entitlement_read_only` (403), `equipment_storage_unavailable` (503).",
+  "$defs": {
+    "read": {
+      "type": "object",
+      "required": ["equipment", "defaults", "hideDefaultEquipment"],
+      "properties": {
+        "equipment": {
+          "type": "array",
+          "items": {
+            "$ref": "equipment.schema.json#/$defs/equipmentItem"
+          },
+          "description": "The space's own items, archived ones included (`archivedAt`), by kind then preference order."
+        },
+        "defaults": {
+          "type": "array",
+          "items": {
+            "$ref": "equipment.schema.json#/$defs/defaultEquipmentItem"
+          }
+        },
+        "hideDefaultEquipment": {
+          "type": "boolean"
+        },
+        "defaultConfiguration": {
+          "description": "« Ma configuration par défaut » of the space; null when none is set. Additive: a portal older than it sends none.",
+          "oneOf": [
+            {
+              "$ref": "equipment.schema.json#/$defs/defaultConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "required": ["equipment"],
+      "properties": {
+        "equipment": {
+          "$ref": "equipment.schema.json#/$defs/equipmentItem"
+        }
+      },
+      "additionalProperties": false
+    },
+    "equipmentInput": {
+      "type": "object",
+      "description": "The item a POST or a PATCH carries (`{ equipment }`). Its `id`, if any, is never used: POST always makes a new item, PATCH edits the item of the path.",
+      "required": ["type", "name"],
+      "properties": {
+        "type": {
+          "$ref": "equipment.schema.json#/$defs/equipmentItem/properties/type"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "isBinoculars": {
+          "type": "boolean"
+        },
+        "specifications": {
+          "type": "object"
+        },
+        "planner": {
+          "type": "object",
+          "description": "What the planners read of the item. Additive fields: on a filter `equipmentIds` (the ids of the telescopes and cameras it is attached to) and `forAllEquipment` (offered for all equipment, the default true; false limits it to `equipmentIds`); on a telescope or a camera `ownFiltersOnly` (offer only the filters attached to it, default false, true for a telescope made from a smart-telescope profile); on a telescope `profileId` (the id of the common profile it was made from, which names its built-in filters); on a telescope `finder` (`aligned`: its finder is aligned with the tube; `none`: no finder; absent: not said — what the phone's axis calibration asks first).",
+          "properties": {
+            "equipmentIds": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "forAllEquipment": { "type": "boolean" },
+            "ownFiltersOnly": { "type": "boolean" },
+            "profileId": { "type": "string" },
+            "meridianLimitMinutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "itemChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["equipment"],
+          "properties": {
+            "equipment": {
+              "$ref": "#/$defs/equipmentInput"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "const": "restore"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "collectionChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["hideDefaultEquipment"],
+          "properties": {
+            "hideDefaultEquipment": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["action", "type", "ids"],
+          "properties": {
+            "action": {
+              "const": "reorder"
+            },
+            "type": {
+              "$ref": "equipment.schema.json#/$defs/equipmentItem/properties/type"
+            },
+            "ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["action", "items"],
+          "properties": {
+            "action": {
+              "const": "import"
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 200,
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/equipmentInput"
+                  }
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "importRead": {
+      "description": "The answer of `{ action: \"import\", items }`: the read, and one entry per item sent, in order.",
+      "type": "object",
+      "required": ["equipment", "defaults", "hideDefaultEquipment", "imported"],
+      "properties": {
+        "equipment": {
+          "type": "array",
+          "items": {
+            "$ref": "equipment.schema.json#/$defs/equipmentItem"
+          },
+          "description": "The space's own items, archived ones included (`archivedAt`), by kind then preference order."
+        },
+        "defaults": {
+          "type": "array",
+          "items": {
+            "$ref": "equipment.schema.json#/$defs/defaultEquipmentItem"
+          }
+        },
+        "hideDefaultEquipment": {
+          "type": "boolean"
+        },
+        "defaultConfiguration": {
+          "description": "« Ma configuration par défaut » of the space; null when none is set. Additive: a portal older than it sends none.",
+          "oneOf": [
+            {
+              "$ref": "equipment.schema.json#/$defs/defaultConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "imported": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["localId", "id", "created"],
+            "properties": {
+              "localId": {
+                "type": ["string", "null"],
+                "description": "The phone's own identifier of the item, null when it sent none (or one that is not 1–100 of A–Z, a–z, 0–9, _ and -)."
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The item of the space it is now."
+              },
+              "created": {
+                "type": "boolean",
+                "description": "False when the space already held it (same identifier, or same kind, name and characteristics)."
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "configurationRead": {
+      "description": "GET or PUT /v1/manage/default-configuration: the configuration of the space (null: none) and the time of its last write (null: never written).",
+      "type": "object",
+      "required": ["configuration", "updatedAt"],
+      "properties": {
+        "configuration": {
+          "oneOf": [
+            {
+              "$ref": "equipment.schema.json#/$defs/defaultConfiguration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "configurationWrite": {
+      "description": "PUT /v1/manage/default-configuration: the configuration that replaces the space's (an object; its other keys are dropped), or null to set none. A plan's own equipment never writes it.",
+      "type": "object",
+      "required": ["configuration"],
+      "properties": {
+        "configuration": {
+          "type": ["object", "null"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

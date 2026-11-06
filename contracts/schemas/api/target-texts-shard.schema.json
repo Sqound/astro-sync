@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/target-texts-shard.schema.json",
+  "title": "Astro Portal target texts shard",
+  "description": "One shard file of the catalogue texts: `target-library/texts/<locale>/<shard>.json` of the static-data package (docs/STATIC_DATA.md). The published pages of tiers A, B and C and the children's texts of every tier are too many for the catalogue seed: they are cut into shards of about 500 targets per language, and the service imports each shard into its `target_texts` table (one row per entry, the entry stored whole). `page` holds what GET /v1/targets/{id} answers for a published page in that language, less the two fields derived from it: the sections, the sources and the note are stored, `story` and `storyParagraphs` are not (they repeated the sections, three times the text; a reader derives them with the rule of the `target-page-story` conformance fixture, docs/STATIC_DATA.md); `lede` is the title and the first sentence(s) of the page, about 200 bytes, for lists that do not open the page; `children` is the children's text, read aloud (`childrenSpokenParagraphs` of the route). An entry of tier A carries its page like one of tier B or C (additive: the page left the catalogue seed for the shards); a tier A entry with `children` only is the older form, still valid, and a reader whose target has no page entry for a language keeps the page the catalogue seed still serves. `entries` are sorted by `id`; `revision` of an entry is a digest of its content (an unchanged target keeps it), `revision` of the shard a digest of its entries' revisions.",
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "texts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": ["label", "url"],
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https?://"
+        }
+      },
+      "additionalProperties": false
+    },
+    "section": {
+      "type": "object",
+      "description": "An intertitle (null for the opening lede) and its paragraphs.",
+      "required": ["heading", "paragraphs"],
+      "properties": {
+        "heading": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
+        "paragraphs": {
+          "$ref": "#/$defs/texts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "page": {
+      "type": "object",
+      "description": "The stored page fields of GET /v1/targets/{id}, for the language of the shard: `storySections` the page cut by intertitle (the opening lede first, under a null heading), `researchSources` the links the page cites in its own words, `researchNote` the closing note on their licences. `story` and `storyParagraphs` of the route are not stored: `storyParagraphs` is the paragraphs of every section in order, intertitles excluded, and `story` is those paragraphs joined by a single space (portal/target-page-story.js; fixture packages/astro-contracts/fixtures/spec/target-page-story.json).",
+      "required": ["storySections", "researchSources"],
+      "properties": {
+        "storySections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/section"
+          }
+        },
+        "researchSources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        },
+        "researchNote": {
+          "$ref": "#/$defs/text"
+        }
+      },
+      "additionalProperties": false
+    },
+    "children": {
+      "type": "object",
+      "required": ["paragraphs"],
+      "properties": {
+        "paragraphs": {
+          "$ref": "#/$defs/texts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "description": "One target in one language. Tiers A, B and C: the whole page, with its lede, and the children's text when the target has one (tier A used to carry this in the catalogue seed). Older tier A form: the children's text alone, the page staying in the seed.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/childrenEntry"
+        },
+        {
+          "$ref": "#/$defs/pageEntry"
+        }
+      ]
+    },
+    "childrenEntry": {
+      "type": "object",
+      "required": ["id", "revision", "tier", "children"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/text",
+          "description": "The catalogue identifier of the target."
+        },
+        "revision": {
+          "$ref": "#/$defs/text"
+        },
+        "tier": {
+          "const": "A"
+        },
+        "children": {
+          "$ref": "#/$defs/children"
+        }
+      },
+      "additionalProperties": false
+    },
+    "pageEntry": {
+      "type": "object",
+      "required": ["id", "revision", "tier", "lede", "page"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/text",
+          "description": "The catalogue identifier of the target."
+        },
+        "revision": {
+          "$ref": "#/$defs/text"
+        },
+        "tier": {
+          "enum": ["A", "B", "C"]
+        },
+        "lede": {
+          "$ref": "#/$defs/text"
+        },
+        "page": {
+          "$ref": "#/$defs/page"
+        },
+        "children": {
+          "$ref": "#/$defs/children"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["v", "locale", "shard", "revision", "entries"],
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "locale": {
+      "$ref": "#/$defs/text",
+      "description": "A shipped language tag (locales/locales.json)."
+    },
+    "shard": {
+      "type": "string",
+      "pattern": "^[0-9]{3}$",
+      "description": "The shard's number, on three digits; the file is `<locale>/<shard>.json`."
+    },
+    "revision": {
+      "$ref": "#/$defs/text"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "additionalProperties": false
+}

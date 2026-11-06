@@ -1,0 +1,25 @@
+{
+  "usedBytes": 57000000,
+  "quotaBytes": 268435456000,
+  "remainingBytes": 268378456000,
+  "maxFileBytes": 1073741824,
+  "captureCount": 2,
+  "captureCountLimit": 9007199254740991,
+  "variantLimit": 12,
+  "capabilities": {
+    "planner.multiple": true,
+    "planner.mosaic": true,
+    "pointing.solve": true,
+    "sync.plan_limit": 9007199254740991,
+    "gallery.private": true,
+    "portal.invitations": true,
+    "capture.variant_limit": 12,
+    "capture.count_limit": 9007199254740991,
+    "capture.public": true,
+    "analysis.logs": true,
+    "analysis.progression": true,
+    "storage.max_file_bytes": 1073741824,
+    "storage.quota_bytes": 268435456000,
+    "history.retention_days": 9007199254740991
+  }
+}

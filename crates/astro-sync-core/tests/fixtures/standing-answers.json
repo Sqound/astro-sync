@@ -1,0 +1,194 @@
+{
+  "contract": "GET /v1/entitlements",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "entitlements-free-account",
+      "description": "A space that holds nothing: nothing to say.",
+      "given": {},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Rk3Tn8yVq2LwXc5PzA7mHs4dGj6bUe9oKf1rNt0QvYi"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": []
+        }
+      }
+    },
+    {
+      "id": "entitlements-paid-account",
+      "description": "A subscription in force: nothing to say.",
+      "given": {},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Hq7Wm2xZt9LbVc4NpR6sKd3fGy8aJe5oUi1rTn0QvXw"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [
+            {
+              "kind": "subscription",
+              "state": "active"
+            }
+          ],
+          "subscription": {}
+        }
+      }
+    },
+    {
+      "id": "entitlements-monthly-subscription",
+      "description": "A subscription in force, monthly: nothing to say.",
+      "given": {},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Pm4Zt8xYs2KbWc6NqR3vLd7fHj9aGe5oUi1rTn0QvXw"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [
+            {
+              "kind": "subscription",
+              "state": "active"
+            }
+          ],
+          "subscription": {}
+        }
+      }
+    },
+    {
+      "id": "entitlements-offered-subscription",
+      "description": "A subscription in force and another purchase beside it: nothing to say.",
+      "given": {},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Fd6Yt9wXs3JbVc5NqR2mLd8fKh4aGe7oUi1zTn0QvBp"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [
+            {
+              "kind": "subscription",
+              "state": "active"
+            },
+            {
+              "kind": "one_time",
+              "state": "active"
+            }
+          ],
+          "subscription": {}
+        }
+      }
+    },
+    {
+      "id": "entitlements-ended-subscription",
+      "description": "A subscription that ended: the refusal of an upload already says so, nothing to say here.",
+      "given": {
+        "now": "2026-10-10T12:00:00.000Z"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Ew5Qd9nXs3JtCb7VpL2rKh6fGy4aMe8oUi1zTn0QvBk"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [
+            {
+              "kind": "subscription",
+              "state": "expired_read_only",
+              "endedAt": "2026-09-30T12:00:00.000Z",
+              "readOnlyUntil": "2026-12-29T12:00:00.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "entitlements-payment-failed",
+      "description": "A subscription on hold for ten days: the one answer Astro Sync says, a payment that failed and a space read-only until readOnlyUntil.",
+      "given": {
+        "now": "2026-10-10T12:00:00.000Z"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Lm3Rt7nXs2JvCb9QpK4dHf8gYw6aMe1oUi5zTn0VqEk"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [
+            {
+              "kind": "subscription",
+              "state": "on_hold",
+              "endedAt": "2026-09-30T12:00:00.000Z",
+              "readOnlyUntil": "2026-12-29T12:00:00.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "entitlements-administrator-space",
+      "description": "The space of an administrator of the service: nothing to say.",
+      "given": {},
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Zp4Xc8vBn2MqLs6KdT9fGh3jWy7aRe5oUi1tYn0QvEk"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [],
+          "serviceAdministrator": true
+        }
+      }
+    }
+  ]
+}

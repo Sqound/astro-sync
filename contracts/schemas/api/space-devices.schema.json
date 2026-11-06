@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/space-devices.schema.json",
+  "title": "Astro Portal API v1 devices of a space",
+  "description": "The devices of a space: list, rename, detach, attach a device that belongs to another space, the limit of one change of space per 24 hours. See v1.md, section « Space devices ». Clients ignore fields they do not know.",
+  "$defs": {
+    "spaceDevice": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "application",
+        "platform",
+        "current",
+        "createdAt",
+        "lastSeenAt",
+        "lastSyncAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "application": { "enum": ["planner", "sync"] },
+        "platform": {
+          "enum": ["ios", "android", "macos", "windows", "linux", "unknown"]
+        },
+        "current": {
+          "description": "True for the device that makes the call.",
+          "type": "boolean"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastSeenAt": {
+          "anyOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
+        "lastSyncAt": {
+          "anyOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
+        "appVersion": {
+          "description": "The version and build (`1.0.4+126`) the device's `X-PlanAstro-Client` header last named; null until it sends one. Additive: an older service omits it.",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 81 },
+            { "type": "null" }
+          ]
+        },
+        "osVersion": {
+          "description": "The system and its version (`iOS 18.1`) the same header last named; null until it sends one. Additive: an older service omits it.",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 61 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "deviceList": {
+      "description": "200 of GET /v1/devices, with either credential.",
+      "type": "object",
+      "required": ["devices"],
+      "properties": {
+        "devices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/spaceDevice" }
+        }
+      }
+    },
+    "renameRequest": {
+      "description": "PATCH /v1/devices/{deviceId}; the answer is the renamed `spaceDevice`.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+      }
+    },
+    "maskedEmail": {
+      "description": "The address of another space, shown without revealing it: its first character, an ellipsis, then the domain (`v…@exemple.fr`).",
+      "type": "string",
+      "pattern": "^[^@\\s]…@[^@\\s]+$"
+    },
+    "attachedElsewhere": {
+      "description": "409 of POST /v1/sign-in/verify (`client: app`, `application: planner`) when the phone is attached to another space. The code is used: `attachment.token` stands for the proven address during ten minutes, once.",
+      "type": "object",
+      "required": ["error", "attachment"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": "device_attached_elsewhere" },
+            "message": { "type": "string" }
+          }
+        },
+        "attachment": {
+          "type": "object",
+          "required": ["token", "expiresAt", "currentSpaceEmail"],
+          "properties": {
+            "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+            "expiresAt": { "type": "string", "format": "date-time" },
+            "currentSpaceEmail": { "$ref": "#/$defs/maskedEmail" }
+          }
+        }
+      }
+    },
+    "attachRequest": {
+      "description": "POST /v1/sign-in/attach: « Rattacher cet appareil à mon espace ». The answer is the `verifiedForApp` body of sign-in.schema.json, `created` being that of the verification which issued the token; the former space receives a message; its copy is erased from the device by the application. A token unknown, used or more than ten minutes old answers 400 `sign_in_code_expired`; a device other than the one the token was issued to, 400 `invalid_request`.",
+      "type": "object",
+      "required": ["attachToken", "device"],
+      "properties": {
+        "attachToken": { "type": "string", "pattern": "^[A-Za-z0-9_-]{43}$" },
+        "device": { "$ref": "sign-in.schema.json#/$defs/device" }
+      }
+    },
+    "changeLimited": {
+      "description": "409 of POST /v1/sign-in/attach, of DELETE /v1/devices/{deviceId} by the device itself, and of POST /v1/sign-in/verify for a device still counting in another space (its access was cut from there within its 24 hours), when the device already left a space less than 24 hours ago. `retryAt` (also sent as `Retry-After`) is when it may leave one again; `currentSpaceEmail` names the space it stays attached to, or counts in.",
+      "type": "object",
+      "required": ["error", "retryAt"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": "device_change_limited" },
+            "message": { "type": "string" }
+          }
+        },
+        "retryAt": { "type": "string", "format": "date-time" },
+        "currentSpaceEmail": { "$ref": "#/$defs/maskedEmail" }
+      }
+    },
+    "detached": {
+      "description": "401 of any bearer call from a device that was detached (from another device, from the web, by itself, or by being attached to another space), GET /v1/space included. The application erases the copy of that space it keeps, then shows the sign-in.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": "device_detached" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

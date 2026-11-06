@@ -1,0 +1,242 @@
+/* The step « Cibles » (part 2): the zone that adds targets (search, FITS,
+   form), the catalogue's cards, the night's list. Same rule as
+   primitives.css: only var(--as-*) references. */
+
+.as-targets__subheading {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.as-targets-add,
+.as-targets-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-targets-add {
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-targets-add__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--as-space-md);
+}
+
+.as-targets-search {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+}
+
+.as-targets-search__box {
+  position: relative;
+  display: flex;
+}
+
+.as-targets-search__box .as-field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 2.375rem;
+  padding-left: 2rem;
+}
+
+.as-targets-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 0.625rem;
+  width: 1rem;
+  height: 1rem;
+  color: var(--as-color-muted-text);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.as-targets-fits {
+  flex: none;
+  max-width: 21rem;
+  min-height: 2.375rem;
+  white-space: normal;
+  text-align: left;
+}
+
+.as-target-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-target-card {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-target-card__preview {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  overflow: hidden;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-page-background);
+  color: var(--as-color-muted-text);
+}
+
+.as-target-card__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.as-target-card__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.as-target-card__name,
+.as-target-card__kind,
+.as-target-card__details,
+.as-target-card__in-night {
+  color: var(--as-color-muted-text);
+}
+
+.as-target-card__kind {
+  font-size: 0.8125rem;
+}
+
+.as-target-card__details {
+  font-size: 0.75rem;
+}
+
+.as-target-card__in-night {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  font-size: 0.8125rem;
+}
+
+.as-targets-more,
+.as-targets-manual,
+.as-targets-framing,
+.as-targets-offline,
+.as-targets-fits-block__file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-targets-more {
+  justify-content: space-between;
+}
+
+.as-targets-offline {
+  justify-content: space-between;
+}
+
+.as-targets-none {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-targets-none > p,
+.as-targets-fits-block__heading {
+  margin: 0;
+}
+
+.as-targets-fits-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border-left: 2px solid var(--as-color-gold-accent);
+  padding-left: var(--as-space-md);
+}
+
+.as-targets-fits-block__heading {
+  font-weight: 600;
+}
+
+.as-targets-fits-block__file .as-info-line {
+  flex: 1;
+}
+
+.as-targets-empty {
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  text-align: center;
+}
+
+.as-targets-empty > p {
+  margin: 0;
+}
+
+.as-target-row {
+  cursor: default;
+}
+
+.as-target-row__label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--as-space-md);
+  cursor: pointer;
+}
+
+.as-target-row .as-badge--new {
+  margin-left: var(--as-space-sm);
+}
+
+.as-target-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-xs);
+}
+
+.as-target-label {
+  border: 1px solid var(--as-color-tertiary-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-xs) var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.as-target-label.is-active {
+  border-color: var(--as-color-gold-accent);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+}
+
+.as-dialog__grid--coordinates {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.as-targets-search__box .as-field:disabled {
+  opacity: 0.5;
+}

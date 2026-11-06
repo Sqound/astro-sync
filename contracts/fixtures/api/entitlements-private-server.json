@@ -1,0 +1,46 @@
+{
+  "contract": "entitlements-private-server.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "entitlements-private-server",
+      "description": "A private server (the open-source core): no purchase, its own profile.",
+      "given": {
+        "entitlements": "core"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/entitlements",
+        "headers": {
+          "authorization": "Bearer Mv6Nb3cXz8LkJh2GfD5sAq9wEr4tYu7iOp1lKj0QwTr"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "purchases": [],
+          "capabilities": {
+            "planner.multiple": true,
+            "planner.mosaic": true,
+            "pointing.solve": false,
+            "sync.plan_limit": 9007199254740991,
+            "gallery.private": true,
+            "portal.invitations": false,
+            "capture.variant_limit": 9007199254740991,
+            "capture.count_limit": 9007199254740991,
+            "capture.public": true,
+            "analysis.logs": true,
+            "analysis.progression": true,
+            "storage.max_file_bytes": 9007199254740991,
+            "storage.quota_bytes": 9007199254740991,
+            "history.retention_days": 9007199254740991
+          }
+        },
+        "schema": "entitlements-private-server.schema.json#"
+      }
+    }
+  ]
+}

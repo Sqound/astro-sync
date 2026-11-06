@@ -1,0 +1,21 @@
+{
+  "sessionId": "7f3a2c91-0000-4000-8000-00000000000b",
+  "targets": [
+    {
+      "targetId": "m31",
+      "name": "M31",
+      "planned": true,
+      "captures": []
+    }
+  ],
+  "analysis": {
+    "present": false,
+    "sentAt": null,
+    "originDeviceId": null,
+    "deviceName": null,
+    "reportVersion": null,
+    "producer": null,
+    "stepCount": 0,
+    "editedStepCount": 0
+  }
+}

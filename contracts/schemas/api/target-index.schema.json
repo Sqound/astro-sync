@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/target-index.schema.json",
+  "title": "Astro Portal compact target index",
+  "description": "GET /v1/target-index query parameters and response. The same shared catalogue as GET /v1/targets, with the same filters, the same orderings and the same refusals, projected down to what a planning candidate needs: the planner's astronomy, the sky maps' markers and labels, one list row and the preview card under the map. It deliberately omits each target's knowledge article, observing prose and per-target image credits; a client showing one target fetches those through GET /v1/targets/{targetId}. A portal predating this route answers 404, which is the whole negotiation: the client falls back to GET /v1/targets and that route's 96-entry page cap.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "description": "Every filter and ordering parameter of `target-library-query.schema.json`'s `query`, with the same meanings and the same `400 invalid_request` refusals, plus `include`. `limit` is capped at 1000 rather than 96, because a compact row is a fraction of a presented target.",
+      "properties": {
+        "locale": {
+          "enum": [
+            "en",
+            "fr",
+            "ja",
+            "de",
+            "es",
+            "it",
+            "pt-BR",
+            "zh-Hans",
+            "zh-Hant",
+            "ru"
+          ]
+        },
+        "q": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "constellation": {
+          "type": "string"
+        },
+        "catalogue": {
+          "type": "string"
+        },
+        "selection": {
+          "enum": ["", "best", "extended"],
+          "description": "`best` the Essentials, `extended` the Extended: two disjoint lists since TARGET-SELECTIONS-TAGS-01 (an Essential is not Extended)."
+        },
+        "mode": {
+          "enum": ["", "visual", "photo"],
+          "description": "Keeps, of the `selection` asked, the targets proposed in that mode (a target of a selection with no mode counts as both), and the `include=extended` supplement to the targets of that mode. Without a `selection` the rows are not filtered by it: a catalogue is whole."
+        },
+        "hemisphere": {
+          "enum": ["", "north", "south"]
+        },
+        "season": {
+          "enum": ["", "winter", "spring", "summer", "autumn"]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "featured": {
+          "type": "boolean"
+        },
+        "favorites": {
+          "type": "boolean"
+        },
+        "favoriteMode": {
+          "enum": ["", "photo", "visual"]
+        },
+        "sort": {
+          "enum": ["", "designation", "planner", "notoriety"]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "minimumAltitude": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 89
+        },
+        "include": {
+          "enum": ["", "extended"],
+          "description": "`extended` appends, after the page, every target of the same filtered and ranked set that belongs to one of the two editorial selections (Essentials or Extended, in `mode` when one is given) and that the page did not already hold. It is how one request reproduces the web planner's own pool — the highest-ranking `limit` candidates plus every target of the selections — instead of merging two. `rows` may then be longer than `limit`, which is why it has to be asked for."
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["v", "total", "offset", "limit", "sort", "fields", "rows"],
+      "description": "A columnar page. The column names are stated once in `fields`; every target is a positional array in `rows`, in the same order. A reader resolves a column by looking its name up in `fields`, so it ignores a column it does not know and tolerates one that is absent — which is what makes the notation extensible without a version negotiation. `v` is the notation's own version.",
+      "properties": {
+        "v": {
+          "const": 1,
+          "description": "The notation's version. A later revision of the row encoding raises it; adding or removing a column does not, because `fields` already describes that."
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An opaque identifier for the catalogue these rows came from. A reader walking the whole index page by page compares it between pages: an import landing mid-walk changes it, and `total` and the designation order with it, so those pages must not be stitched together."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The size of the filtered, ordered set — not of `rows`. As in the full view, `sort=planner` drops what it cannot rank, so `total` describes the ranked set."
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "sort": {
+          "enum": ["designation", "planner", "notoriety"],
+          "description": "The ordering actually applied, echoed exactly as `GET /v1/targets` echoes it."
+        },
+        "include": {
+          "const": "extended",
+          "description": "Present only when the supplement was asked for and applied."
+        },
+        "types": {
+          "$ref": "#/$defs/dictionary",
+          "description": "The object types the rows reference, as `[key, localizedLabel]` pairs. The `type` column is an index into this array. The key is what a client's own rules match on; the label is what a card prints, and a client that cannot localize a taxonomy key offline needs it sent."
+        },
+        "constellations": {
+          "$ref": "#/$defs/dictionary",
+          "description": "The constellations the rows reference, as `[key, localizedLabel]` pairs. The `constellation` column is an index into this array. The key is the constellation's IAU abbreviation (`Lyr`); before migration 109 it was its French name."
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "The column names, in row order. Current columns: `id`, `designation`, `name` (localized common name or null), `title`, `aliases` (the other designations; the primary one is already column `designation`), `catalogue`, `catalogues`, `ra` (catalogue hours, as in the full view's `coordinate.ra`), `dec` (degrees), `sizeArcmin` (`[major, minor]` or null), `magnitude`, `type` (index into `types`), `constellation` (index into `constellations`), `best`, `extended`, `premium` (0/1 — the last term of the portal's ranking score, carried so a client holding the whole index can reproduce that ranking locally), `sizeLabel`, `photoUrl`, `visualUrl`, `visualPreviewUrl` (portal-relative image paths), and the three observing-guide numbers an equipment restriction reads: `focalMinMm`, `focalMaxMm`, `apertureMinMm`; then, appended later, the target's distance: `distanceLy` (whole light-years, or null) and `distanceSource` (`published`, `parallax`, `redshift`, or null). The distance is known or absent, never invented: both are null together. `redshift` is Hubble's law at 70 km/s/Mpc, a model — a client writes « estimation » beside it; the reference of a `published` value is in the full view's `distance`. Then, appended later, `planVisualOnly` and `planExcluded` (0/1): a bright star is added to a plan by hand, in visual mode only; a constellation is never put in one; neither is ever suggested. A bright star's `magnitude` keeps its hundredths, and its `distanceLy` its decimals. Then, appended later, `modes` (integer bits): the modes a target of a selection is proposed in, 1 visual, 2 photo, 3 both (a target of a selection with none: 3); 0 for a target of no selection. `best` and `extended` are disjoint: a target is in one selection at most, and the pool « Étendues » of a planner is the two together."
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "description": "One target, positionally, in `fields` order. `null` is the absent value throughout. Numbers are rounded to the precision they are useful at: coordinates to 1e-4 degree or hour, magnitude and apparent size to a tenth."
+          }
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "imageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "curatedPhotoImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visualImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visualPreviewImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "dictionary": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ]
+}

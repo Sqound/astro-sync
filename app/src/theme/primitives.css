@@ -1,0 +1,2973 @@
+/*
+ * Shared visual primitives for Astro Sync: panels, buttons, fields, status
+ * badges, progress, focus, and destructive confirmations.
+ *
+ * This file must never hardcode a color, radius, or spacing literal --
+ * every value below is a `var(--as-*)` reference. Those custom properties
+ * are set at runtime by `applyTheme()` in `tokens.ts` from `tokens.json`.
+ * `primitives.test.ts` asserts this
+ * file contains no color literal, so a future edit cannot silently
+ * reintroduce an independent color list.
+ */
+
+/* The window is the page: no browser margin around the shell, and the page
+   colour behind it, so an overscroll never shows a white edge. */
+body {
+  margin: 0;
+  background-color: var(--as-color-page-background);
+}
+
+.as-panel {
+  background-color: var(--as-color-panel);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-lg);
+  font-family: var(--as-font-family);
+}
+
+/*
+ * The four levels of an action link <
+ * tertiary < secondary < primary, plus the destructive tint, which is a colour
+ * and not a level. Corners are 12 px (8 px for the link), the target is 44 px
+ * at least (48 for a full-width primary), the weights 600 (700 for the
+ * primary). Hover and press tint a button with its own text colour (8 % then
+ * 16 %).
+ */
+.as-button {
+  --btn-surface: transparent;
+  --btn-edge: transparent;
+  --btn-text: var(--as-color-primary-text);
+  --btn-edge-hover: var(--btn-edge);
+  --btn-text-hover: var(--btn-text);
+  --btn-surface-hover: color-mix(
+    in srgb,
+    var(--btn-text) 8%,
+    var(--btn-surface)
+  );
+  --btn-surface-pressed: color-mix(
+    in srgb,
+    var(--btn-text) 16%,
+    var(--btn-surface)
+  );
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--as-space-sm);
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  border: 1px solid var(--btn-edge);
+  border-radius: var(--as-radius-md);
+  background-color: var(--btn-surface);
+  color: var(--btn-text);
+  padding: 0 var(--as-space-lg);
+  font-family: var(--as-font-family);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.as-button:not(:disabled):hover {
+  border-color: var(--btn-edge-hover);
+  color: var(--btn-text-hover);
+  background-color: var(--btn-surface-hover);
+}
+
+.as-button:not(:disabled):active {
+  background-color: var(--btn-surface-pressed);
+}
+
+/* A disabled action (e.g. "Associate this folder" before a folder is
+   chosen) must read as unavailable at a glance, not only on click -- the
+   web's own rule: dimmed, and the pointer says so. */
+.as-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.as-button--link {
+  --btn-text: var(--as-color-gold-accent);
+  --btn-text-hover: var(--as-color-active-gold-text);
+  border-radius: var(--as-radius-sm);
+  padding: 0 var(--as-space-xs);
+}
+
+.as-button--tertiary {
+  --btn-edge: var(--as-color-tertiary-border);
+  --btn-edge-hover: color-mix(
+    in srgb,
+    var(--as-color-tertiary-border),
+    var(--as-color-primary-text) 25%
+  );
+  --btn-text: var(--as-color-gold-accent);
+  --btn-text-hover: var(--as-color-active-gold-text);
+}
+
+.as-button--secondary {
+  --btn-surface: var(--as-color-active-surface);
+  --btn-edge: var(--as-color-gold-accent);
+  --btn-text: var(--as-color-active-gold-text);
+  --btn-surface-hover: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 12%,
+    var(--as-color-active-surface)
+  );
+  --btn-surface-pressed: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 20%,
+    var(--as-color-active-surface)
+  );
+}
+
+.as-button--primary {
+  --btn-surface: var(--as-color-gold-accent);
+  --btn-edge: var(--as-color-primary-edge);
+  --btn-text: var(--as-color-primary-ink);
+  --btn-surface-hover: color-mix(
+    in srgb,
+    var(--as-color-active-gold-text) 18%,
+    var(--as-color-gold-accent)
+  );
+  --btn-surface-pressed: color-mix(
+    in srgb,
+    var(--as-color-primary-edge) 25%,
+    var(--as-color-gold-accent)
+  );
+  font-weight: 700;
+}
+
+/* The destructive tint, at the level the role gives. */
+.as-button--link.is-destructive {
+  --btn-text: var(--as-color-destructive-text);
+}
+
+.as-button--tertiary.is-destructive {
+  --btn-edge: var(--as-color-destructive-outline);
+  --btn-edge-hover: var(--as-color-destructive-text);
+  --btn-text: var(--as-color-destructive-text);
+  --btn-text-hover: var(--as-color-destructive-text);
+}
+
+.as-button--secondary.is-destructive {
+  --btn-surface: color-mix(
+    in srgb,
+    var(--as-color-destructive-surface) 60%,
+    var(--as-color-page-background)
+  );
+  --btn-edge: var(--as-color-destructive-outline);
+  --btn-text: var(--as-color-destructive-text);
+}
+
+.as-button--primary.is-destructive {
+  --btn-surface: var(--as-color-destructive-surface);
+  --btn-edge: var(--as-color-destructive-edge);
+  --btn-text: var(--as-color-destructive-ink);
+  --btn-surface-hover: color-mix(
+    in srgb,
+    var(--as-color-destructive-ink) 10%,
+    var(--as-color-destructive-surface)
+  );
+  --btn-surface-pressed: color-mix(
+    in srgb,
+    var(--as-color-page-background) 20%,
+    var(--as-color-destructive-surface)
+  );
+}
+
+/* A button on a line of its own, the whole width of its card. */
+.as-button--block {
+  width: 100%;
+}
+
+.as-button--primary.as-button--block {
+  min-height: 3rem;
+}
+
+/* The step that waits: not an action yet, drawn flat. */
+.as-button--inactive {
+  --btn-surface: var(--as-color-inactive-surface);
+  --btn-edge: var(--as-color-border);
+  --btn-text: var(--as-color-inactive-text);
+  --btn-surface-hover: var(--btn-surface);
+  cursor: not-allowed;
+}
+
+.as-button--inactive:disabled {
+  opacity: 1;
+}
+
+.as-button__icon {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/* A field never goes past the box that holds it. A text field has a width of
+   its own (its `size`, wider in some engines and fonts) that a flex or grid
+   cell would otherwise take as its minimum: it shrinks to its column instead
+   (`min-width: 0`), counts its border and padding in its width (`border-box`)
+   and stops at the edge of its container (`max-width`). The rule is here, on
+   the common style, not on each window. */
+.as-field {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  background-color: var(--as-color-page-background);
+  border: 1px solid var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-family: var(--as-font-family);
+}
+
+.as-badge {
+  display: inline-flex;
+  /* A long word of a language (« Нужно дополнить ») wraps inside the badge,
+     never past the edge of the cell that holds it. */
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--as-space-xs);
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-xs) var(--as-space-md);
+  font-family: var(--as-font-family);
+}
+
+.as-badge--success {
+  background-color: var(--as-color-success);
+  color: var(--as-color-page-background);
+}
+
+.as-badge--warning {
+  background-color: var(--as-color-warning);
+  color: var(--as-color-page-background);
+}
+
+.as-badge--error {
+  background-color: var(--as-color-error);
+  color: var(--as-color-primary-text);
+}
+
+.as-badge--neutral {
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+}
+
+.as-badge--outline {
+  border: 1px solid var(--as-color-tertiary-border);
+  background: transparent;
+  color: var(--as-color-primary-text);
+  font-weight: 700;
+}
+
+.as-badge--outline-gold {
+  border: 1px solid var(--as-color-gold-accent);
+  background: transparent;
+  color: var(--as-color-active-gold-text);
+  font-weight: 700;
+}
+
+.as-progress {
+  background-color: var(--as-color-inactive-surface);
+  border-radius: calc(var(--as-radius-sm) / 2);
+  height: var(--as-space-sm);
+  overflow: hidden;
+}
+
+.as-progress__fill {
+  background-color: var(--as-color-gold-accent);
+  border-radius: inherit;
+  height: 100%;
+}
+
+/* Focus: every interactive primitive above shares this ring rather than a
+   per-component outline color. */
+.as-panel:focus-visible,
+.as-button:focus-visible,
+.as-field:focus-visible,
+.as-row:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+.as-confirm {
+  background-color: var(--as-color-modal-surface);
+  border: 1px solid var(--as-color-modal-border);
+  border-radius: var(--as-radius-lg);
+  padding: var(--as-space-xl);
+  font-family: var(--as-font-family);
+}
+
+.as-confirm--destructive {
+  border-color: var(--as-color-error);
+}
+
+/*
+ * 7 additions: app shell, tabs, table, field groups, toolbar. Same
+ * rule as above -- every value is a `var(--as-*)` reference.
+ */
+
+.as-app-shell {
+  display: flex;
+  /* Exactly the viewport, not just a floor: a screen whose content is
+     taller than the window must scroll inside `.as-content` (its own
+     `overflow: auto`), never carry the sidebar off-screen with a
+     whole-page scroll. `min-height` alone let the shell grow past 100vh
+     and defeated that. */
+  height: 100vh;
+  background-color: var(--as-color-page-background);
+  color: var(--as-color-primary-text);
+  font-family: var(--as-font-family);
+}
+
+.as-sidebar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 12rem;
+  padding: var(--as-space-lg) var(--as-space-md);
+  background-color: var(--as-color-panel);
+  border-right: 1px solid var(--as-color-border);
+  gap: var(--as-space-xs);
+  /* Defensive: a very short compact window plus a longer nav list some
+     day should scroll its own tab list rather than push into the content
+     column or clip silently. */
+  overflow-y: auto;
+}
+
+.as-content {
+  flex: 1;
+  min-width: 0;
+  padding: var(--as-space-xl);
+  overflow: auto;
+}
+
+/* The build at the foot of the menu: pushed to the bottom of the column,
+   in the muted text colour (never an opacity), on its own line, so it adds
+   nothing to the height the entries need. */
+.as-sidebar__version {
+  margin: auto 0 0;
+  padding-top: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  font-family: var(--as-font-family);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.as-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-tab {
+  /* The label and its badge: on one line when they fit (the badge at the
+     right edge), otherwise the badge wraps under the label, and a lone item
+     of a line sits at its start -- never at the right edge below the text. */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-xs) var(--as-space-sm);
+  width: 100%;
+  text-align: left;
+  background-color: transparent;
+  color: var(--as-color-muted-text);
+  border: 1px solid transparent;
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-family: var(--as-font-family);
+  cursor: pointer;
+}
+
+.as-tab__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The entry of the import: its badge always sits under the label, left
+   aligned with the text, whatever the language and what the badge says. */
+.as-tab__label--stacked {
+  flex-basis: 100%;
+}
+
+.as-tab--active {
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+  border-color: var(--as-color-border);
+}
+
+/* The menu in titled groups: a thin gap between groups, the title (not
+   interactive) in the gold of the theme at 70 % on the panel -- 4.7:1,
+   mixed with the panel rather than an opacity -- and the entries indented
+   14 px under it. */
+.as-tabs ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-tabs__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+}
+
+.as-tabs__group + .as-tabs__group {
+  margin-top: var(--as-space-md);
+}
+
+.as-tabs__title {
+  margin: 0;
+  padding: 0 var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.as-tabs__title--gold-70 {
+  color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 70%,
+    var(--as-color-panel)
+  );
+}
+
+.as-tab--nested {
+  padding-left: calc(var(--as-space-md) + 0.875rem);
+}
+
+/* The hover, light like the active state and never gold text: the text
+   colour mixed into the transparent entry. */
+.as-tab:not(.as-tab--active):hover {
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-primary-text) 8%,
+    transparent
+  );
+  color: var(--as-color-primary-text);
+}
+
+.as-tab:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+.as-table-wrapper {
+  overflow-x: auto;
+}
+
+.as-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--as-font-family);
+  color: var(--as-color-primary-text);
+}
+
+.as-table th,
+.as-table td {
+  text-align: left;
+  padding: var(--as-space-sm) var(--as-space-md);
+  border-bottom: 1px solid var(--as-color-border);
+}
+
+.as-table th {
+  color: var(--as-color-muted-text);
+  font-weight: 600;
+}
+
+.as-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  flex-wrap: wrap;
+}
+
+.as-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+/* Two groups in a row (the sign-in address, then the name of this computer)
+   are two fields, not one. */
+.as-field-group + .as-field-group {
+  margin-top: var(--as-space-md);
+}
+
+.as-field-label {
+  color: var(--as-color-muted-text);
+  font-family: var(--as-font-family);
+  font-size: 0.875rem;
+}
+
+.as-help-text {
+  color: var(--as-color-muted-text);
+  font-family: var(--as-font-family);
+  font-size: 0.8125rem;
+}
+
+.as-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--as-color-gold-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.as-link:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+/*
+ * The home (« Accueil »): a title, the connection card, three step cards and
+ * a short list of other places. Same rule as above -- every value is a
+ * `var(--as-*)` reference, never a colour literal.
+ */
+
+.as-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  max-width: 47.5rem;
+  font-family: var(--as-font-family);
+  color: var(--as-color-primary-text);
+}
+
+.as-home__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-home__title {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.as-home__mark {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--as-color-gold-accent);
+}
+
+.as-lead {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.as-section-title {
+  margin: var(--as-space-xs) 0 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.as-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  background-color: var(--as-color-panel);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-lg);
+}
+
+.as-card--connected {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--as-space-md);
+  border-color: var(--as-color-success);
+  background-color: color-mix(in srgb, var(--as-color-success) 7%, transparent);
+  padding: var(--as-space-md) var(--as-space-lg);
+}
+
+.as-card--current {
+  border-color: var(--as-color-gold-accent);
+}
+
+.as-card--waiting {
+  opacity: 0.85;
+}
+
+.as-card__avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-gold-accent);
+}
+
+.as-card__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.as-card__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.as-card__sub {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.as-card__sub .as-icon {
+  color: var(--as-color-success);
+}
+
+.as-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.as-step__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-step__number {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+.as-step__number--done {
+  border: 2px solid var(--as-color-success);
+  color: var(--as-color-success);
+}
+
+.as-step__number--current {
+  background-color: var(--as-color-gold-accent);
+  color: var(--as-color-primary-ink);
+  font-weight: 700;
+}
+
+.as-step__number--waiting {
+  border: 1px dashed var(--as-color-tertiary-border);
+  color: var(--as-color-muted-text);
+}
+
+.as-step__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.as-step__title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.as-step__line {
+  margin: var(--as-space-xs) 0 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.as-step__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-step__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-sm);
+}
+
+.as-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-row {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.5rem;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-family: var(--as-font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-row:hover {
+  border-color: var(--as-color-tertiary-border);
+}
+
+.as-row__icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--as-color-gold-accent);
+}
+
+.as-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.as-row__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.as-row__line {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-row__chevron {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  color: var(--as-color-muted-text);
+}
+
+/* A notice: a tinted block that says something, never a solid one -- the
+   only solid red of the window is the confirmation of a detach. */
+.as-notice {
+  margin: 0;
+  border: 1px solid var(--notice-tone, var(--as-color-border));
+  border-radius: var(--as-radius-md);
+  background-color: color-mix(
+    in srgb,
+    var(--notice-tone, var(--as-color-border)) 12%,
+    transparent
+  );
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.as-notice--success {
+  --notice-tone: var(--as-color-success);
+}
+
+.as-notice--warning {
+  --notice-tone: var(--as-color-warning);
+}
+
+.as-notice--error {
+  --notice-tone: var(--as-color-destructive-text);
+}
+
+.as-notice--neutral {
+  --notice-tone: var(--as-color-tertiary-border);
+}
+
+/* The tag of a held feature (« Synchronisation avancée »): 20 px, 4 px
+   corners, no edge, gold on a 16 % gold tint, 11 px semibold. */
+.as-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  box-sizing: border-box;
+  height: 1.25rem;
+  border-radius: calc(var(--as-radius-sm) / 2);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 16%,
+    transparent
+  );
+  color: var(--as-color-gold-accent);
+  padding: 0 var(--as-space-sm);
+  font-family: var(--as-font-family);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.as-chip .as-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* « une ligne, puis ⓘ »: the short line, and the round button that opens
+   the rest. */
+.as-info-line {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.as-info-line > p {
+  flex: 1;
+  margin: 0;
+}
+
+.as-info-button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: none;
+  border-radius: var(--as-radius-sm);
+  background: transparent;
+  color: var(--as-color-muted-text);
+  padding: 0;
+  cursor: pointer;
+}
+
+.as-info-button:hover {
+  color: var(--as-color-primary-text);
+}
+
+.as-info-button:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+.as-info-button .as-icon {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.as-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-page-title {
+  margin: 0 0 var(--as-space-xs);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.as-card__heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.as-card p,
+.as-card h2,
+.as-card h3,
+.as-card h4 {
+  margin: 0;
+}
+
+.as-card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-card .as-field-group + .as-field-group {
+  margin-top: 0;
+}
+
+/* The body of the connection card: it opens « Espace Astro Portal ». */
+.as-card__open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--as-space-md);
+  min-width: 0;
+  min-height: 2.75rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-card__open:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+.as-card__open > .as-card__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.as-card__text {
+  color: var(--as-color-primary-text);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/*
+ * The home's « Comment ça
+ * marche », « Nuits » and its creation window, the wizard of a night (its
+ * thread, its steps, its cards and lines). Same rule as above: every value is
+ * a `var(--as-*)` reference, never a colour literal.
+ */
+
+.as-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--as-space-md);
+}
+
+.as-actions--start {
+  justify-content: flex-start;
+}
+
+.as-how {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md) var(--as-space-lg);
+}
+
+.as-how__toggle,
+.as-fold__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  border: none;
+  background: transparent;
+  color: var(--as-color-primary-text);
+  padding: 0;
+  font-family: var(--as-font-family);
+  font-size: 0.9375rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-how__title {
+  font-weight: 600;
+}
+
+.as-how__folded {
+  margin-left: auto;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-how__chevron {
+  color: var(--as-color-muted-text);
+  transition: transform 120ms ease;
+}
+
+.as-how__chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.as-how__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--as-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-how__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-how__step-title {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.as-how__step-line {
+  color: var(--as-color-muted-text);
+  line-height: 1.4;
+}
+
+.as-how__number,
+.as-thread__number {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 1.5px solid var(--as-color-gold-accent);
+  border-radius: 50%;
+  color: var(--as-color-gold-accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+/* A page of the window (« Nuits », the wizard of a night). */
+.as-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  max-width: 47.5rem;
+  color: var(--as-color-primary-text);
+  font-family: var(--as-font-family);
+}
+
+.as-page__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-page__title {
+  margin: 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.as-page__actions {
+  display: flex;
+  gap: var(--as-space-md);
+}
+
+.as-notice--inline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-badge--dotted {
+  border: 1px dashed var(--as-color-tertiary-border);
+  background: transparent;
+  color: var(--as-color-muted-text);
+}
+
+.as-badge--new {
+  margin-left: var(--as-space-sm);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.as-badge {
+  white-space: nowrap;
+}
+
+.as-badge .as-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* « Nuits »: one clickable row per night, five columns. */
+.as-nights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-nights__head,
+.as-nights__row {
+  display: grid;
+  grid-template-columns: 7rem 7.5rem 9rem 9rem minmax(0, 1fr) 1rem;
+  gap: var(--as-space-md);
+  align-items: start;
+}
+
+.as-nights__head {
+  padding: 0 var(--as-space-md);
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-nights__head > :nth-child(5) {
+  grid-column: 5 / 7;
+}
+
+.as-nights__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-nights__row {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-nights__row:hover {
+  border-color: var(--as-color-tertiary-border);
+}
+
+/* A session still to debrief (or abandoned) is shown but cannot be
+   selected -- no pointer, no hover; its message stays readable. */
+.as-nights__row.is-held,
+.as-nights__row.is-held:hover {
+  border-color: var(--as-color-border);
+  cursor: default;
+}
+
+.as-nights__row.is-held .as-nights__cell:not(:nth-child(5)) {
+  color: var(--as-color-muted-text);
+}
+
+.as-nights__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+  line-height: 1.35;
+}
+
+.as-nights__cell.is-greyed {
+  color: var(--as-color-inactive-text);
+}
+
+.as-nights__sub,
+.as-nights__missing {
+  font-size: 0.75rem;
+}
+
+.as-nights__sub {
+  color: var(--as-color-muted-text);
+}
+
+.as-nights__missing {
+  color: var(--as-color-gold-accent);
+}
+
+.as-nights__chevron {
+  color: var(--as-color-muted-text);
+}
+
+.as-empty {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--as-space-md);
+  padding: var(--as-space-xl) 0;
+  text-align: center;
+}
+
+.as-empty__star {
+  position: absolute;
+  top: 0;
+  width: 8rem;
+  height: 8rem;
+  fill: var(--as-color-gold-accent);
+  opacity: 0.1;
+}
+
+.as-empty > p,
+.as-empty > button,
+.as-empty > .as-empty__actions {
+  position: relative;
+}
+
+.as-empty__actions {
+  justify-content: center;
+}
+
+/* The creation window: a dialog over a scrim. */
+.as-dialog__scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-modal-scrim) 70%,
+    transparent
+  );
+}
+
+.as-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  width: min(37.5rem, 92vw);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-lg);
+  background-color: var(--as-color-modal-surface);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-xl);
+  font-family: var(--as-font-family);
+}
+
+.as-dialog__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.as-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--as-space-md);
+}
+
+.as-dialog__grid--three {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.as-dialog__field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--as-space-xs);
+}
+
+/* The wizard of a night. */
+.as-back {
+  align-self: flex-start;
+}
+
+/* The eyebrow above a night's title: the plan's name, small and gold, as the
+   night's page on the web draws it. */
+.as-page__eyebrow {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--as-color-gold-accent);
+}
+
+.as-wizard__frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-lg);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-lg);
+}
+
+.as-thread {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.as-thread__step {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+}
+
+.as-thread__step:first-child {
+  flex: none;
+}
+
+.as-thread__rule {
+  flex: 1;
+  height: 1px;
+  background-color: var(--as-color-border);
+}
+
+.as-thread__step.is-done .as-thread__rule,
+.as-thread__step.is-current .as-thread__rule {
+  background-color: var(--as-color-gold-accent);
+}
+
+.as-thread__step.is-waiting .as-thread__number {
+  border-color: var(--as-color-tertiary-border);
+  color: var(--as-color-muted-text);
+}
+
+.as-thread__step.is-current {
+  color: var(--as-color-primary-text);
+  font-weight: 700;
+}
+
+.as-thread__step.is-current .as-thread__number {
+  background-color: var(--as-color-gold-accent);
+  color: var(--as-color-primary-ink);
+}
+
+.as-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-step__heading {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.as-step__head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-step__ok {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.as-step-foot {
+  margin-top: var(--as-space-sm);
+}
+
+/* What waits shows the star and says what is awaited: centred in a page, beside its sentence in a
+   row. The sentence is the body's size, not the grey help. */
+.as-waiting {
+  display: flex;
+  align-items: center;
+  color: var(--as-color-primary-text);
+}
+
+.as-waiting--page {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--as-space-md);
+  padding: var(--as-space-xl) var(--as-space-md);
+  text-align: center;
+}
+
+.as-waiting--inline {
+  gap: var(--as-space-sm);
+}
+
+.as-waiting__star {
+  flex: none;
+  color: var(--as-color-gold-accent);
+}
+
+.as-waiting__text {
+  margin: 0;
+  font-size: 1rem;
+}
+
+/* A wait that ended badly and the copies of a night's folder the person
+   chooses between. */
+.as-stalled {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-stalled p {
+  margin: 0;
+}
+
+.as-folder-copies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-code,
+.as-choice__folder,
+.as-path__text,
+.as-tree code,
+.as-prompt {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.as-code {
+  font-size: 0.8125rem;
+}
+
+.as-choices,
+.as-cards,
+.as-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background: transparent;
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-md);
+  font-family: var(--as-font-family);
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-choice input,
+.as-option__head input,
+.as-sub-choices input,
+.as-renders input {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-choice__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-choice__line {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-choice__folder {
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-choice__plus {
+  color: var(--as-color-gold-accent);
+}
+
+.as-path,
+.as-fold,
+.as-assist,
+.as-file-card,
+.as-option,
+.as-option-note,
+.as-check {
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-path {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-path__icon {
+  color: var(--as-color-gold-accent);
+}
+
+.as-path__text {
+  flex: 1;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.as-fold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-fold__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--as-space-lg);
+  font-size: 0.8125rem;
+}
+
+.as-tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-tree li {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-tree__icon {
+  color: var(--as-color-gold-accent);
+}
+
+.as-tree__note {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-tree__aside p {
+  margin: 0 0 var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  line-height: 1.4;
+}
+
+.as-tree__aside strong {
+  color: var(--as-color-primary-text);
+}
+
+.as-assist {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-assist p {
+  flex: 1;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.as-prompt {
+  margin: 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-page-background);
+  padding: var(--as-space-md);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.as-file-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-file-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-file-card__head h3 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-file-card__open {
+  margin-left: auto;
+}
+
+/* A target's two frames: « Poses FITS » and « Image finale ». */
+.as-file-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-file-box__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-file-box__head h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.as-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.as-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  line-height: 1.4;
+}
+
+.as-line.is-framed {
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-line__glyph {
+  margin-top: 0.125rem;
+}
+
+/* A warning that says what is missing and where to put it: the amber block of the
+   review, a link at its end. */
+.as-line.is-banner {
+  flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--as-color-warning) 45%, transparent);
+  border-radius: var(--as-radius-md);
+  background-color: color-mix(in srgb, var(--as-color-warning) 7%, transparent);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-line__text {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.as-line__action {
+  margin-left: auto;
+}
+
+.as-line--ok .as-line__glyph,
+.as-line--online .as-line__glyph,
+.as-line--phone .as-line__glyph {
+  color: var(--as-color-success);
+}
+
+.as-line--missing .as-line__glyph {
+  color: var(--as-color-destructive-text);
+}
+
+.as-line--warning .as-line__glyph,
+.as-line--variant .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-line--none .as-line__glyph {
+  color: var(--as-color-muted-text);
+}
+
+.as-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  position: relative;
+}
+
+.as-option.is-greyed {
+  border-style: dashed;
+  color: var(--as-color-muted-text);
+}
+
+.as-option__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-option__title {
+  font-size: 0.9375rem;
+}
+
+.as-option__aside {
+  position: absolute;
+  top: var(--as-space-md);
+  right: var(--as-space-md);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--as-space-xs);
+}
+
+.as-option__tool,
+.as-option__line {
+  margin: 0 0 0 1.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.as-option__tool {
+  color: var(--as-color-muted-text);
+}
+
+.as-option .as-lines,
+.as-sub-choices,
+.as-renders {
+  margin-left: 1.875rem;
+}
+
+.as-option-note {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  font-size: 0.875rem;
+}
+
+.as-option-note > span {
+  flex: 1;
+}
+
+.as-sub-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.as-sub-choices label,
+.as-renders label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-sub-choices li.is-framed {
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-sub-choices__note {
+  display: block;
+  color: var(--as-color-muted-text);
+}
+
+.as-renders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-renders legend {
+  font-weight: 600;
+}
+
+/* The contrast of presentation: a slider of three stops, its label
+   under it. The native range input, tinted like the checkboxes around it. */
+.as-contrast {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  margin-top: var(--as-space-sm);
+}
+
+.as-contrast__title {
+  font-weight: 600;
+}
+
+.as-contrast__range {
+  width: 100%;
+  max-width: 14rem;
+  margin: 0;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-contrast__range:focus-visible {
+  outline: 2px solid var(--as-color-gold-accent);
+  outline-offset: 2px;
+}
+
+.as-contrast__value {
+  color: var(--as-color-primary-text);
+  font-weight: 600;
+}
+
+.as-contrast .as-help-text {
+  margin: 0;
+}
+
+/* The finish's sliders under the contrast's: the same shape, a gap between. */
+.as-contrast + .as-contrast,
+.as-contrast--next {
+  margin-top: var(--as-space-md);
+}
+
+/* A slider with magnets: the ticks of its detents under the track. */
+.as-snap__track {
+  position: relative;
+  width: 100%;
+  max-width: 14rem;
+}
+
+.as-snap__track .as-contrast__range {
+  display: block;
+  max-width: none;
+}
+
+.as-snap__ticks {
+  position: absolute;
+  inset: 0 0.5rem;
+  pointer-events: none;
+}
+
+.as-snap__tick {
+  position: absolute;
+  top: calc(50% + 0.5rem);
+  width: 2px;
+  height: 0.375rem;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.as-snap__tick--on {
+  background: var(--as-color-gold-accent);
+  opacity: 1;
+}
+
+/* The note under the pipelines: a neutral notice with two links. */
+.as-pipelines-note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  margin-top: var(--as-space-sm);
+}
+
+.as-pipelines-note p {
+  margin: 0;
+}
+
+.as-pipelines-note__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-xs) var(--as-space-md);
+}
+
+.as-summary-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-summary-group__title,
+.as-check__title {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.as-summary-rows {
+  margin: 0;
+  /* The rows sit under their title, not at its edge: indented by the icon of
+     the title and the gap after it (1 rem + --as-space-sm), which is the
+     spacing step --as-space-xl. */
+  margin-left: var(--as-space-xl);
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.as-summary-rows li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-sm) 0;
+}
+
+/* A line under the row above it (the quality of a stacked image). */
+.as-summary-rows li.is-note {
+  border-top: 0;
+  padding-top: 0;
+  color: var(--as-color-muted-text);
+}
+
+.as-summary-rows li.is-over {
+  color: var(--as-color-destructive-text);
+}
+
+.as-summary-rows__value {
+  flex: none;
+  color: var(--as-color-muted-text);
+}
+
+.as-check {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-check > .as-lines {
+  /* Under the title, not at its edge: see .as-summary-rows. */
+  margin-left: var(--as-space-xl);
+}
+
+.as-check--refused {
+  border-color: var(--as-color-destructive-outline);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-destructive-surface) 25%,
+    transparent
+  );
+}
+
+.as-check__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-summary-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-summary-foot__links {
+  display: flex;
+  gap: var(--as-space-md);
+}
+
+.as-sending {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.as-sending__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-sm) 0;
+}
+
+.as-sending__row {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-sending__label {
+  flex: 1;
+}
+
+.as-sending__state {
+  color: var(--as-color-muted-text);
+}
+
+.as-sending__item.is-done .as-line__glyph {
+  color: var(--as-color-success);
+}
+
+/* A treatment with nothing to do: a neutral grey glyph and « rien à
+   traiter » in the muted text colour, never an opacity. */
+.as-sending__item.is-none .as-line__glyph,
+.as-sending__item.is-none .as-sending__state {
+  color: var(--as-color-muted-text);
+}
+
+/* The frame of a treatment that runs here: it takes the place of the
+   treatment's line in the list. */
+.as-frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid
+    color-mix(in srgb, var(--as-color-gold-accent) 30%, transparent);
+  border-radius: var(--as-radius-md);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 6%,
+    var(--as-color-panel)
+  );
+  padding: var(--as-space-md);
+}
+
+.as-frame__bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-frame__star {
+  flex: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  color: var(--as-color-gold-accent);
+}
+
+.as-frame__bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: var(--as-space-sm);
+  overflow: hidden;
+  border-radius: calc(var(--as-radius-sm) / 2);
+  background-color: var(--as-color-inactive-surface);
+}
+
+.as-frame__fill {
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--as-color-gold-accent);
+}
+
+/* A bar that cannot say where it stands: a gold segment slides. */
+.as-frame__fill--sliding {
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  animation: as-frame-slide 1.6s ease-in-out infinite;
+}
+
+@keyframes as-frame-slide {
+  from {
+    left: -30%;
+  }
+
+  to {
+    left: 102%;
+  }
+}
+
+/* « Réduire les animations »: the segment stops and becomes a hatched bar
+   over the whole length (a still partial segment would read as a
+   percentage); the star is still too (its own CSS). */
+@media (prefers-reduced-motion: reduce) {
+  .as-frame__fill--sliding {
+    left: 0;
+    width: 100%;
+    animation: none;
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--as-color-gold-accent) 0 6px,
+      color-mix(in srgb, var(--as-color-gold-accent) 35%, var(--as-color-panel))
+        6px 12px
+    );
+  }
+}
+
+.as-frame__percent {
+  flex: none;
+  min-width: 2.75rem;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-frame__facts {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  margin-left: 1.875rem;
+  color: var(--as-color-muted-text);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-frame__line {
+  min-width: 0;
+  margin-left: 1.875rem;
+  overflow: hidden;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-page-background);
+  padding: var(--as-space-xs) var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-frame__line code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.as-frame__silent {
+  margin: 0 0 0 1.875rem;
+  color: var(--as-color-muted-text);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-frame__note {
+  margin: 0 0 0 1.875rem;
+  color: var(--as-color-muted-text);
+  font-size: 0.78125rem;
+}
+
+/* The thin bar of the step in progress: under the bar of the whole run,
+   which never goes back; this one may start again at each step. */
+.as-frame__step-bar {
+  height: var(--as-space-xs);
+  margin-left: 1.875rem;
+  overflow: hidden;
+  border-radius: calc(var(--as-radius-sm) / 2);
+  background-color: var(--as-color-inactive-surface);
+}
+
+.as-frame__step-fill {
+  height: 100%;
+  border-radius: inherit;
+  background-color: var(--as-color-muted-text);
+}
+
+.as-frame__live {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--as-color-primary-text);
+}
+
+/* The steps already done: compact, scrollable. */
+.as-frame__done {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  max-height: 7.5rem;
+  margin: 0 0 0 1.875rem;
+  padding: 0;
+  overflow-y: auto;
+  color: var(--as-color-muted-text);
+  font-size: 0.78125rem;
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+}
+
+.as-frame__done li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--as-space-xs);
+}
+
+.as-frame__done-glyph {
+  flex: none;
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--as-color-success);
+}
+
+/* « Détails »: the engine's lines, collapsed. */
+.as-frame__details {
+  margin-left: 1.875rem;
+  color: var(--as-color-muted-text);
+  font-size: 0.78125rem;
+}
+
+.as-frame__details summary {
+  cursor: pointer;
+}
+
+.as-frame__log {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  max-height: 10rem;
+  margin-top: var(--as-space-xs);
+  overflow-y: auto;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-page-background);
+  padding: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-frame__log-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.as-frame__log-heading,
+.as-frame__log-empty {
+  margin: 0;
+  font-weight: 600;
+}
+
+.as-frame__log-empty {
+  font-weight: 400;
+}
+
+.as-frame__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.as-sent {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-sent__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-success) 18%,
+    transparent
+  );
+  color: var(--as-color-success);
+}
+
+.as-notice--resume {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+/* A notice that leads with an icon (« ⓘ » for an information): the icon on
+   the first line, the body beside it. */
+.as-notice--icon {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-notice__icon {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.0625rem;
+  color: var(--as-color-muted-text);
+}
+
+.as-notice__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+  min-width: 0;
+}
+
+.as-notice__body > p {
+  margin: 0;
+}
+
+/* The icons carry their own class; each is a 1 rem square unless said
+   otherwise. */
+.as-how__chevron,
+.as-line__glyph,
+.as-path__icon,
+.as-tree__icon,
+.as-choice__plus,
+.as-nights__chevron,
+.as-sending__row .as-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.as-tree__icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.as-path__text {
+  min-width: 0;
+}
+
+.as-path .as-button,
+.as-file-card__open {
+  white-space: nowrap;
+}
+
+.as-file-card .as-badge,
+.as-nights .as-badge,
+.as-option .as-badge,
+.as-row .as-badge {
+  padding: 0.125rem var(--as-space-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-file-card__open,
+.as-step__head-row .as-button--link,
+.as-path .as-button--link,
+.as-option .as-button--link,
+.as-option-note .as-button--link,
+.as-check .as-button--link,
+.as-summary-foot .as-button--link {
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+.as-fold {
+  position: relative;
+}
+
+.as-fold__guide {
+  position: absolute;
+  top: var(--as-space-sm);
+  right: var(--as-space-md);
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+/* The tabs « Progression » and « Journaux » (a message at the head,
+   a form card), « Annotations », « Guide », « Réglages » and its
+   « Dépendances ». */
+.as-message {
+  display: flex;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md);
+}
+
+.as-message__icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--as-color-gold-accent);
+}
+
+.as-message__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-message__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.as-message__body p {
+  margin: 0;
+}
+
+.as-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md);
+}
+
+.as-form-card.is-greyed {
+  color: var(--as-color-inactive-text);
+}
+
+.as-form-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.as-select-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+}
+
+.as-select-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 12rem;
+}
+
+.as-tool-line {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.875rem;
+}
+
+.as-tool-line .as-icon {
+  color: var(--as-color-success);
+}
+
+.as-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-milestones li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  font-size: 0.875rem;
+}
+
+.as-milestones__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 9rem;
+  height: 9rem;
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-page-background);
+  color: var(--as-color-muted-text);
+}
+
+.as-found {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-found__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-found__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-amber {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  color: var(--as-color-warning);
+  font-size: 0.875rem;
+}
+
+/* The tabs of Réglages and the anchors of the Guide: outside the four
+   levels, the chosen one in the secondary look, as a segment. */
+.as-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-sm);
+}
+
+.as-segment {
+  border: 1px solid var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  background: transparent;
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-xs) var(--as-space-md);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.as-segment.is-chosen {
+  border-color: var(--as-color-primary-edge);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+  font-weight: 600;
+}
+
+.as-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-zone:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.as-zone__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.as-folder-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-folder-row__path {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.875rem;
+}
+
+.as-utc-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+}
+
+.as-utc-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  width: 9rem;
+}
+
+/* One tool of « Dépendances », one capture of « Annotations ». */
+.as-tool,
+.as-capture {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md);
+}
+
+.as-tool__icon,
+.as-capture__thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-gold-accent);
+}
+
+.as-tool__body,
+.as-capture__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.as-tool__name,
+.as-capture__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.as-tool__line,
+.as-capture__line {
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-capture__failure {
+  color: var(--as-color-destructive-text);
+  font-size: 0.8125rem;
+}
+
+.as-tool__aside,
+.as-capture__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--as-space-sm);
+}
+
+.as-tool__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-tool .as-badge,
+.as-capture .as-badge {
+  padding: 0.125rem var(--as-space-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-tool .as-button--link,
+.as-capture .as-button--link {
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+/* « Pipelines de traitement » of « Dépendances » (not drawn: built on the
+   rows above): one block per pipeline, its dependencies and the trust in
+   its script as indented rows. */
+.as-pipelines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  margin-top: var(--as-space-lg);
+}
+
+.as-pipelines__title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.as-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-pipeline__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* « Détails » under a pipeline: its steps, folded by default. */
+.as-pipeline__details {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+}
+
+.as-pipeline__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding-left: var(--as-space-lg);
+}
+
+.as-pipeline__steps li {
+  display: flex;
+  flex-direction: column;
+}
+
+.as-tool--sub {
+  margin-left: var(--as-space-lg);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-tool--sub .as-tool__name {
+  font-size: 0.9375rem;
+}
+
+/* A render whose script the person refused: listed, never ticked. */
+.as-renders label.is-greyed {
+  opacity: 0.55;
+}
+
+/* « Sans traitement »: not a pipeline, set apart under the renders. */
+.as-renders label.is-outside-pipeline {
+  margin-top: var(--as-space-xs);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-sm);
+}
+
+.as-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+/* The Guide: a page that reads. */
+.as-guide-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  scroll-margin-top: var(--as-space-md);
+}
+
+.as-guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.as-guide-table th,
+.as-guide-table td {
+  border-bottom: 1px solid var(--as-color-border);
+  padding: var(--as-space-sm);
+  text-align: left;
+  vertical-align: top;
+}
+
+.as-guide-table th {
+  color: var(--as-color-muted-text);
+  font-weight: 600;
+}
+
+.as-guide-table code {
+  color: var(--as-color-gold-accent);
+}
+
+.as-guide-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.as-guide-notes li {
+  display: flex;
+  gap: var(--as-space-sm);
+}
+
+.as-guide-notes .as-icon {
+  flex: none;
+  color: var(--as-color-muted-text);
+}
+
+.as-finder {
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-page-background);
+  padding: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-finder__caption {
+  margin: 0 0 var(--as-space-sm);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.as-finder--captured {
+  margin: 0;
+  border-style: solid;
+}
+
+.as-finder__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--as-radius-sm);
+}
+
+.as-finder__columns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--as-space-sm);
+}
+
+.as-finder__column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-right: 1px solid var(--as-color-border);
+}
+
+.as-finder__column li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--as-space-xs);
+  padding: 0.125rem var(--as-space-xs);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.as-finder__column li.is-open {
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+}
+
+.as-tip {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-tip__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-tip pre {
+  margin: 0;
+  overflow-x: auto;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-page-background);
+  padding: var(--as-space-sm);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+}
+
+.as-tip .as-button--link {
+  align-self: flex-start;
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+/* Réglages › « Général »: each setting in its own zone, its action on the
+   right, « Détacher cet ordinateur » last, in its own zone. */
+.as-settings-general > section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-settings-general > section:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.as-settings-general > section > p:has(> .as-button),
+.as-settings-general .as-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+/* « Mesurer un master… » -- the entry under the options of
+   « Traitements » and its window. */
+.as-master-entry__action {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: var(--as-space-sm);
+}
+
+/* The masters and the measures kept that « Continuer » will measure or
+   remove, one row each. */
+.as-master-entry__picks {
+  margin-top: var(--as-space-sm);
+}
+
+.as-master-dialog__forget {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  cursor: pointer;
+}
+
+.as-master-dialog__forget input {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-master-dialog__give {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.as-master-dialog__kept {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  font-size: 0.875rem;
+  color: var(--as-color-muted-text);
+}
+
+.as-master-dialog__kept p,
+.as-master-dialog .as-notice p {
+  margin: 0;
+}
+
+.as-master-dialog .as-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}

@@ -1,0 +1,294 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session-rework.schema.json",
+  "title": "Astro Portal API v1 session rework",
+  "description": "The rework of a session, « Remanier ». `PUT /v1/sessions/{id}/rework` corrects what the night recorded after the fact: reorder, change, remove or add the targets, add events (a note, a sky condition, an equipment issue, a pause) and move or remove them. **It is free**: no capability, on every profile and on a private server, and the read-only window of an ended subscription does not hold it either (like every other write of a session, an event or a debriefing). **The event log stays append-only** (api/v1.md): a rework is a **correction layer** stored beside the session; the effective events are the log read through it (added events read `timing: \"reconstructed\"`, a moved event is posed on its new target, a removed target stays in the session as `removed`, a signal the person modified replaces its original, which stays in the log but is hidden). It needs `If-Match: \"<reworkRevision>\"` (the quoted revision of the session resource, `\"0\"` for a session never reworked); a stale one is never applied and answers `409 session_rework_conflict` with the current `session`. The whole body is checked before anything is written: all or none. See api/v1.md, section « Reworking a session ». Additive: a target the night recorded without the plan (met in the field, added at the debriefing) and taken out by a rework stays in the session as `removed` too, its signals falling to the whole night unless the rework moves them; `eventReplacements` modifies a signal without erasing it.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "eventId": {
+      "$ref": "session-event-ingest.schema.json#/$defs/eventId"
+    },
+    "targetKey": {
+      "description": "A target key (`journal.schema.json`, `target.targetId`).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "nullableTargetKey": {
+      "description": "A target key, or `null` for the whole night.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/targetKey"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "target": {
+      "description": "One target of the session in its new place. The list sent is the **whole** list of the session's targets in its new order (a target missing from it is refused `400 invalid_request`: removing is `state: \"removed\"`, never an omission). `state`: `planned` (kept), `added` (a target not in the plan; `targetId` must be known to the space, else `422 target_not_found`), `removed` (a target taken out: it stays in the session as `removed`, **never erased** — the plan's targets, and the ones the night recorded without the plan (met in the field, added at the debriefing); only a target a rework itself added and the night never saw is dropped for good when sent `removed`). The signals posed on a removed target fall to the whole night (`rework.targetId: null`) unless the rework moves them elsewhere. Removed targets no longer count in the declared integration lines. `startedAt`, `finishedAt`, `frameCount`, `filter` are the figures and times the person sets for the target (`null` = not known, the figure the debriefing or the events gave is then kept); `reason` says why a `removed` or skipped target was not observed. `exposureSeconds` is the exposure of one frame.",
+      "type": "object",
+      "required": ["targetId", "state"],
+      "properties": {
+        "targetId": {
+          "$ref": "#/$defs/targetKey"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["planned", "added", "removed"]
+        },
+        "startedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frameCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "filter": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "debrief.schema.json#/$defs/skipReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exposureSeconds": {
+          "description": "Additive: the exposure of one frame of the target in seconds, as the person sets it (more than 0, a day at most); `null` = not known, the debriefing's is then kept. Astro Sync's measured exposure, when the night has an analysis, is shown above it.",
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "passages": {
+          "description": "Additive: the passages the person declares for this target, one at a time (the debriefing and « Remanier » edit one passage at a time), in the order of the night: each `{ start, end }` with `end` after `start`, none overlapping another (two that touch are one passage, the client joins them). When given, `startedAt` / `finishedAt` are the first start and the last end (the service writes them so when they are absent) and the acquired time is the sum of the passages (pauses inside them deducted on a rework). At most 50.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/declaredPassage"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "addedEvent": {
+      "description": "An event added after the fact, among the four gestures of « Nuit en cours »: `note`, `condition`, `equipment_issue`, `pause`. `at` is the instant it is posed at (inside the session's window), `until` the end of a `pause` (a `pause` is stored as the pair `pause` / `resume`; `until` is refused on any other type). `targetId` poses it on a target of the session (`null` or absent = the whole night). `payload` is the type's payload (`session-events/*.schema.json`; a note's own `targetId` is ignored, the placement is `targetId`). The service gives the event its id and `timing: \"reconstructed\"`; at most 100 per request.",
+      "type": "object",
+      "required": ["type", "at", "payload"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["note", "condition", "equipment_issue", "pause"]
+        },
+        "at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "until": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "targetId": {
+          "$ref": "#/$defs/nullableTargetKey"
+        },
+        "payload": {
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "session-event-ingest.schema.json#/$defs/eventPayloadByType"
+        }
+      ],
+      "additionalProperties": false
+    },
+    "eventMove": {
+      "description": "Poses an existing event of the session (observed or added) on another target, or on the whole night (`targetId: null`). Only the placement changes; the event, its instant and its payload do not.",
+      "type": "object",
+      "required": ["eventId", "targetId"],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/eventId"
+        },
+        "targetId": {
+          "$ref": "#/$defs/nullableTargetKey"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eventReplacement": {
+      "description": "Additive: a signal modified after the fact, « Remplacer ». `eventId` names the event to replace — an observed signal of the log or one a rework added (a `note`, a `condition`, an `equipment_issue`, a `pause` or one of the four kinds Astro Sync detects; a pause is replaced by a pause, its `resume` goes with it) — and `event` has the form of an `addedEvents[]` entry (`at`, `until` for a pause, `targetId` or absent = the whole night, `payload`) of the **same type, or of another of the four when the original is not a pause** (the genre of a signal is corrected; a pause is replaced by a pause only). The replacement **keeps the origin** (`source`) of the signal it replaces. The original is **never erased** (the log is append-only): it stays, hidden from the effective events (`rework: { added: false, targetId, replacedBy }` when a read asks for it with `?includeReplaced=true`, and in the export). The replacement is stored as an added event: `timing: \"reconstructed\"`, `rework: { added: true, targetId, replaces: <eventId> }`. Replacing the replacement again keeps the chain readable (A → B → C): the last one shows. Removing a replacement with `eventRemovals` gives the event it replaced back.",
+      "type": "object",
+      "required": ["eventId", "event"],
+      "properties": {
+        "eventId": {
+          "$ref": "#/$defs/eventId"
+        },
+        "event": {
+          "$ref": "#/$defs/addedEvent"
+        }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "description": "The body of `PUT /v1/sessions/{id}/rework`; every member is optional, an empty body is `400 invalid_request`. `targets`: the whole list of the session's targets in its new order. `addedEvents`: events to add (at most 100). `eventReplacements`: signals to modify (at most 100): each keeps its original in the log, hidden, and adds the modified one. `eventMoves`: placements to change (at most 200). `eventRemovals`: the ids of events to remove, **only events a rework added, or the logged events of the four kinds Astro Sync detects** (`exposure_change`, `guiding_timeouts`, `sensor_temperature_drift`, `guiding_spikes`: hidden from the effective events, never erased; any other observed event is never removed: `409 event_not_removable`); at most 100. A session that is not finished answers `409 night_not_finished`.",
+      "type": "object",
+      "properties": {
+        "targets": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "addedEvents": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/addedEvent"
+          }
+        },
+        "eventReplacements": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/eventReplacement"
+          }
+        },
+        "eventMoves": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "#/$defs/eventMove"
+          }
+        },
+        "eventRemovals": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/eventId"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "description": "`200`: the session as `GET /v1/sessions/{id}` gives it after the rework (`session.schema.json`, `detail`): its resource with the new `reworkRevision` and `reworkedAt`, its effective `events`, its `targets`.",
+      "$ref": "session.schema.json#/$defs/detail"
+    },
+    "refusal": {
+      "description": "`400 invalid_request` (a body outside the schema, an empty body, a target missing from the list, `until` on another type than a pause, an instant outside the session's window), `400 invalid_if_match`; `401 authentication_required`; `403 csrf_invalid` (web); `404 session_not_found` (another space's, unknown, or a synthetic id), `404 event_not_found` (a move, a replacement or a removal names an event the session does not hold); `409 session_rework_conflict` (a stale revision; carries the current `session`), `409 night_not_finished`, `409 event_not_removable`, `409 event_already_replaced` (an event a more recent revision already replaced is replaced, moved or removed again; `replacedBy` names the event that shows; a client that read the session at the current `If-Match` revision never names such an event, so the `If-Match` check already covers the usual race, this refusal is for a client that names a hidden event), `409 event_not_replaceable` (the event is not a note, a condition, an equipment issue or a pause: a target's start or end, a resume on its own), and `400 invalid_request` for a replacement of another type than its original, an event replaced twice or replaced and moved or removed in the same request; `422 target_not_found` (an added target, or an event placed on a target, that neither the catalogue nor the space knows or the session holds); `428 precondition_required` (no `If-Match`). Nothing is written on a refusal. `entitlement_read_only` stays in the list of codes only so that a reader written against the first draft of the contract still validates: the service never answers it for a rework (reworking is free, in the read-only window of an ended subscription too). The details of a refusal (`eventId`, `targetId`, `replacedBy`, `session`) sit **beside** `error`, at the top of the body, as the service writes them (the first draft of this schema had put `eventId` and `targetId` inside `error`, which the service never did; both places validate).",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "invalid_if_match",
+                "authentication_required",
+                "csrf_invalid",
+                "entitlement_read_only",
+                "session_not_found",
+                "event_not_found",
+                "session_rework_conflict",
+                "night_not_finished",
+                "event_not_removable",
+                "target_not_found",
+                "precondition_required",
+                "event_already_replaced",
+                "event_not_replaceable"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eventId": {
+              "description": "Deprecated place: the service writes `eventId` beside `error` (see the top-level `eventId`); kept so that a reader written against the first draft still validates.",
+              "$ref": "#/$defs/eventId"
+            },
+            "targetId": {
+              "description": "Deprecated place: the service writes `targetId` beside `error`.",
+              "$ref": "#/$defs/targetKey"
+            }
+          },
+          "additionalProperties": false
+        },
+        "eventId": {
+          "description": "With `event_not_found`, `event_not_removable`, `event_already_replaced` and `event_not_replaceable`: the event the refusal is about.",
+          "$ref": "#/$defs/eventId"
+        },
+        "targetId": {
+          "description": "With `target_not_found`: the target the refusal is about.",
+          "$ref": "#/$defs/targetKey"
+        },
+        "replacedBy": {
+          "description": "With `event_already_replaced` only: the event that shows in place of the one named (the end of its chain of replacements).",
+          "$ref": "#/$defs/eventId"
+        },
+        "session": {
+          "description": "With `session_rework_conflict` only: the session as it stands.",
+          "$ref": "session.schema.json#/$defs/resource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "declaredPassage": {
+      "type": "object",
+      "description": "Additive: one passage the person declares — a span of the night.",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

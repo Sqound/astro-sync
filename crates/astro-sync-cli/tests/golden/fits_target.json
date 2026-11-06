@@ -1,0 +1,49 @@
+{
+  "fileName": "Lights_0007.fit",
+  "header": {
+    "object": null,
+    "raDegrees": 314.0,
+    "decDegrees": 44.333333333333336,
+    "positionSource": "objctra",
+    "fieldDegrees": [2.089693633333334, 1.5909677816666663],
+    "fieldFromHeader": true
+  },
+  "kind": "candidates",
+  "named": null,
+  "candidates": [
+    {
+      "target": {
+        "id": "t-ngc7000",
+        "designation": "NGC 7000",
+        "name": "Nébuleuse de l'Amérique du Nord",
+        "aliases": [],
+        "typeLabel": "Nébuleuse en émission",
+        "constellationLabel": "Cygne",
+        "raHours": 20.9784,
+        "decDegrees": 44.33,
+        "magnitude": 4.0,
+        "sizeLabel": "120 × 100′",
+        "sizeArcmin": 120.0,
+        "imagePath": "/img/ngc7000.jpg"
+      },
+      "distanceDegrees": 0.4835573935969943
+    },
+    {
+      "target": {
+        "id": "t-ic5070",
+        "designation": "IC 5070",
+        "name": "Nébuleuse du Pélican",
+        "aliases": [],
+        "typeLabel": "Nébuleuse en émission",
+        "constellationLabel": "Cygne",
+        "raHours": 20.8508,
+        "decDegrees": 44.35,
+        "magnitude": 8.0,
+        "sizeLabel": "60 × 50′",
+        "sizeArcmin": 60.0,
+        "imagePath": null
+      },
+      "distanceDegrees": 0.8855470148996007
+    }
+  ]
+}

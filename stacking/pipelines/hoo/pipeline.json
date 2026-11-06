@@ -1,0 +1,217 @@
+{
+  "id": "hoo",
+  "version": "1",
+  "name": {
+    "fr": "Palette HOO",
+    "en": "HOO palette",
+    "ja": "HOO パレット",
+    "de": "HOO-Palette",
+    "es": "Paleta HOO",
+    "it": "Palette HOO",
+    "pt-BR": "Paleta HOO",
+    "ru": "Палитра HOO",
+    "zh-Hans": "HOO 调色板",
+    "zh-Hant": "HOO 調色盤"
+  },
+  "description": {
+    "fr": "Pour une capture faite avec un filtre bibande : l’Hα en rouge, l’OIII en bleu-vert, une palette assumée. Pour des teintes naturelles, prenez la correction bibande.",
+    "en": "For a capture made with a dual-band filter: Hα in red, OIII in blue-green, an assumed palette. For natural hues, take the dual-band correction.",
+    "ja": "デュアルバンドフィルターで撮影した画像向けです。Hα を赤、OIII を青緑にする、はっきりしたパレットです。自然な色合いにしたい場合は、デュアルバンド補正をお選びください。",
+    "de": "Für eine Aufnahme mit Dualband-Filter: Hα in Rot, OIII in Blaugrün, eine bewusste Palette. Für natürliche Farbtöne wählst du die Dualband-Korrektur.",
+    "es": "Para una captura hecha con un filtro de doble banda: el Hα en rojo, el OIII en azul verdoso, una paleta asumida. Para tonos naturales, elija la corrección de doble banda.",
+    "it": "Per una ripresa fatta con un filtro dual-band: l’Hα in rosso, l’OIII in blu-verde, una palette dichiarata. Per tonalità naturali, scegliete la correzione dual-band.",
+    "pt-BR": "Para uma captura feita com filtro de banda dupla: o Hα em vermelho, o OIII em azul-esverdeado, uma paleta assumida. Para tons naturais, escolha a correção de banda dupla.",
+    "ru": "Для снимка, сделанного с двухполосным фильтром: Hα — красным, OIII — сине-зелёным, осознанная палитра. Для естественных оттенков выберите двухполосную коррекцию.",
+    "zh-Hans": "适用于使用双带通滤镜拍摄的画面：Hα 为红色，OIII 为蓝绿色，是一种明确的调色方案。想要自然色调时，请选择“双带通校正”。",
+    "zh-Hant": "適用於使用雙頻帶濾鏡拍攝的畫面：Hα 為紅色，OIII 為藍綠色，是一種明確的調色方案。想要自然色調時，請選擇「雙頻帶校正」。"
+  },
+  "filter": "dual-band",
+  "author": "Astro Sync",
+  "licence": "MIT",
+  "entry": "renders:hoo_deep",
+  "requires": ["siril", "starnet2?"],
+  "outputs": ["tif", "png"],
+  "preview": "preview.jpg",
+  "dependencies": [
+    {
+      "id": "siril",
+      "required": true,
+      "reason": {
+        "fr": "Siril calibre, aligne et additionne vos poses : tous les rendus partent de cet empilement.",
+        "en": "Siril calibrates, aligns and stacks your exposures: every render starts from that stack.",
+        "ja": "Siril が撮影画像を較正・位置合わせ・積算します。すべての仕上がりは、この積算画像から作られます。",
+        "de": "Siril kalibriert, richtet aus und addiert deine Aufnahmen: Jede Darstellung geht von diesem Stapel aus.",
+        "es": "Siril calibra, alinea y apila sus tomas: todos los renders parten de ese apilado.",
+        "it": "Siril calibra, allinea e somma le vostre pose: ogni resa parte da questa somma.",
+        "pt-BR": "O Siril calibra, alinha e empilha as suas capturas: todas as renderizações partem desse empilhamento.",
+        "ru": "Siril калибрует, выравнивает и складывает ваши кадры: все рендеры строятся на основе этого стека.",
+        "zh-Hans": "Siril 会对你的曝光帧进行校准、对齐和叠加；所有渲染都以这份叠加结果为起点。",
+        "zh-Hant": "Siril 會對你的曝光影格進行校正、對齊與疊加；所有渲染都以這份疊加結果為起點。"
+      }
+    },
+    {
+      "id": "starnet2",
+      "required": false,
+      "reason": {
+        "fr": "StarNet2 sépare les étoiles de la nébuleuse afin de les réduire ; sans lui, elles restent plus nombreuses et plus vives sur votre image.",
+        "en": "StarNet2 separates the stars from the nebula so they can be reduced; without it, they stay more numerous and brighter in your image.",
+        "ja": "StarNet2 は星と星雲を分離して、星を小さくします。なくても処理はできますが、画像の星は多く、明るいままになります。",
+        "de": "StarNet2 trennt die Sterne vom Nebel, damit sie verkleinert werden können; ohne StarNet2 bleiben sie in deinem Bild zahlreicher und heller.",
+        "es": "StarNet2 separa las estrellas de la nebulosa para poder reducirlas; sin él, siguen siendo más numerosas y brillantes en su imagen.",
+        "it": "StarNet2 separa le stelle dalla nebulosa per poterle ridurre; senza, restano più numerose e più luminose nella vostra immagine.",
+        "pt-BR": "O StarNet2 separa as estrelas da nebulosa para poder reduzi-las; sem ele, elas ficam mais numerosas e mais brilhantes na sua imagem.",
+        "ru": "StarNet2 отделяет звёзды от туманности, чтобы их можно было уменьшить; без него звёзд на вашем снимке остаётся больше, и они ярче.",
+        "zh-Hans": "StarNet2 会把恒星从星云中分离出来，以便缩小恒星；没有它时，你的图像中的恒星会更多、更亮。",
+        "zh-Hant": "StarNet2 會把恆星從星雲中分離出來，以便縮小恆星；沒有它時，你的影像中的恆星會更多、更亮。"
+      }
+    },
+    {
+      "id": "python-env",
+      "required": true,
+      "reason": {
+        "fr": "L’environnement Python exécute le script d’empilement et les calculs de rendu sur vos images.",
+        "en": "The Python environment runs the stacking script and the render calculations on your images.",
+        "ja": "Python 環境が、積算スクリプトと、画像の仕上がりを計算する処理を実行します。",
+        "de": "Die Python-Umgebung führt das Stacking-Skript und die Berechnungen der Darstellung auf deinen Bildern aus.",
+        "es": "El entorno de Python ejecuta el script de apilado y los cálculos del render sobre sus imágenes.",
+        "it": "L’ambiente Python esegue lo script di somma e i calcoli della resa sulle vostre immagini.",
+        "pt-BR": "O ambiente Python executa o script de empilhamento e os cálculos da renderização nas suas imagens.",
+        "ru": "Среда Python запускает скрипт стекинга и расчёты рендера для ваших изображений.",
+        "zh-Hans": "Python 环境用于运行叠加脚本，并对你的图像进行渲染计算。",
+        "zh-Hant": "Python 環境用於執行疊加指令碼，並對你的影像進行渲染計算。"
+      }
+    }
+  ],
+  "details": [
+    {
+      "title": {
+        "fr": "Base du rendu naturel",
+        "en": "Natural render base",
+        "ja": "ナチュラルな仕上がりと同じ下地",
+        "de": "Grundlage der natürlichen Darstellung",
+        "es": "Base del render natural",
+        "it": "Base della resa naturale",
+        "pt-BR": "Base da renderização natural",
+        "ru": "Основа естественного рендера",
+        "zh-Hans": "自然渲染的基础",
+        "zh-Hant": "自然渲染的基礎"
+      },
+      "text": {
+        "fr": "Mêmes premières étapes que le rendu naturel : fond retiré, ciel neutre, étirement arcsinh, étoiles séparées par StarNet2 s’il est installé.",
+        "en": "The same first steps as the natural render: background removed, neutral sky, arcsinh stretch, stars separated by StarNet2 when it is installed.",
+        "ja": "最初の工程はナチュラルな仕上がりと同じです。背景の除去、背景色の中立化、arcsinh ストレッチ、StarNet2 があれば星の分離を行います。",
+        "de": "Dieselben ersten Schritte wie bei der natürlichen Darstellung: Hintergrund entfernt, neutraler Himmel, arcsinh-Streckung, Sterne von StarNet2 getrennt, wenn installiert.",
+        "es": "Los mismos primeros pasos que el render natural: fondo retirado, cielo neutro, estirado arcsinh y estrellas separadas por StarNet2 si está instalado.",
+        "it": "Gli stessi primi passaggi della resa naturale: fondo rimosso, cielo neutro, stiramento arcsinh, stelle separate da StarNet2 se installato.",
+        "pt-BR": "As mesmas primeiras etapas da renderização natural: fundo removido, céu neutro, esticamento arcsinh e estrelas separadas pelo StarNet2, se estiver instalado.",
+        "ru": "Те же первые шаги, что и в естественном рендере: удаление фона, нейтральное небо, растяжение arcsinh, отделение звёзд StarNet2, если он установлен.",
+        "zh-Hans": "前几步与自然渲染相同：去除背景、中性天空、arcsinh 拉伸，若已安装 StarNet2 则分离恒星。",
+        "zh-Hant": "前幾步與自然渲染相同：去除背景、中性天空、arcsinh 拉伸，若已安裝 StarNet2 則分離恆星。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Hα et OIII extraits",
+        "en": "Hα and OIII extracted",
+        "ja": "Hα と OIII の抽出",
+        "de": "Hα und OIII extrahiert",
+        "es": "Hα y OIII extraídos",
+        "it": "Hα e OIII estratti",
+        "pt-BR": "Hα e OIII extraídos",
+        "ru": "Выделение Hα и OIII",
+        "zh-Hans": "提取 Hα 与 OIII",
+        "zh-Hant": "擷取 Hα 與 OIII"
+      },
+      "text": {
+        "fr": "Derrière un filtre bibande, les pixels rouges du capteur couleur reçoivent l’Hα, les verts et les bleus surtout l’OIII : les deux signaux sont lus séparément, au-dessus du niveau du fond.",
+        "en": "Behind a dual-band filter, the red pixels of a colour sensor receive Hα, the green and blue ones mostly OIII: the two signals are read separately, above the background level.",
+        "ja": "デュアルバンドフィルター越しでは、カラーセンサーの赤の画素が Hα を、緑と青の画素が主に OIII を受けます。二つの信号を、背景レベルより上で別々に取り出します。",
+        "de": "Hinter einem Dualband-Filter empfangen die roten Pixel eines Farbsensors Hα, die grünen und blauen vor allem OIII: Beide Signale werden getrennt gelesen, oberhalb des Hintergrundniveaus.",
+        "es": "Tras un filtro de doble banda, los píxeles rojos de un sensor en color reciben el Hα y los verdes y azules sobre todo el OIII: las dos señales se leen por separado, por encima del nivel del fondo.",
+        "it": "Dietro un filtro dual-band, i pixel rossi di un sensore a colori ricevono l’Hα, quelli verdi e blu soprattutto l’OIII: i due segnali vengono letti separatamente, sopra il livello del fondo.",
+        "pt-BR": "Atrás de um filtro de banda dupla, os pixels vermelhos de um sensor colorido recebem o Hα, e os verdes e azuis principalmente o OIII: os dois sinais são lidos separadamente, acima do nível do fundo.",
+        "ru": "За двухполосным фильтром красные пиксели цветной матрицы получают Hα, а зелёные и синие — в основном OIII: оба сигнала считываются отдельно, выше уровня фона.",
+        "zh-Hans": "在双带通滤镜后，彩色传感器的红色像素接收 Hα，绿色与蓝色像素主要接收 OIII：两种信号在背景水平之上分别读取。",
+        "zh-Hant": "在雙頻帶濾鏡後，彩色感光元件的紅色像素接收 Hα，綠色與藍色像素主要接收 OIII：兩種訊號在背景水平之上分別讀取。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Palette HOO",
+        "en": "HOO palette",
+        "ja": "HOO パレット",
+        "de": "HOO-Palette",
+        "es": "Paleta HOO",
+        "it": "Palette HOO",
+        "pt-BR": "Paleta HOO",
+        "ru": "Палитра HOO",
+        "zh-Hans": "HOO 调色板",
+        "zh-Hant": "HOO 調色盤"
+      },
+      "text": {
+        "fr": "L’Hα va au rouge, l’OIII au vert et au bleu, d’où le bleu-vert ; l’OIII, plus faible, est rapproché de l’Hα par un facteur borné. C’est une palette assumée, pas un retour vers le naturel.",
+        "en": "Hα goes to red, OIII to green and blue, hence blue-green; the fainter OIII is brought closer to Hα by a bounded factor. It is an assumed palette, not a return towards natural colours.",
+        "ja": "Hα を赤に、OIII を緑と青に割り当てるため、OIII は青緑になります。弱い OIII は上限つきの係数で Hα に近づけます。自然な色へ戻すのではなく、意図したパレットです。",
+        "de": "Hα geht ins Rot, OIII ins Grün und Blau, daher das Blaugrün; das schwächere OIII wird mit einem begrenzten Faktor an Hα angenähert. Eine bewusste Palette, keine Rückkehr zu natürlichen Farben.",
+        "es": "El Hα va al rojo y el OIII al verde y al azul, de ahí el azul verdoso; el OIII, más débil, se acerca al Hα con un factor acotado. Es una paleta asumida, no una vuelta a lo natural.",
+        "it": "L’Hα va al rosso, l’OIII al verde e al blu, da cui il blu-verde; l’OIII, più debole, viene avvicinato all’Hα con un fattore limitato. È una palette dichiarata, non un ritorno al naturale.",
+        "pt-BR": "O Hα vai para o vermelho e o OIII para o verde e o azul, daí o azul-esverdeado; o OIII, mais fraco, é aproximado do Hα por um fator limitado. É uma paleta assumida, não uma volta ao natural.",
+        "ru": "Hα идёт в красный, OIII — в зелёный и синий, отсюда сине-зелёный; более слабый OIII приближается к Hα с ограниченным множителем. Это осознанная палитра, а не возврат к естественным цветам.",
+        "zh-Hans": "Hα 映射为红色，OIII 映射为绿色和蓝色，因此呈蓝绿色；较弱的 OIII 以有上限的系数向 Hα 靠拢。这是明确的调色方案，而非回归自然色。",
+        "zh-Hant": "Hα 對應為紅色，OIII 對應為綠色和藍色，因此呈藍綠色；較弱的 OIII 以有上限的係數向 Hα 靠攏。這是明確的調色方案，而非回歸自然色。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Luminosité naturelle",
+        "en": "Natural brightness",
+        "ja": "明るさはナチュラルのまま",
+        "de": "Natürliche Helligkeit",
+        "es": "Luminosidad natural",
+        "it": "Luminosità naturale",
+        "pt-BR": "Luminosidade natural",
+        "ru": "Естественная яркость",
+        "zh-Hans": "自然亮度",
+        "zh-Hant": "自然亮度"
+      },
+      "text": {
+        "fr": "Seules la teinte et la saturation viennent de la palette : la luminosité reste celle du rendu naturel, le fond sans signal reste le fond neutre du rendu naturel, et les zones faibles passent en douceur des couleurs naturelles à la palette, sans seuil.",
+        "en": "Only hue and saturation come from the palette: the brightness stays that of the natural render, the background without signal stays the natural render’s neutral one, and faint zones fade smoothly from the natural colours to the palette, with no hard threshold.",
+        "ja": "パレットから取るのは色相と彩度だけです。明るさはナチュラルな仕上がりのままで、信号のない背景はナチュラルな仕上がりと同じニュートラルな色のままで、弱い部分は閾値なしで、ナチュラルな色からパレットへなだらかに移ります。",
+        "de": "Nur Farbton und Sättigung stammen aus der Palette: Die Helligkeit bleibt die der natürlichen Darstellung, der Hintergrund ohne Signal bleibt der neutrale der natürlichen Darstellung, und schwache Zonen gehen ohne Schwelle fließend von den natürlichen Farben in die Palette über.",
+        "es": "Solo el tono y la saturación vienen de la paleta: la luminosidad sigue siendo la del render natural el fondo sin señal sigue siendo el neutro del render natural y las zonas débiles pasan suavemente de los colores naturales a la paleta, sin umbral.",
+        "it": "Solo tinta e saturazione vengono dalla palette: la luminosità resta quella della resa naturale il fondo senza segnale resta quello neutro della resa naturale e le zone deboli passano dolcemente dai colori naturali alla palette, senza soglia.",
+        "pt-BR": "Só o tom e a saturação vêm da paleta: a luminosidade continua a da renderização natural, o fundo sem sinal continua o neutro da renderização natural e as zonas fracas passam suavemente das cores naturais para a paleta, sem limiar.",
+        "ru": "Из палитры берутся только оттенок и насыщенность: яркость остаётся как в естественном рендере, фон без сигнала остаётся нейтральным фоном естественного рендера, а слабые области плавно переходят от естественных цветов к палитре, без порога.",
+        "zh-Hans": "只有色相和饱和度来自调色方案：亮度保持自然渲染的结果，没有信号的背景保持自然渲染的中性色，较弱的区域则从自然色平滑过渡到调色方案，没有硬性阈值。",
+        "zh-Hant": "只有色相和飽和度來自調色方案：亮度保持自然渲染的結果，沒有訊號的背景保持自然渲染的中性色，較弱的區域則從自然色平滑過渡到調色方案，沒有硬性閾值。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Étoiles naturelles",
+        "en": "Natural stars",
+        "ja": "星は自然な色で",
+        "de": "Natürliche Sterne",
+        "es": "Estrellas naturales",
+        "it": "Stelle naturali",
+        "pt-BR": "Estrelas naturais",
+        "ru": "Естественные звёзды",
+        "zh-Hans": "自然色恒星",
+        "zh-Hant": "自然色恆星"
+      },
+      "text": {
+        "fr": "Les étoiles reviennent par-dessus avec leurs couleurs naturelles, contenues comme dans le rendu naturel (× 0,52).",
+        "en": "The stars come back on top in their natural colours, held as in the natural render (× 0.52).",
+        "ja": "星は自然な色のまま上に戻し、ナチュラルな仕上がりと同じく明るさを抑えます（× 0.52）。",
+        "de": "Die Sterne kommen in ihren natürlichen Farben darüber zurück, gedämpft wie in der natürlichen Darstellung (× 0,52).",
+        "es": "Las estrellas vuelven encima con sus colores naturales, contenidas como en el render natural (× 0,52).",
+        "it": "Le stelle tornano sopra con i loro colori naturali, contenute come nella resa naturale (× 0,52).",
+        "pt-BR": "As estrelas voltam por cima com suas cores naturais, contidas como na renderização natural (× 0,52).",
+        "ru": "Звёзды возвращаются поверх в своих естественных цветах, приглушённые, как в естественном рендере (× 0,52).",
+        "zh-Hans": "恒星以其自然色彩叠加回去，亮度与自然渲染一样受到控制（× 0.52）。",
+        "zh-Hant": "恆星以其自然色彩疊加回去，亮度與自然渲染一樣受到控制（× 0.52）。"
+      }
+    }
+  ]
+}

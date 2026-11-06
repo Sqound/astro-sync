@@ -1,0 +1,666 @@
+/* « Traitements »: the box
+   « Empilement » with one card per target, the slider of the contrast under
+   it, and the window « Pipelines pour {cible} ». */
+
+/* A small label: the band of a target, the filter of a pipeline. Neutral, or
+   gold for « Bibande » and « Ajouté par vous », green-ticked for
+   « Recommandé ». Outside the four levels (it is not an action). */
+.as-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-panel);
+  color: var(--as-color-muted-text);
+  padding: 0.125rem 0.5625rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.as-tag--gold {
+  background-color: var(--as-color-active-surface);
+  color: var(--as-color-active-gold-text);
+}
+
+.as-tag--good {
+  border: 1px solid color-mix(in srgb, var(--as-color-success) 55%, transparent);
+  background-color: transparent;
+  color: var(--as-color-success);
+}
+
+.as-tag .as-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+/* The box « Empilement »: the cards in a column under the lead line. */
+.as-stacking .as-help-text.as-option__line {
+  margin-top: var(--as-space-sm);
+}
+
+.as-stack-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: var(--as-space-xs) 0 0 1.875rem;
+}
+
+/* One card: three columns -- the tick, the content, the button -- so that
+   every tick stands in the same column, whatever the card holds. */
+.as-stack-card {
+  display: grid;
+  grid-template-columns: 1.125rem minmax(0, 1fr) auto;
+  column-gap: var(--as-space-md);
+  align-items: start;
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md) 0.875rem;
+}
+
+.as-stack-card.is-off {
+  border-style: dashed;
+  border-color: var(--as-color-border);
+  color: var(--as-color-muted-text);
+}
+
+.as-stack-card__tick {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0.125rem 0 0;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-stack-card__head {
+  min-width: 0;
+}
+
+.as-stack-card__head p,
+.as-stack-card__body p {
+  margin: 0;
+}
+
+.as-stack-card__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+}
+
+.as-stack-card.is-off .as-tag {
+  opacity: 0.6;
+}
+
+.as-stack-card__action .as-button {
+  --btn-min-height: 2.25rem;
+  min-height: 2.25rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.as-stack-card__body {
+  grid-column: 2 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+  margin-top: var(--as-space-sm);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* The pipelines chosen: neutral labels with a gold tick (never a button). */
+.as-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+}
+
+.as-pick {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  min-height: 1.625rem;
+  max-width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-radius: 0.8125rem;
+  background-color: var(--as-color-panel);
+  color: var(--as-color-primary-text);
+  padding: 0 0.6875rem 0 0.5625rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.as-pick__tick {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--as-color-gold-accent);
+}
+
+.as-stack-card.is-off .as-pick {
+  color: var(--as-color-muted-text);
+}
+
+.as-stack-card.is-off .as-pick__tick {
+  color: var(--as-color-muted-text);
+}
+
+.as-pick__warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--as-color-warning);
+  font-size: 0.75rem;
+}
+
+.as-pick__warning .as-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.as-stack-card__integration {
+  margin-top: var(--as-space-xs);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-sm);
+}
+
+.as-stack-card__legend {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.as-stack-card__warning,
+.as-pipeline-card__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+  color: var(--as-color-warning);
+}
+
+.as-stack-card__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+}
+
+.as-stack-card__note--strong {
+  color: var(--as-color-primary-text);
+  font-weight: 700;
+}
+
+/* What is to install before the stacking can run, each tool with its
+   button and size, then « Tout installer ». */
+.as-stacking__install {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin-left: 1.875rem;
+  font-size: 0.8125rem;
+}
+
+.as-stacking__install > .as-button {
+  min-height: 2rem;
+  padding: 0 var(--as-space-md);
+  font-size: 0.875rem;
+}
+
+.as-stacking__none {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+}
+
+.as-stacking__none p {
+  margin: 0;
+}
+
+/* The slider of the contrast, under the box, tied to it by a gold elbow. */
+.as-contrast-card {
+  margin-left: 1.875rem;
+  position: relative;
+}
+
+.as-contrast-card::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--as-space-sm) - 1px);
+  left: -1.125rem;
+  width: 0.875rem;
+  height: 1.75rem;
+  border-left: 2px solid var(--as-color-gold-accent);
+  border-bottom: 2px solid var(--as-color-gold-accent);
+  border-bottom-left-radius: var(--as-radius-sm);
+}
+
+.as-contrast-card .as-contrast {
+  margin-top: 0;
+}
+
+/* « Finition par défaut »: its title, its three settings, « Modifier ». */
+.as-default-finish__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--as-space-sm) var(--as-space-md);
+  margin: 0;
+}
+
+.as-default-finish__summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-default-finish__edit.as-button {
+  margin-left: auto;
+}
+
+.as-default-finish > p + p {
+  margin-top: var(--as-space-xs);
+}
+
+.as-default-finish .as-contrast:first-child {
+  margin-top: var(--as-space-md);
+}
+
+/* The finishes of a target that differ from the default, on its card. */
+.as-stack-card__finishes p {
+  overflow-wrap: anywhere;
+}
+
+.as-contrast-card .as-contrast + .as-contrast,
+.as-contrast-card .as-contrast--next {
+  margin-top: var(--as-space-md);
+}
+
+/* The tools of a pipeline: a pill each, present (a tick), missing (its
+   button and size) or downloading (its percent and a thin bar). */
+.as-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.as-pill {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  box-sizing: border-box;
+  min-height: 1.625rem;
+  max-width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-sm);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-pill__glyph {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--as-color-success);
+}
+
+.as-pill--missing {
+  border-color: color-mix(in srgb, var(--as-color-warning) 55%, transparent);
+}
+
+.as-pill--missing .as-pill__glyph,
+.as-pill--downloading .as-pill__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-pill__state {
+  color: var(--as-color-muted-text);
+  font-weight: 500;
+}
+
+.as-pill__action.as-button {
+  --btn-min-height: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0 var(--as-space-sm);
+  font-size: 0.75rem;
+}
+
+.as-pill__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  color: var(--as-color-muted-text);
+  font-weight: 500;
+}
+
+.as-pill__bar {
+  display: inline-block;
+  width: 4rem;
+  height: 0.1875rem;
+  border-radius: 0.125rem;
+  background-color: var(--as-color-border);
+  overflow: hidden;
+}
+
+.as-pill__bar > span {
+  display: block;
+  height: 100%;
+  background-color: var(--as-color-gold-accent);
+}
+
+/* The window « Pipelines pour {cible} »: 760 px, its head and foot fixed,
+   the list of pipelines scrolling between them in a short window. */
+.as-pipeline-dialog {
+  width: min(47.5rem, 94vw);
+  max-height: 92vh;
+  gap: var(--as-space-md);
+  padding: var(--as-space-lg) var(--as-space-xl);
+}
+
+.as-pipeline-dialog__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-pipeline-dialog__head .as-help-text {
+  margin: 0;
+}
+
+.as-pipeline-dialog__list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--as-space-xs);
+}
+
+.as-pipeline-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.as-pipeline-card.is-chosen {
+  border-color: var(--as-color-gold-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 6%,
+    transparent
+  );
+}
+
+.as-pipeline-card.is-greyed {
+  border-style: dashed;
+  color: var(--as-color-muted-text);
+}
+
+.as-pipeline-card p {
+  margin: 0;
+}
+
+.as-pipeline-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-pipeline-card__pick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.as-pipeline-card__pick input {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-pipeline-card__more.as-button {
+  --btn-min-height: 1.75rem;
+  min-height: 1.75rem;
+  margin-left: auto;
+  font-size: 0.8125rem;
+}
+
+/* Under the name, aligned with it (past the tick). Padding, not margin:
+   the paragraphs of a card carry no margin of their own. */
+.as-pipeline-card__text,
+.as-pipeline-card__warning,
+.as-pipeline-card__note,
+.as-pipeline-card__tools,
+.as-pipeline-card__details {
+  padding-left: 1.625rem;
+}
+
+/* The banner of the pipeline's `preview`, under the description and aligned
+   with it: cropped in width (`cover`), never stretched. Without a preview
+   there is no banner and no empty space. */
+.as-pipeline-card__preview {
+  display: block;
+  box-sizing: border-box;
+  align-self: stretch;
+  width: calc(100% - 1.625rem);
+  height: 5.5rem;
+  margin-left: 1.625rem;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-sm);
+  object-fit: cover;
+  object-position: center;
+}
+
+.as-pipeline-card__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-pipeline-card__label {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.as-pipeline-card__tools .as-pills {
+  flex: 1 1 0;
+}
+
+/* « Finition » of a pipeline ticked, under its preview, above its tools:
+   one line folded (the three settings, « Par défaut » / « Modifiée »,
+   « Modifier »), the three sliders side by side unfolded. */
+.as-finish-row {
+  box-sizing: border-box;
+  margin-left: 1.625rem;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-finish-row__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.as-finish-row__summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-finish-row__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+  margin-left: auto;
+}
+
+.as-finish-row__actions .as-button {
+  --btn-min-height: 1.75rem;
+  min-height: 1.75rem;
+  font-size: 0.8125rem;
+}
+
+.as-finish-row__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin-top: var(--as-space-sm);
+}
+
+.as-finish-row__panel > p {
+  margin: 0;
+}
+
+.as-finish-row__sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: var(--as-space-md);
+}
+
+.as-finish-row__sliders .as-contrast {
+  margin-top: 0;
+}
+
+.as-pipeline-card__produces {
+  margin-left: auto;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-pipeline-card__details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-sm);
+}
+
+.as-pipeline-card__why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-pipeline-card__why li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--as-space-xs);
+}
+
+.as-pipeline-card__why li > .as-help-text:last-child {
+  flex-basis: 100%;
+}
+
+.as-pipeline-dialog__foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-pipeline-dialog__apply,
+.as-pipeline-dialog__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-pipeline-dialog__apply .as-help-text,
+.as-pipeline-dialog__actions .as-help-text {
+  flex: 1;
+  margin: 0;
+}
+
+.as-pipeline-dialog__why {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  color: var(--as-color-warning);
+}
+
+.as-pipeline-dialog__apply .as-button,
+.as-pipeline-dialog__actions .as-button--link {
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+/* What a target's poses lack in calibration: the
+   amber block of the warnings, a grey line for an information. */
+.as-stack-card__missing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border: 1px solid color-mix(in srgb, var(--as-color-warning) 45%, transparent);
+  border-radius: var(--as-radius-md);
+  background-color: color-mix(in srgb, var(--as-color-warning) 7%, transparent);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-stack-card__missing > p,
+.as-stack-card__info {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+}
+
+.as-stack-card__missing .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+/* « Cadre de l'empilement »: the block of the plan's frame (`as-framing`), at
+   the head of the list of pipelines of a target; greyed before the first
+   stacking and when there is nothing to choose. */
+.as-stack-frame {
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/* A field of a night is a frame of the camera, often portrait: a narrow
+   drawing beside the slider. */
+.as-stack-frame .as-framing__picture {
+  width: 6.5rem;
+}
+
+.as-stack-frame.is-off .as-framing__name,
+.as-stack-frame.is-off .as-framing__size,
+.as-stack-frame.is-off .as-framing__slider,
+.as-stack-frame.is-off .as-framing__picture {
+  opacity: 0.55;
+}
+
+.as-stack-frame.is-off .as-framing__range {
+  cursor: not-allowed;
+}

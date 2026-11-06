@@ -1,0 +1,225 @@
+/* The image a device already stacked: the card of
+   « Fichiers » under « Poses FITS », and the choice of « Traitements » in the
+   card of a target -- the image of the device, or a new stacking, family by
+   family. Only `var(--as-*)` tokens. */
+
+/* « Fichiers »: the box and its families. */
+.as-device-family {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-xs) 0 0;
+  min-width: 0;
+}
+
+.as-device-family:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.as-device-family__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.as-device-family__note {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* « Traitements »: one choice, two sides. */
+.as-device-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: var(--as-space-xs) 0 0;
+}
+
+.as-device-side {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  cursor: pointer;
+}
+
+.as-device-side input {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0.125rem 0 0;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-device-side.is-chosen {
+  border-color: var(--as-color-tertiary-border);
+}
+
+/* Not offered: the dashed edge of the greyed commands, and the reason in the
+   place of a greyed button. */
+.as-device-side.is-unavailable {
+  border-style: dashed;
+  color: var(--as-color-muted-text);
+  cursor: default;
+}
+
+.as-device-side__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+}
+
+.as-device-side__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.875rem;
+}
+
+.as-device-side__line {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.as-device-side__line code {
+  overflow-wrap: anywhere;
+}
+
+.as-device-note {
+  margin: var(--as-space-xs) 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.as-device-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm) var(--as-space-md);
+  margin: var(--as-space-xs) 0 0;
+}
+
+/* « Mesurer cette image »: the measure of the device's image, on request. */
+.as-device-measure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: var(--as-space-xs) 0 0;
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-sm);
+}
+
+.as-device-measure__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.as-device-measure__head .as-button {
+  margin-left: auto;
+}
+
+.as-device-measure p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+/* « Pourquoi empiler à nouveau ? »: four cases and the comparison measured on
+   a real night. */
+.as-device-why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: var(--as-space-xs) 0 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.as-device-why ol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.as-device-why p {
+  margin: 0;
+}
+
+.as-device-why table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-device-why th,
+.as-device-why td {
+  border-top: 1px solid var(--as-color-border);
+  padding: 0.25rem var(--as-space-sm) 0.25rem 0;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+
+.as-device-why thead th {
+  border-top: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.as-device-why tbody th {
+  color: var(--as-color-muted-text);
+}
+
+@media (max-width: 36rem) {
+  .as-device-why table,
+  .as-device-why tbody,
+  .as-device-why tr,
+  .as-device-why th,
+  .as-device-why td {
+    display: block;
+  }
+
+  .as-device-why thead {
+    display: none;
+  }
+}
+
+/* « Mesurer cette image » and « Retirer la mesure » are cases that
+   « Continuer » applies. */
+.as-device-measure__tick {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.as-device-measure__tick input {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--as-color-gold-accent);
+}

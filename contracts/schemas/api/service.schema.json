@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/service.schema.json",
+  "title": "Astro Portal API v1 service identity",
+  "description": "The body of the public GET /v1/service route: a fixed marker, the integer API version, the software version and, since the space sign-in, how a person signs in to this service. No credential, no database read, nothing sensitive. Clients call it to check that an address really is an Astro portal speaking a compatible API version before saving it, to tell whether the configured service answers, and to choose the sign-in screen. Additional properties may appear in later versions and must be ignored by clients.",
+  "type": "object",
+  "required": ["service", "apiVersion", "version"],
+  "properties": {
+    "service": { "const": "astro-portal" },
+    "apiVersion": { "type": "integer", "minimum": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "signIn": { "$ref": "#/$defs/signIn" }
+  },
+  "$defs": {
+    "signIn": {
+      "description": "How a person signs in. Absent: a private server older than this field, which pairs its devices with a code shown by the server, exactly as `pairing`. Additional properties may appear later and must be ignored.",
+      "oneOf": [
+        { "$ref": "#/$defs/emailCode" },
+        { "$ref": "#/$defs/pairing" },
+        { "$ref": "#/$defs/none" }
+      ]
+    },
+    "emailCode": {
+      "description": "An e-mail address, then a code of six digits received by e-mail. Where spaces are open, an address without a space gets one at its first successful verification (`spaceCreation: open`). On a private server (additive, apiVersion 1) only its owner's address signs in, to its one space; any other address is refused with `not_owner`, and before the installation every address with `not_initialized` (`spaceCreation: closed`). A client that knows only `open` reads `closed` as `open`: the refusals then tell the person. Routes: POST /v1/sign-in/code and POST /v1/sign-in/verify (sign-in.schema.json).",
+      "type": "object",
+      "required": ["method", "spaceCreation", "codeLength"],
+      "properties": {
+        "method": { "const": "email-code" },
+        "spaceCreation": {
+          "description": "`open`: the service creates a space for any new address. `closed`: a private server, one space, its owner's.",
+          "enum": ["open", "closed"]
+        },
+        "codeLength": { "const": 6 },
+        "termsUrl": {
+          "description": "The terms of use shown at creation. Absent while the service has none configured. When the service names a page per language, this is the default language's (English) page: see `termsUrlTemplate`.",
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "privacyUrl": {
+          "description": "The privacy policy shown at creation. Absent while the service has none configured. When the service names a page per language, this is the default language's (English) page: see `privacyUrlTemplate`.",
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "termsUrlTemplate": {
+          "description": "Additive. Present only when the service names a terms page per language (ASTRO_PORTAL_TERMS_URL holding `{lang}`): the address with `{lang}` as the placeholder of the language tag (`fr`, `ja`, `zh-Hans`, `pt-BR`, the tags of the locale registry). A client replaces it with the tag of the language it is shown in, English when it has none of the registry's; a client that does not know the field opens `termsUrl`.",
+          "type": "string",
+          "pattern": "^https?://\\S*\\{lang\\}"
+        },
+        "privacyUrlTemplate": {
+          "description": "Additive. The same as `termsUrlTemplate`, for the privacy policy (ASTRO_PORTAL_PRIVACY_URL).",
+          "type": "string",
+          "pattern": "^https?://\\S*\\{lang\\}"
+        }
+      }
+    },
+    "pairing": {
+      "description": "A private server signing in by password (ASTRO_PORTAL_AUTH_MODE=password): one space, created at installation. A device is attached with the QR code or the eight-character code its account page shows (POST /v1/devices/claim). No e-mail address is asked of the device.",
+      "type": "object",
+      "required": ["method"],
+      "properties": { "method": { "const": "pairing" } }
+    },
+    "none": {
+      "description": "A service whose private API is switched off (ASTRO_PORTAL_AUTH_MODE=disabled): nothing can be attached to it; the public catalogue and weather routes still answer.",
+      "type": "object",
+      "required": ["method"],
+      "properties": { "method": { "const": "none" } }
+    }
+  }
+}

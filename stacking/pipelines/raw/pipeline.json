@@ -1,0 +1,243 @@
+{
+  "id": "raw",
+  "version": "1",
+  "name": {
+    "fr": "Rendu naturel",
+    "en": "Natural render",
+    "ja": "ナチュラルな仕上がり",
+    "de": "Natürliche Darstellung",
+    "es": "Render natural",
+    "it": "Resa naturale",
+    "pt-BR": "Renderização natural",
+    "ru": "Естественный рендер",
+    "zh-Hans": "自然渲染",
+    "zh-Hant": "自然渲染"
+  },
+  "description": {
+    "fr": "Les couleurs du capteur, étirées et nettoyées : fond ramené au noir, étoiles contenues, sans retouche de teinte.",
+    "en": "The sensor’s colours, stretched and cleaned up: background brought back to black, stars kept in check, no hue adjustment.",
+    "ja": "センサーが捉えた色のまま、画像を引き伸ばして整えます。背景は黒に落とし、星は目立ちすぎないよう抑え、色合いの補正は行いません。",
+    "de": "Die Farben des Sensors, gestreckt und bereinigt: Hintergrund auf Schwarz gezogen, Sterne im Zaum gehalten, ohne Farbtonkorrektur.",
+    "es": "Los colores del sensor, estirados y depurados: fondo llevado a negro, estrellas contenidas, sin retoque de tono.",
+    "it": "I colori del sensore, stirati e ripuliti: fondo riportato al nero, stelle contenute, senza ritocchi di tonalità.",
+    "pt-BR": "As cores do sensor, esticadas e limpas: fundo levado ao preto, estrelas contidas, sem retoque de tonalidade.",
+    "ru": "Цвета матрицы, растянутые и очищенные: фон приведён к чёрному, звёзды сдержаны, без коррекции оттенков.",
+    "zh-Hans": "传感器拍到的原始色彩，经拉伸与清理：背景压回黑色，恒星得到控制，不做色调调整。",
+    "zh-Hant": "感光元件拍到的原始色彩，經拉伸與清理：背景壓回黑色，恆星得到控制，不做色調調整。"
+  },
+  "filter": "none",
+  "author": "Astro Sync",
+  "licence": "MIT",
+  "entry": "renders:natural_deep",
+  "requires": ["siril", "starnet2?"],
+  "outputs": ["tif", "png"],
+  "preview": "preview.jpg",
+  "dependencies": [
+    {
+      "id": "siril",
+      "required": true,
+      "reason": {
+        "fr": "Siril calibre, aligne et additionne vos poses : tous les rendus partent de cet empilement.",
+        "en": "Siril calibrates, aligns and stacks your exposures: every render starts from that stack.",
+        "ja": "Siril が撮影画像を較正・位置合わせ・積算します。すべての仕上がりは、この積算画像から作られます。",
+        "de": "Siril kalibriert, richtet aus und addiert deine Aufnahmen: Jede Darstellung geht von diesem Stapel aus.",
+        "es": "Siril calibra, alinea y apila sus tomas: todos los renders parten de ese apilado.",
+        "it": "Siril calibra, allinea e somma le vostre pose: ogni resa parte da questa somma.",
+        "pt-BR": "O Siril calibra, alinha e empilha as suas capturas: todas as renderizações partem desse empilhamento.",
+        "ru": "Siril калибрует, выравнивает и складывает ваши кадры: все рендеры строятся на основе этого стека.",
+        "zh-Hans": "Siril 会对你的曝光帧进行校准、对齐和叠加；所有渲染都以这份叠加结果为起点。",
+        "zh-Hant": "Siril 會對你的曝光影格進行校正、對齊與疊加；所有渲染都以這份疊加結果為起點。"
+      }
+    },
+    {
+      "id": "starnet2",
+      "required": false,
+      "reason": {
+        "fr": "StarNet2 sépare les étoiles de la nébuleuse afin de les réduire ; sans lui, elles restent plus nombreuses et plus vives sur votre image.",
+        "en": "StarNet2 separates the stars from the nebula so they can be reduced; without it, they stay more numerous and brighter in your image.",
+        "ja": "StarNet2 は星と星雲を分離して、星を小さくします。なくても処理はできますが、画像の星は多く、明るいままになります。",
+        "de": "StarNet2 trennt die Sterne vom Nebel, damit sie verkleinert werden können; ohne StarNet2 bleiben sie in deinem Bild zahlreicher und heller.",
+        "es": "StarNet2 separa las estrellas de la nebulosa para poder reducirlas; sin él, siguen siendo más numerosas y brillantes en su imagen.",
+        "it": "StarNet2 separa le stelle dalla nebulosa per poterle ridurre; senza, restano più numerose e più luminose nella vostra immagine.",
+        "pt-BR": "O StarNet2 separa as estrelas da nebulosa para poder reduzi-las; sem ele, elas ficam mais numerosas e mais brilhantes na sua imagem.",
+        "ru": "StarNet2 отделяет звёзды от туманности, чтобы их можно было уменьшить; без него звёзд на вашем снимке остаётся больше, и они ярче.",
+        "zh-Hans": "StarNet2 会把恒星从星云中分离出来，以便缩小恒星；没有它时，你的图像中的恒星会更多、更亮。",
+        "zh-Hant": "StarNet2 會把恆星從星雲中分離出來，以便縮小恆星；沒有它時，你的影像中的恆星會更多、更亮。"
+      }
+    },
+    {
+      "id": "python-env",
+      "required": true,
+      "reason": {
+        "fr": "L’environnement Python exécute le script d’empilement et les calculs de rendu sur vos images.",
+        "en": "The Python environment runs the stacking script and the render calculations on your images.",
+        "ja": "Python 環境が、積算スクリプトと、画像の仕上がりを計算する処理を実行します。",
+        "de": "Die Python-Umgebung führt das Stacking-Skript und die Berechnungen der Darstellung auf deinen Bildern aus.",
+        "es": "El entorno de Python ejecuta el script de apilado y los cálculos del render sobre sus imágenes.",
+        "it": "L’ambiente Python esegue lo script di somma e i calcoli della resa sulle vostre immagini.",
+        "pt-BR": "O ambiente Python executa o script de empilhamento e os cálculos da renderização nas suas imagens.",
+        "ru": "Среда Python запускает скрипт стекинга и расчёты рендера для ваших изображений.",
+        "zh-Hans": "Python 环境用于运行叠加脚本，并对你的图像进行渲染计算。",
+        "zh-Hant": "Python 環境用於執行疊加指令碼，並對你的影像進行渲染計算。"
+      }
+    }
+  ],
+  "details": [
+    {
+      "title": {
+        "fr": "Fond de ciel",
+        "en": "Sky background",
+        "ja": "背景の補正",
+        "de": "Himmelshintergrund",
+        "es": "Fondo del cielo",
+        "it": "Fondo cielo",
+        "pt-BR": "Fundo do céu",
+        "ru": "Фон неба",
+        "zh-Hans": "天空背景",
+        "zh-Hant": "天空背景"
+      },
+      "text": {
+        "fr": "Un modèle lisse du fond (un plan mesuré sur les carrés les plus sombres) est soustrait, puis le point noir est posé : le dégradé de la pollution lumineuse disparaît sans entamer la nébuleuse.",
+        "en": "A smooth model of the background (a plane fitted on the darkest tiles) is subtracted, then the black point is set: the light-pollution gradient goes without eating into the nebula.",
+        "ja": "最も暗い領域から求めた滑らかな背景モデル（平面）を差し引き、黒レベルを決めます。光害によるグラデーションを、星雲を削らずに取り除きます。",
+        "de": "Ein glattes Modell des Hintergrunds (eine Ebene, an die dunkelsten Felder angepasst) wird abgezogen, dann wird der Schwarzpunkt gesetzt: Der Verlauf der Lichtverschmutzung verschwindet, ohne den Nebel anzugreifen.",
+        "es": "Se resta un modelo suave del fondo (un plano ajustado sobre las zonas más oscuras) y se fija el punto negro: el degradado de la contaminación lumínica desaparece sin recortar la nebulosa.",
+        "it": "Si sottrae un modello liscio del fondo (un piano adattato sulle zone più scure), poi si fissa il punto di nero: il gradiente dell’inquinamento luminoso scompare senza intaccare la nebulosa.",
+        "pt-BR": "Um modelo suave do fundo (um plano ajustado nas áreas mais escuras) é subtraído e o ponto preto é definido: o gradiente da poluição luminosa desaparece sem cortar a nebulosa.",
+        "ru": "Из снимка вычитается гладкая модель фона (плоскость, построенная по самым тёмным участкам), затем задаётся точка чёрного: градиент засветки исчезает, не задевая туманность.",
+        "zh-Hans": "减去一个平滑的背景模型（依据最暗区域拟合的平面），再设定黑点：光污染造成的渐变被去除，星云不受损。",
+        "zh-Hant": "減去一個平滑的背景模型（依據最暗區域擬合的平面），再設定黑點：光害造成的漸層被去除，星雲不受損。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Ciel neutre",
+        "en": "Neutral sky",
+        "ja": "背景色の中立化",
+        "de": "Neutraler Himmel",
+        "es": "Cielo neutro",
+        "it": "Cielo neutro",
+        "pt-BR": "Céu neutro",
+        "ru": "Нейтральное небо",
+        "zh-Hans": "中性天空",
+        "zh-Hant": "中性天空"
+      },
+      "text": {
+        "fr": "Les trois couleurs du fond sont égalisées, dans une limite étroite : le ciel devient gris neutre, les couleurs de l’objet restent celles du capteur.",
+        "en": "The three colours of the background are evened out, within a narrow limit: the sky turns neutral grey, the object keeps the sensor’s colours.",
+        "ja": "背景の三色を狭い範囲でそろえます。空はニュートラルなグレーになり、対象の色はセンサーが捉えたままです。",
+        "de": "Die drei Farben des Hintergrunds werden in engen Grenzen angeglichen: Der Himmel wird neutralgrau, das Objekt behält die Farben des Sensors.",
+        "es": "Los tres colores del fondo se igualan, dentro de un margen estrecho: el cielo queda gris neutro y el objeto conserva los colores del sensor.",
+        "it": "I tre colori del fondo vengono pareggiati, entro un limite stretto: il cielo diventa grigio neutro, l’oggetto conserva i colori del sensore.",
+        "pt-BR": "As três cores do fundo são igualadas, dentro de um limite estreito: o céu fica cinza neutro e o objeto mantém as cores do sensor.",
+        "ru": "Три цвета фона выравниваются в узких пределах: небо становится нейтрально-серым, объект сохраняет цвета матрицы.",
+        "zh-Hans": "在较小范围内拉平背景的三种颜色：天空变为中性灰，目标保留传感器拍到的色彩。",
+        "zh-Hant": "在較小範圍內拉平背景的三種顏色：天空變為中性灰，目標保留感光元件拍到的色彩。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Étirement",
+        "en": "Stretch",
+        "ja": "ストレッチ",
+        "de": "Streckung",
+        "es": "Estirado",
+        "it": "Stiramento",
+        "pt-BR": "Esticamento",
+        "ru": "Растяжение",
+        "zh-Hans": "拉伸",
+        "zh-Hant": "拉伸"
+      },
+      "text": {
+        "fr": "Une courbe arcsinh éclaircit le signal faible sans saturer le signal fort ; elle agit sur la luminosité seule, chaque pixel garde ses proportions de rouge, de vert et de bleu.",
+        "en": "An arcsinh curve brightens the faint signal without saturating the strong one; it acts on brightness only, so each pixel keeps its proportions of red, green and blue.",
+        "ja": "arcsinh カーブで、明るい部分を飽和させずに淡い信号を持ち上げます。明るさだけに作用するので、各画素の赤・緑・青の比率は変わりません。",
+        "de": "Eine arcsinh-Kurve hellt das schwache Signal auf, ohne das starke zu sättigen; sie wirkt nur auf die Helligkeit, jedes Pixel behält sein Verhältnis von Rot, Grün und Blau.",
+        "es": "Una curva arcsinh aclara la señal débil sin saturar la fuerte; actúa solo sobre la luminosidad, y cada píxel conserva sus proporciones de rojo, verde y azul.",
+        "it": "Una curva arcsinh schiarisce il segnale debole senza saturare quello forte; agisce solo sulla luminosità, ogni pixel conserva le sue proporzioni di rosso, verde e blu.",
+        "pt-BR": "Uma curva arcsinh clareia o sinal fraco sem saturar o forte; ela age só sobre a luminosidade, e cada pixel mantém suas proporções de vermelho, verde e azul.",
+        "ru": "Кривая arcsinh осветляет слабый сигнал, не пересвечивая сильный; она действует только на яркость, и каждый пиксель сохраняет свои доли красного, зелёного и синего.",
+        "zh-Hans": "用 arcsinh 曲线提亮微弱信号，同时不让强信号饱和；它只作用于亮度，每个像素的红、绿、蓝比例保持不变。",
+        "zh-Hant": "用 arcsinh 曲線提亮微弱訊號，同時不讓強訊號飽和；它只作用於亮度，每個像素的紅、綠、藍比例保持不變。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Séparation des étoiles",
+        "en": "Star separation",
+        "ja": "星の分離",
+        "de": "Sterntrennung",
+        "es": "Separación de estrellas",
+        "it": "Separazione delle stelle",
+        "pt-BR": "Separação das estrelas",
+        "ru": "Отделение звёзд",
+        "zh-Hans": "星点分离",
+        "zh-Hant": "星點分離"
+      },
+      "text": {
+        "fr": "StarNet2, s’il est installé, sépare les étoiles de la nébuleuse pour traiter chacune à part ; sans lui, les étoiles restent dans l’image et ne sont pas réduites.",
+        "en": "StarNet2, when installed, separates the stars from the nebula so each can be treated on its own; without it, the stars stay in the image and are not reduced.",
+        "ja": "StarNet2 がインストールされていれば、星と星雲を分けてそれぞれ処理します。ない場合、星は画像に残り、小さくはなりません。",
+        "de": "StarNet2 trennt, wenn installiert, die Sterne vom Nebel, damit beide getrennt bearbeitet werden; ohne StarNet2 bleiben die Sterne im Bild und werden nicht verkleinert.",
+        "es": "StarNet2, si está instalado, separa las estrellas de la nebulosa para tratar cada parte por separado; sin él, las estrellas quedan en la imagen y no se reducen.",
+        "it": "StarNet2, se installato, separa le stelle dalla nebulosa per trattarle a parte; senza, le stelle restano nell’immagine e non vengono ridotte.",
+        "pt-BR": "O StarNet2, se estiver instalado, separa as estrelas da nebulosa para tratar cada parte à parte; sem ele, as estrelas ficam na imagem e não são reduzidas.",
+        "ru": "StarNet2, если он установлен, отделяет звёзды от туманности, чтобы обработать их отдельно; без него звёзды остаются на снимке и не уменьшаются.",
+        "zh-Hans": "若已安装 StarNet2，会把恒星与星云分开，分别处理；没有它时，恒星留在图像中，不会被缩小。",
+        "zh-Hant": "若已安裝 StarNet2，會把恆星與星雲分開，分別處理；沒有它時，恆星留在影像中，不會被縮小。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Tonalité de la nébuleuse",
+        "en": "Nebula tone",
+        "ja": "星雲のトーン",
+        "de": "Tonwert des Nebels",
+        "es": "Tono de la nebulosa",
+        "it": "Tonalità della nebulosa",
+        "pt-BR": "Tonalidade da nebulosa",
+        "ru": "Тон туманности",
+        "zh-Hans": "星云影调",
+        "zh-Hant": "星雲影調"
+      },
+      "text": {
+        "fr": "Un pied doux dans les ombres fait ressortir le signal profond, avec un contraste local faible qui épargne les zones claires.",
+        "en": "A soft toe in the shadows brings out the deep signal, with a slight local contrast that spares the bright areas.",
+        "ja": "シャドウ側をやわらかく持ち上げて淡い信号を引き出し、明るい部分を避けて弱いローカルコントラストを加えます。",
+        "de": "Ein weicher Fuß in den Schatten holt das tiefe Signal hervor, mit einem schwachen lokalen Kontrast, der die hellen Bereiche schont.",
+        "es": "Un pie suave en las sombras hace aflorar la señal profunda, con un contraste local ligero que respeta las zonas claras.",
+        "it": "Un piede morbido nelle ombre fa emergere il segnale profondo, con un contrasto locale leggero che risparmia le zone chiare.",
+        "pt-BR": "Um pé suave nas sombras revela o sinal profundo, com um contraste local leve que poupa as áreas claras.",
+        "ru": "Мягкий подъём теней проявляет глубокий сигнал, а слабый локальный контраст не затрагивает светлые области.",
+        "zh-Hans": "在暗部做柔和的提升，显出深处的信号，并加上轻微的局部对比，避开明亮区域。",
+        "zh-Hant": "在暗部做柔和的提升，顯出深處的訊號，並加上輕微的局部對比，避開明亮區域。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Étoiles remises",
+        "en": "Stars put back",
+        "ja": "星を戻す",
+        "de": "Sterne zurück",
+        "es": "Estrellas devueltas",
+        "it": "Stelle rimesse",
+        "pt-BR": "Estrelas devolvidas",
+        "ru": "Звёзды возвращаются",
+        "zh-Hans": "放回恒星",
+        "zh-Hant": "放回恆星"
+      },
+      "text": {
+        "fr": "Les étoiles sont remises par-dessus, atténuées (× 0,52) et légèrement désaturées, pour que la nébuleuse reste le sujet.",
+        "en": "The stars are put back on top, dimmed (× 0.52) and slightly desaturated, so the nebula stays the subject.",
+        "ja": "星を上に重ねて戻します。明るさを抑え（× 0.52）、彩度を少し下げて、星雲を主役のままにします。",
+        "de": "Die Sterne werden darübergelegt, abgeschwächt (× 0,52) und leicht entsättigt, damit der Nebel das Motiv bleibt.",
+        "es": "Las estrellas se superponen de nuevo, atenuadas (× 0,52) y algo menos saturadas, para que la nebulosa siga siendo el tema.",
+        "it": "Le stelle vengono rimesse sopra, attenuate (× 0,52) e leggermente desaturate, perché la nebulosa resti il soggetto.",
+        "pt-BR": "As estrelas são recolocadas por cima, atenuadas (× 0,52) e levemente dessaturadas, para que a nebulosa continue sendo o tema.",
+        "ru": "Звёзды накладываются обратно, приглушённые (× 0,52) и слегка обесцвеченные, чтобы главной оставалась туманность.",
+        "zh-Hans": "把恒星叠加回去，亮度降低（× 0.52）并略降饱和度，让星云仍是主体。",
+        "zh-Hant": "把恆星疊加回去，亮度降低（× 0.52）並略降飽和度，讓星雲仍是主體。"
+      }
+    }
+  ]
+}

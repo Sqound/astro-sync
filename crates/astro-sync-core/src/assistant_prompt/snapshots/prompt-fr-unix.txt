@@ -1,0 +1,12 @@
+Parle-moi en français.
+Tu m’aides à ranger les fichiers d’une nuit d’astrophotographie pour Astro Sync.
+Lis d’abord « ~/<dossier-de-travail>/ASSISTANT-IA.md » (il est en anglais) et suis sa procédure, une question à la fois.
+Nuit : « ~/<dossier-de-travail>/2026-10-07 · Col des Étoiles · 7f3a2c ».
+Date de la nuit : du soir du 2026-10-07 au matin du 2026-10-08.
+Cibles : NGC 7000 (Nébuleuse North America), IC 1396, M31 (Galaxie d’Andromède) (un dossier chacune dans la nuit).
+Cible : NGC 7000 (Nébuleuse North America), dossier « ~/<dossier-de-travail>/2026-10-07 · Col des Étoiles · 7f3a2c/NGC 7000 ».
+Cible : IC 1396, dossier « ~/<dossier-de-travail>/2026-10-07 · Col des Étoiles · 7f3a2c/IC 1396 ».
+Cible : M31 (Galaxie d’Andromède), dossier « ~/<dossier-de-travail>/2026-10-07 · Col des Étoiles · 7f3a2c/M31 ».
+Fichiers à ranger : ceux que je t’indique, ou ceux qui sont hors de la structure. Demande-moi aussi les journaux de la nuit (NINA, PHD2, ASIAIR) : ils donnent les étapes et la qualité du guidage.
+Avant de placer un fichier, propose-moi les choix de la règle « Placing a file » d’ASSISTANT-IA.md,
+sans rien supprimer, puis attends ma réponse.

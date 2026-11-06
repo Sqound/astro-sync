@@ -1,0 +1,524 @@
+{
+  "contract": "plan.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "delete-plan",
+      "description": "« Supprimer le plan » from « Mon espace » (or a phone): the plan of one night goes to the trash for 30 days.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/plans/6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…",
+          "if-match": "\"1\""
+        }
+      },
+      "response": {
+        "status": 204,
+        "headers": {},
+        "body": null
+      }
+    },
+    {
+      "id": "delete-plan-in-progress",
+      "description": "The plan's night runs on a phone: the web is told, with the open session and the last time it was heard of; `?force=true` deletes it anyway.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/plans/7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…",
+          "if-match": "\"4\""
+        }
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": {
+            "code": "plan_in_progress",
+            "message": "This plan's night is running on a device: delete it with force to take its open session to the trash too."
+          },
+          "executionSessionId": "9c5e4f6b-7d8a-4b92-9dae-2f3a4b5c6d74",
+          "lastSignalAt": "2026-11-02T11:56:00.000Z"
+        },
+        "schema": "plan.schema.json#/$defs/inProgressError"
+      }
+    },
+    {
+      "id": "list-plans-names-deleted",
+      "description": "A phone's list of plans names the deleted ones: it drops its copy of each (a copy with a local edit not sent yet is kept).",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/plans",
+        "headers": {
+          "authorization": "Bearer …"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "plans": [
+            {
+              "id": "7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52",
+              "revision": 4,
+              "status": "active",
+              "nightStartAt": "2026-11-02T10:05:00.000Z",
+              "nightEndAt": "2026-11-02T19:40:00.000Z",
+              "frozenAt": null,
+              "archivedFrom": null,
+              "updatedAt": "2026-11-02T12:00:00.000Z",
+              "payload": {
+                "id": "browser-7a3c2d4f",
+                "date": "2026-11-02",
+                "name": "Nuit du Cygne",
+                "location": {
+                  "name": "Plateau des Cimes",
+                  "latitude": 45.1,
+                  "longitude": 6.2,
+                  "timeZone": "Europe/Paris"
+                },
+                "items": [
+                  {
+                    "id": "ngc7000",
+                    "targetId": "ngc-7000",
+                    "startMinute": 0,
+                    "endMinute": 180,
+                    "durationMinutes": 180
+                  }
+                ]
+              }
+            }
+          ],
+          "deletedPlanIds": ["6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41"]
+        },
+        "schema": "plan.schema.json"
+      }
+    },
+    {
+      "id": "trash-project",
+      "description": "« Supprimer ce plan multi-nuits »: its night still to come goes with it (`planIds`), its two nights already run stay in the Journal as ordinary sessions.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/projects/8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63/trash",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "project": {
+            "id": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63",
+            "revision": 3,
+            "status": "active",
+            "target": {
+              "targetId": "ngc-7000",
+              "name": "NGC 7000",
+              "commonName": "Nébuleuse de l’Amérique du Nord"
+            },
+            "goalMinutes": 720,
+            "place": {
+              "name": "Plateau des Cimes",
+              "latitude": 45.1,
+              "longitude": 6.2,
+              "timeZone": "Europe/Paris"
+            },
+            "equipment": {},
+            "constraints": {
+              "minAltitude": 30,
+              "moonSeparationMinimum": 30,
+              "moonSeparationMinimumByFilter": {}
+            },
+            "createdAt": "2026-09-01T08:00:00.000Z",
+            "updatedAt": "2026-11-02T12:00:00.000Z"
+          },
+          "deletedAt": "2026-11-02T12:00:00.000Z",
+          "purgeAt": "2026-12-02T12:00:00.000Z",
+          "daysRemaining": 30,
+          "planIds": ["7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52"],
+          "detachedSessionCount": 2
+        },
+        "schema": "project.schema.json#/$defs/trashResponse"
+      }
+    },
+    {
+      "id": "list-deleted",
+      "description": "« Supprimés » in the tab Plans of « Mon espace »: the plans and the multi-night plans in the trash, the most recently deleted first.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/plans/deleted",
+        "headers": {
+          "cookie": "astro_portal_session=…"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "plans": [
+            {
+              "plan": {
+                "id": "7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52",
+                "revision": 4,
+                "status": "active",
+                "nightStartAt": "2026-11-20T10:05:00.000Z",
+                "nightEndAt": "2026-11-20T19:40:00.000Z",
+                "frozenAt": null,
+                "archivedFrom": null,
+                "updatedAt": "2026-11-02T12:00:00.000Z",
+                "payload": {
+                  "id": "browser-7a3c2d4f",
+                  "date": "2026-11-20",
+                  "name": "2026-11-20",
+                  "location": {
+                    "name": "Plateau des Cimes",
+                    "latitude": 45.1,
+                    "longitude": 6.2,
+                    "timeZone": "Europe/Paris"
+                  },
+                  "items": [
+                    {
+                      "id": "ngc7000",
+                      "targetId": "ngc-7000",
+                      "startMinute": 0,
+                      "endMinute": 180,
+                      "durationMinutes": 180,
+                      "projectId": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63"
+                    }
+                  ]
+                }
+              },
+              "deletedAt": "2026-11-02T12:00:00.000Z",
+              "purgeAt": "2026-12-02T12:00:00.000Z",
+              "daysRemaining": 30,
+              "projectId": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63"
+            },
+            {
+              "plan": {
+                "id": "6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41",
+                "revision": 1,
+                "status": "active",
+                "nightStartAt": "2026-11-14T10:05:00.000Z",
+                "nightEndAt": "2026-11-14T19:40:00.000Z",
+                "frozenAt": null,
+                "archivedFrom": null,
+                "updatedAt": "2026-11-02T12:00:00.000Z",
+                "payload": {
+                  "id": "browser-6f2b1c3e",
+                  "date": "2026-11-14",
+                  "name": "Nuit du Cygne",
+                  "location": {
+                    "name": "Plateau des Cimes",
+                    "latitude": 45.1,
+                    "longitude": 6.2,
+                    "timeZone": "Europe/Paris"
+                  },
+                  "items": [
+                    {
+                      "id": "ngc7000",
+                      "targetId": "ngc-7000",
+                      "startMinute": 0,
+                      "endMinute": 180,
+                      "durationMinutes": 180
+                    }
+                  ]
+                }
+              },
+              "deletedAt": "2026-11-01T09:00:00.000Z",
+              "purgeAt": "2026-12-01T09:00:00.000Z",
+              "daysRemaining": 29,
+              "projectId": null
+            }
+          ],
+          "projects": [
+            {
+              "project": {
+                "id": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63",
+                "revision": 3,
+                "status": "active",
+                "target": {
+                  "targetId": "ngc-7000",
+                  "name": "NGC 7000",
+                  "commonName": "Nébuleuse de l’Amérique du Nord"
+                },
+                "goalMinutes": 720,
+                "place": {
+                  "name": "Plateau des Cimes",
+                  "latitude": 45.1,
+                  "longitude": 6.2,
+                  "timeZone": "Europe/Paris"
+                },
+                "equipment": {},
+                "constraints": {
+                  "minAltitude": 30,
+                  "moonSeparationMinimum": 30,
+                  "moonSeparationMinimumByFilter": {}
+                },
+                "createdAt": "2026-09-01T08:00:00.000Z",
+                "updatedAt": "2026-11-02T12:00:00.000Z"
+              },
+              "deletedAt": "2026-11-02T12:00:00.000Z",
+              "purgeAt": "2026-12-02T12:00:00.000Z",
+              "daysRemaining": 30,
+              "planIds": ["7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52"],
+              "detachedSessionCount": 2
+            }
+          ],
+          "graceDays": 30
+        },
+        "schema": "plan.schema.json#/$defs/deletedList"
+      }
+    },
+    {
+      "id": "list-deleted-device-refused",
+      "description": "The trash is read on the web only.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/plans/deleted",
+        "headers": {
+          "authorization": "Bearer …"
+        }
+      },
+      "response": {
+        "status": 403,
+        "headers": {},
+        "body": {
+          "error": {
+            "code": "web_session_required",
+            "message": "This route answers a web session only."
+          }
+        }
+      }
+    },
+    {
+      "id": "restore-plan",
+      "description": "« Restaurer ce plan »: back in the plans, its revision up by one.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/plans/6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41/restore",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "plan": {
+            "id": "6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41",
+            "revision": 2,
+            "status": "active",
+            "nightStartAt": "2026-11-14T10:05:00.000Z",
+            "nightEndAt": "2026-11-14T19:40:00.000Z",
+            "frozenAt": null,
+            "archivedFrom": null,
+            "updatedAt": "2026-11-02T12:00:00.000Z",
+            "payload": {
+              "id": "browser-6f2b1c3e",
+              "date": "2026-11-14",
+              "name": "Nuit du Cygne",
+              "location": {
+                "name": "Plateau des Cimes",
+                "latitude": 45.1,
+                "longitude": 6.2,
+                "timeZone": "Europe/Paris"
+              },
+              "items": [
+                {
+                  "id": "ngc7000",
+                  "targetId": "ngc-7000",
+                  "startMinute": 0,
+                  "endMinute": 180,
+                  "durationMinutes": 180
+                }
+              ]
+            }
+          }
+        },
+        "schema": "plan.schema.json#/$defs/restoreResponse"
+      }
+    },
+    {
+      "id": "restore-plan-night-taken",
+      "description": "Another plan holds its night at another place since: the plan stays in the trash.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/plans/6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41/restore",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": {
+            "code": "plan_night_place_conflict",
+            "message": "Every plan of a night has the same place: the other plans of this night are at another place."
+          }
+        }
+      }
+    },
+    {
+      "id": "restore-project",
+      "description": "The multi-night plan comes back with its night to come and the nights it was detached from.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/projects/8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63/restore",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "project": {
+            "id": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63",
+            "revision": 3,
+            "status": "active",
+            "target": {
+              "targetId": "ngc-7000",
+              "name": "NGC 7000",
+              "commonName": "Nébuleuse de l’Amérique du Nord"
+            },
+            "goalMinutes": 720,
+            "place": {
+              "name": "Plateau des Cimes",
+              "latitude": 45.1,
+              "longitude": 6.2,
+              "timeZone": "Europe/Paris"
+            },
+            "equipment": {},
+            "constraints": {
+              "minAltitude": 30,
+              "moonSeparationMinimum": 30,
+              "moonSeparationMinimumByFilter": {}
+            },
+            "createdAt": "2026-09-01T08:00:00.000Z",
+            "updatedAt": "2026-11-02T12:00:00.000Z"
+          },
+          "plansRestored": 1,
+          "plansKept": 0
+        },
+        "schema": "project.schema.json#/$defs/restoreResponse"
+      }
+    },
+    {
+      "id": "erase-plan",
+      "description": "« Supprimer définitivement »: erased at once; it cannot be undone.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/plans/6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41/erase",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "planId": "6f2b1c3e-4a5d-4e6f-8a7b-9c0d1e2f3a41",
+          "erased": true
+        },
+        "schema": "plan.schema.json#/$defs/eraseResponse"
+      }
+    },
+    {
+      "id": "erase-live-plan",
+      "description": "A live plan is deleted first.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/plans/7a3c2d4f-5b6e-4f70-9b8c-0d1e2f3a4b52/erase",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 409,
+        "headers": {},
+        "body": {
+          "error": {
+            "code": "plan_not_deleted",
+            "message": "Only a deleted plan is erased: delete it first."
+          }
+        }
+      }
+    },
+    {
+      "id": "erase-project",
+      "description": "The multi-night plan of the trash erased with the plan that went with it.",
+      "given": {
+        "now": "2026-11-02T12:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/projects/8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63/erase",
+        "headers": {
+          "cookie": "astro_portal_session=…",
+          "x-csrf-token": "…"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 200,
+        "headers": {},
+        "body": {
+          "projectId": "8b4d3e5a-6c7f-4a81-8c9d-1e2f3a4b5c63",
+          "erased": true,
+          "plansErased": 1
+        },
+        "schema": "project.schema.json#/$defs/eraseResponse"
+      }
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/capabilities.schema.json",
+  "title": "Astro Portal API v1 capabilities",
+  "type": "object",
+  "required": [
+    "planner.multiple",
+    "planner.mosaic",
+    "pointing.solve",
+    "sync.plan_limit",
+    "gallery.private",
+    "portal.invitations",
+    "capture.variant_limit",
+    "capture.count_limit",
+    "capture.public",
+    "analysis.logs",
+    "analysis.progression",
+    "storage.max_file_bytes",
+    "storage.quota_bytes",
+    "history.retention_days"
+  ],
+  "properties": {
+    "planner.multiple": { "type": "boolean" },
+    "planner.mosaic": { "type": "boolean" },
+    "pointing.solve": { "type": "boolean" },
+    "sync.plan_limit": { "type": "integer", "minimum": 0 },
+    "gallery.private": { "type": "boolean" },
+    "portal.invitations": { "type": "boolean" },
+    "capture.variant_limit": { "type": "integer", "minimum": 0 },
+    "capture.count_limit": { "type": "integer", "minimum": 0 },
+    "capture.public": { "type": "boolean" },
+    "analysis.logs": { "type": "boolean" },
+    "analysis.progression": { "type": "boolean" },
+    "storage.max_file_bytes": { "type": "integer", "minimum": 0 },
+    "storage.quota_bytes": { "type": "integer", "minimum": 0 },
+    "history.retention_days": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,781 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/capture.schema.json",
+  "title": "Astro Portal API v1 uploads and captures",
+  "description": "The initial, non-resumable upload of an already processed image, and the private \"My Captures\" listing it feeds. Content-addressed and therefore idempotent: the same bytes uploaded twice yield one capture, never a second row for the same tenant. A capture is private to its tenant until its owner makes it public (`visibility`); this contract carries no public URL and no slug. Its owner reads the state of its two checks (`checks`), never the machine reason of the automatic one. A capture belongs to at most one session, but may show several targets when one processed image covers more than one (a wide field, a mosaic pane): `targetIds` is the list, deduplicated idempotently as later uploads of the same bytes add targets rather than creating a second row. A resumable transport (api/uploads.md) takes over from it; the capture resource is meant to survive that. See api/v1.md, section \"Uploads and captures\".",
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "nullableUuid": {
+      "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+    },
+    "sha256": {
+      "description": "Lowercase hex digest of the stored bytes, unprefixed. The server always recomputes it; a declared value that disagrees is a refusal, never a stored claim.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "targetIdValue": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "targetId": {
+      "anyOf": [{ "$ref": "#/$defs/targetIdValue" }, { "type": "null" }]
+    },
+    "targetIds": {
+      "description": "Every target this capture shows, in the order given, deduplicated. 0 items is a still-unclassified draft; the cap of 16 matches a mosaic pane's realistic span, not a plan's target list.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/targetIdValue" },
+      "minItems": 0,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
+    "uploadMetadata": {
+      "type": "object",
+      "description": "The `metadata` part of the multipart POST /v1/uploads body, AND (`api/uploads.md`) the JSON body of the resumable protocol's create step, `POST /v1/uploads` with an `application/json` Content-Type instead — the two share this one shape on purpose, a create request IS an upload's declared metadata. On the multipart form it MUST precede the `file` part so the server can refuse an oversized or unentitled upload before reading any bytes; the resumable form never carries file bytes on this call at all. `targetId` is a tolerated single-item alias for `targetIds`, kept for callers written before the multi-target decision; a request carrying both is the union of the two, deduplicated. Exceeding 16 distinct targets (directly, via the alias, or once unioned onto an existing capture on replay) is `400` `invalid_request` and writes nothing. `captureId` names an existing capture of the space these bytes add an image to (a variant, not main, private; `404 capture_not_found` for another space's or an unknown one; `409 capture_variant_limit_reached` past `capture.variant_limit`); `source` is the image's source from a device (`phone`, `astro-sync`, `stacking`; a device never declares `web`, and the web session's images are always `web`; absent: `astro-sync` for Astro Sync, `phone` otherwise). Bytes the space already holds, as any image of any capture, store nothing and are never refused for a limit.",
+      "required": ["originalName", "sha256", "byteSize"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/nullableUuid" },
+        "planId": { "$ref": "#/$defs/nullableUuid" },
+        "targetId": { "$ref": "#/$defs/targetId" },
+        "targetIds": { "$ref": "#/$defs/targetIds" },
+        "originalName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "contentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "captureId": { "$ref": "#/$defs/nullableUuid" },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["phone", "web", "astro-sync", "stacking"]
+            },
+            { "type": "null" }
+          ]
+        },
+        "role": {
+          "description": "`progression` declares a progression image of `captureId` (required with it): a milestone of the night Astro Sync stacked, the history of that capture — never its main image, never a variant, not counted against `capture.variant_limit` (only against the storage), shown on the capture's page and with the capture in its galleries. `plan` declares the image of a multi-night plan (`projectId` required, `captureId`, `sessionId` and `planId` absent): a new capture of the space attached to that plan, in no night's captures and no variant of one; it needs the multi-night plans of Astro Sync (`analysis.progression`), else `403 multi_night_not_active`.",
+          "anyOf": [{ "enum": ["progression", "plan"] }, { "type": "null" }]
+        },
+        "projectId": {
+          "description": "The multi-night plan an image of role `plan` belongs to; only with that role (`404 project_not_found` for another space's or an unknown one).",
+          "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "combinedNightIds": {
+          "description": "The nights (`sessionId`) whose integrations the image of the plan combines; only with role `plan`.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "maxItems": 100,
+          "uniqueItems": true
+        },
+        "totalsByFilter": {
+          "description": "The image of the plan's total by filter (`integration.schema.json`, `planTotal`); only with role `plan`.",
+          "type": "array",
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "required": ["filter", "totalSeconds"],
+            "properties": {
+              "filter": {
+                "anyOf": [
+                  { "type": "string", "minLength": 1, "maxLength": 40 },
+                  { "type": "null" }
+                ]
+              },
+              "frameCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100000000
+              },
+              "totalSeconds": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000000
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "planRender": {
+          "description": "The render of the image of the plan (`natural`, `dualband`, `polished`, `hoo`, `none`); only with role `plan`.",
+          "anyOf": [
+            { "enum": ["natural", "dualband", "polished", "hoo", "none"] },
+            { "type": "null" }
+          ]
+        },
+        "progressionFrames": {
+          "description": "The light frames the milestone stacks; only with `role` `progression`.",
+          "anyOf": [
+            { "type": "integer", "minimum": 1, "maximum": 1000000 },
+            { "type": "null" }
+          ]
+        },
+        "stage": {
+          "description": "The stage the web session asks for its new capture, `draft` or `finalized` (the default). A device's upload is always a draft, whatever it declares.",
+          "anyOf": [
+            { "type": "string", "enum": ["draft", "finalized"] },
+            { "type": "null" }
+          ]
+        },
+        "metadataSource": {
+          "description": "The producer the proposals below come from — `astro-sync` or `import`. Absent: `astro-sync` for Astro Sync's token or an image of Astro Sync (`source` `astro-sync`, `stacking`); a phone's upload proposing without it is refused (`400 invalid_metadata`), and the web session proposes nothing at an upload (its owner writes on the detail).",
+          "anyOf": [
+            { "type": "string", "enum": ["astro-sync", "import"] },
+            { "type": "null" }
+          ]
+        },
+        "title": {
+          "description": "A proposal of the capture's title (80 characters at most). Every proposal is optional, applied under `metadataSource`, never over a value the owner edited, and listed in the answer's `skipped` when left.",
+          "anyOf": [{ "type": "string", "maxLength": 80 }, { "type": "null" }]
+        },
+        "description": {
+          "description": "A proposal of the capture's description (2 000 characters at most; the import joins its technical text after a blank line).",
+          "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }]
+        },
+        "acquisition": {
+          "description": "Proposed acquisition lines, one per filter and exposure (40 at most). A line is matched by its filter and its exposure: a line proposed earlier and untouched is updated, a missing one added, a line the owner corrected or deleted left (`skipped`).",
+          "anyOf": [
+            {
+              "type": "array",
+              "maxItems": 40,
+              "items": { "$ref": "#/$defs/proposedAcquisitionLine" }
+            },
+            { "type": "null" }
+          ]
+        },
+        "calibration": {
+          "description": "A proposal of the calibration, free text of 120 characters at most (a longer one is refused, never shortened).",
+          "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
+        },
+        "sensor": {
+          "description": "A proposal of the sensor (`CCD-TEMP`, `XBINNING`).",
+          "anyOf": [{ "$ref": "#/$defs/proposedSensor" }, { "type": "null" }]
+        },
+        "processing": {
+          "description": "A proposal of the processing: `software` (120 characters at most), `steps` (500 at most).",
+          "anyOf": [
+            { "$ref": "#/$defs/proposedProcessing" },
+            { "type": "null" }
+          ]
+        },
+        "variantTitle": {
+          "description": "A proposal of the owner's `title` of the image sent, in one language (90 characters at most): the import's menu label, the owner's own words of the old portal. Titles need not be unique within a capture. Never over an image whose texts the owner wrote. Astro Sync sends `variantGeneratedTitle` instead.",
+          "anyOf": [{ "type": "string", "maxLength": 90 }, { "type": "null" }]
+        },
+        "variantDescription": {
+          "description": "A proposal of the owner's `description` of the image sent, in one language (280 characters at most). Astro Sync sends `variantGeneratedDescription` instead.",
+          "anyOf": [{ "type": "string", "maxLength": 280 }, { "type": "null" }]
+        },
+        "variantGeneratedTitle": {
+          "description": "Additive: the title the producer generated for the image sent, in the ten languages, English required (capture-variant.schema.json `generatedTitle`): Astro Sync's name of the processing and its settings. Stored apart from the owner's title, whatever he wrote.",
+          "$ref": "capture-variant.schema.json#/$defs/generatedTitle"
+        },
+        "variantGeneratedDescription": {
+          "description": "Additive: the description the producer generated for the image sent, in the ten languages, English required (capture-variant.schema.json `generatedDescription`).",
+          "$ref": "capture-variant.schema.json#/$defs/generatedDescription"
+        },
+        "variantProcessing": {
+          "description": "Additive: what made the image sent (`software` 120 characters at most, `steps` 500 at most), the image's own, kept with it (`null` or absent proposes nothing). The capture shows the steps of its main image: this image's become the capture's while it is the main one, and again when the owner picks it as such, never over what he wrote. A variant sent with `processing` leaves the capture's untouched; with `variantProcessing` it keeps its own.",
+          "anyOf": [
+            { "$ref": "#/$defs/proposedProcessing" },
+            { "type": "null" }
+          ]
+        },
+        "imageQuality": {
+          "description": "Additive: the quality of the image sent, measured by the producer on the stacked master before any stretch (`imageQuality`). A producer's proposal only: sent by the phone or by the web session it is `400 invalid_metadata` (`field: imageQuality`). Kept under the capability `analysis.logs`: without it the service drops the field, stores the image all the same and lists `{ field: \"imageQuality\", reason: \"capability\" }` in `skipped`; a private server keeps it. Read back as `quality` of the image (capture-variant.schema.json) and, for the main image, of the owner's resource.",
+          "anyOf": [{ "$ref": "#/$defs/imageQuality" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "imageQuality": {
+      "description": "Additive: the quality of a stacked image, as Astro Sync measured it when it sent it — the stars of the image itself, not the medians of the night (`detail.sessionQuality` of the owner's resource is that). `measuredOn` says on what: `linear`, the master before any stretch (an image processed elsewhere, stretched or deconvolved, has no quality: its FWHM would compare with nothing). `fwhmPixels` is the median full width at half maximum of the stars in pixels; `fwhmArcsec` the same in arcseconds, `null` when the pixel scale is not known; `eccentricity` between 0 and 1 (`null` when not measured); `starCount` the stars measured; `measuredAt` when; `tool` the program and its version. Written by a producer, read by anyone who reads the capture, never held by a right.",
+      "type": "object",
+      "required": [
+        "fwhmPixels",
+        "fwhmArcsec",
+        "eccentricity",
+        "starCount",
+        "measuredOn",
+        "measuredAt",
+        "tool"
+      ],
+      "properties": {
+        "fwhmPixels": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "fwhmArcsec": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        },
+        "eccentricity": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "starCount": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "measuredOn": { "const": "linear" },
+        "measuredAt": { "$ref": "#/$defs/timestamp" },
+        "tool": {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+            "version": { "type": "string", "minLength": 1, "maxLength": 40 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "acquisitionSummary": {
+      "description": "Additive: items of `GET /v1/captures` only: what a card says of the capture's lines of « Intégrations » without a second call — « Intégration 4 h » (`integrationSeconds`), « 40 × 180 s » (`frameCount`, `exposureSeconds`). `exposureSeconds` is the exposure every line shares, `null` when the lines differ; `frameCount` and `integrationSeconds` add up the lines (a declared line whose poses are not known counts its declared time and no frame). The whole summary is `null` for a capture with no line.",
+      "type": "object",
+      "required": [
+        "lineCount",
+        "frameCount",
+        "exposureSeconds",
+        "integrationSeconds"
+      ],
+      "properties": {
+        "lineCount": { "type": "integer", "minimum": 1 },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "exposureSeconds": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0
+        },
+        "integrationSeconds": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "proposedAcquisitionLine": {
+      "type": "object",
+      "description": "One acquisition line a producer proposes: `filter` (free text, 40 characters at most, never normalised; `null` for none), `frameCount` (≥ 1), `exposureSeconds` (> 0), `gain` (an integer or `null`). The integration is computed by the service, never sent.",
+      "required": ["frameCount", "exposureSeconds"],
+      "properties": {
+        "filter": {
+          "anyOf": [{ "type": "string", "maxLength": 40 }, { "type": "null" }]
+        },
+        "frameCount": { "type": "integer", "minimum": 1, "maximum": 100000 },
+        "exposureSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "gain": { "type": ["integer", "null"] },
+        "computerLabel": {
+          "description": "Additive: the computer the producer (Astro Sync) measured the line on, as it names it (80 characters at most); `null` or absent when it did not say. Read back as `computerLabel` of the line.",
+          "anyOf": [{ "type": "string", "maxLength": 80 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposedSensor": {
+      "type": "object",
+      "properties": {
+        "temperatureC": {
+          "type": ["number", "null"],
+          "minimum": -100,
+          "maximum": 60
+        },
+        "binning": { "type": ["integer", "null"], "minimum": 1, "maximum": 8 }
+      },
+      "additionalProperties": false
+    },
+    "proposedProcessing": {
+      "type": "object",
+      "properties": {
+        "software": {
+          "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
+        },
+        "steps": {
+          "anyOf": [{ "type": "string", "maxLength": 500 }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "skipped": {
+      "type": "array",
+      "description": "What a producer's proposals left — `{ field, reason }`, `reason` `edited` (the owner's value, never overwritten) or `deleted` (an acquisition line the owner deleted); `capability`, additive (a proposal the space has no right to keep — `imageQuality` without `analysis.logs`; the rest of the request is applied). Absent or empty when everything proposed was applied or already there.",
+      "items": {
+        "type": "object",
+        "required": ["field", "reason"],
+        "properties": {
+          "field": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["edited", "deleted", "capability"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "nullableTimestamp": {
+      "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+    },
+    "captureTag": {
+      "description": "One of the owner's own tags of a capture (`capture_tags.tag`), free text exactly as typed (trimmed, never otherwise normalised), 40 characters at most.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "captureTags": {
+      "description": "The owner's own tags of a capture, read in the order of their text, 20 at most. Shown in the private gallery only, never in the public gallery.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/captureTag" },
+      "maxItems": 20,
+      "uniqueItems": true
+    },
+    "visibility": {
+      "description": "`private` (the default of every capture): seen in its own space and its private gallery only. `public`: also in the public gallery, as long as it is not removed from it nor refused on review.",
+      "type": "string",
+      "enum": ["private", "public"]
+    },
+    "checks": {
+      "description": "The two checks of a capture as its owner reads them. `automatic`: the automatic check, `null` until it has run, then `sky` (recognised as the sky or a landscape), `undetermined` (a person, or neither a sky nor a landscape: an administrator looks before any publication) or `other` (the check did not pass); its machine reason is never sent, but for the reasons of `automaticReason`. `team`: the verification flag, `null` until an administrator looks, then `approved` or `refused`, with its reason when refused. `reviewRequestedAt`: when the owner asked for a verification. `protectionNoticeAt` and `protectionLiftedAt`: the notice of a private capture that did not pass, and when its private protection was lifted. `removedFromGalleryAt`: when reports removed it from the public gallery, `null` again once it is approved.",
+      "type": "object",
+      "required": [
+        "automatic",
+        "automaticAt",
+        "team",
+        "teamAt",
+        "teamReason",
+        "reviewRequestedAt",
+        "protectionNoticeAt",
+        "protectionLiftedAt",
+        "removedFromGalleryAt"
+      ],
+      "properties": {
+        "automatic": {
+          "anyOf": [
+            { "type": "string", "enum": ["sky", "undetermined", "other"] },
+            { "type": "null" }
+          ]
+        },
+        "automaticReason": {
+          "description": "Additive. Present only when `automatic` is `undetermined`: why the service could not read the file — `check_off` (the check is switched off on this server), `unreadable`, `too_large`, `too_slow`, `unsupported_format` (a format the check does not read) or `raw_camera_file` (a camera's raw file) —, or why an administrator looks before any publication: `person_detected` (a person seems to be in the image) or `not_recognised` (neither a sky nor a landscape was recognised with enough confidence). The last four are additive; a client that does not know one shows the result without a reason. Never the figure of the rule that fell short (too few stars, a calibration frame, an astronomical header without coordinates…), which stays with the administration, and never sent for any other result.",
+          "type": "string",
+          "enum": [
+            "check_off",
+            "unreadable",
+            "too_large",
+            "too_slow",
+            "unsupported_format",
+            "raw_camera_file",
+            "person_detected",
+            "not_recognised"
+          ]
+        },
+        "automaticAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "team": {
+          "anyOf": [
+            { "type": "string", "enum": ["approved", "refused"] },
+            { "type": "null" }
+          ]
+        },
+        "teamAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "teamReason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["not_sky", "offensive", "identifiable", "other"]
+            },
+            { "type": "null" }
+          ]
+        },
+        "reviewRequestedAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "protectionNoticeAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "protectionLiftedAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "removedFromGalleryAt": { "$ref": "#/$defs/nullableTimestamp" }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "description": "`originalName` is echoed exactly as the person named the file and is never used as a filesystem path. `status` is `uploaded` for a complete single-request upload; `draft` is reserved for the resumable protocol (`api/uploads.md`). `targetIds` is always the full, current list — the resource never carries a singular `targetId`; a client that still reads the alias should read `targetIds[0]`. `visibility` is `private` or `public`; `checks` is the state of its two checks, for its owner. `protectionLiftsAt` is on the items of `GET /v1/captures` only; `tags` (the owner's own tags) on those items too, read only. `stage` is `draft` or `finalized`, distinct from the visibility (an upload from a device is a draft, private; the web's is finalized, private; a draft is never public nor in a gallery); `sha256`, `byteSize` and `originalName` are the capture's main image's. The items of `GET /v1/captures` also carry what a device's gallery draws without a second call: `visibilityEditable`, `thumbnail`, `galleryLabel`, `nightDate`, `width`, `height`, `targets`, `mainImageId` and `imageCount`. Journal (additive): a capture is linked to its session by `sessionId` (set at the upload, or by the service when the upload names none but a target and a night: the session of that `eveningDate` that carries the target; `PATCH /v1/manage/captures/{id}` can set it to another session or to `null`); `GET /v1/captures?sessionId=` lists a session's captures; there is **one capture per session and target**, a second image for it replaces the image or becomes a variant (`replaced`, `replacedAt`, `replacedSource`). `nightDate` keeps its own definition, distinct from a session's `eveningDate`.",
+      "required": [
+        "id",
+        "sessionId",
+        "planId",
+        "targetIds",
+        "originalName",
+        "sha256",
+        "byteSize",
+        "status",
+        "visibility",
+        "createdAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "sessionId": { "$ref": "#/$defs/nullableUuid" },
+        "planId": { "$ref": "#/$defs/nullableUuid" },
+        "targetIds": { "$ref": "#/$defs/targetIds" },
+        "originalName": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "status": { "type": "string", "enum": ["draft", "uploaded"] },
+        "stage": {
+          "description": "`draft` (« Brouillon ») or `finalized` (« Finalisée »). Written by the service on every answer; optional so that a reader of an earlier answer still validates.",
+          "type": "string",
+          "enum": ["draft", "finalized"]
+        },
+        "visibility": { "$ref": "#/$defs/visibility" },
+        "madePublicAt": {
+          "description": "Additive: the instant the capture last turned public (« Publique depuis le … »). Written by the service as the capture goes from private to public, cleared as it goes private again, left alone by a write that keeps it public. Only on a public capture (absent while it is private); `null` for a capture that was already public when the date began to be kept: the date is unknown, never guessed. Optional so that a reader of an earlier answer still validates; a reader shows « date inconnue » (never a made-up date) for a public capture without a date.",
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "checks": { "$ref": "#/$defs/checks" },
+        "archivedAt": {
+          "description": "Additive: present only on a capture archived after the end of a subscription: when it was archived. The owner still reads and exports it, « Mes captures » labels it « Archivée », no gallery shows it; a resubscription removes the field. A reader of an earlier answer, and a capture that is not archived, has no such field.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "protectionLiftsAt": {
+          "description": "On the items of `GET /v1/captures` only: the date the private protection of a capture that did not pass the automatic check is (or was) lifted, the notice's date plus `ASTRO_PORTAL_CHECK_NOTICE_DAYS`, computed by the service (« sera levée le 20 octobre »); `null` when no notice runs.",
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "tags": {
+          "description": "On the items of `GET /v1/captures` (and the owner's routes of the web): the owner's own tags of the capture. The phone reads them and writes them too (`PATCH /v1/captures/{id}` `{ tags }`, the whole list); the web enters them in « Mon espace » → « Captures ». Optional so that a reader of an earlier answer still validates; the answer of an upload never carries it.",
+          "$ref": "#/$defs/captureTags"
+        },
+        "contentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "revision": {
+          "description": "Additive: the capture's revision, an integer that is 1 at the creation and moves by 1 at each write of the capture — a metadata field, the tags, the stage, the visibility, the session, an image added, replaced or removed, a producer's proposal that changed something, a synchronisation of the lines; a write that leaves the stored value as it was moves nothing. The web and the phone write the same capture: each owner write names the revision it read (`If-Match: \"<revision>\"`) and the service refuses it with `409 capture_conflict` only if the field it writes changed after that revision (v1.md, « A capture written by two hands »). On the owner's resource and on each item of both lists; written by the service on every answer, optional so that a reader of an earlier answer still validates.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "description": "Additive: items of `GET /v1/captures` only: the capture's own title — the owner's, else a producer's proposal (80 characters at most); `null` when it has none, the screen then names the capture by its targets. The owner's resource carries it with its origin in `metadata.title`.",
+          "anyOf": [{ "type": "string", "maxLength": 80 }, { "type": "null" }]
+        },
+        "acquisitionSummary": {
+          "description": "Additive: items of `GET /v1/captures` only: the summary of the capture's lines of « Intégrations » (`acquisitionSummary`); `null` when it has no line.",
+          "anyOf": [
+            { "$ref": "#/$defs/acquisitionSummary" },
+            { "type": "null" }
+          ]
+        },
+        "visibilityEditable": {
+          "description": "Items of `GET /v1/captures` only: whether this caller may change the visibility — never a device (the visibility is the web's), the web session for a finalized or public capture.",
+          "type": "boolean"
+        },
+        "thumbnail": {
+          "description": "Items of `GET /v1/captures` only: whether the main image has its thumbnail (`GET /v1/captures/{id}/media?variant=thumbnail`).",
+          "type": "boolean"
+        },
+        "galleryLabel": {
+          "description": "Items of `GET /v1/captures` only: the generic label of the public gallery — the first target's (its type for a catalogue target, its chosen label for a personal one), « Grand champ » without a target, `null` for a type without one.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "Galaxie",
+                "Nébuleuse",
+                "Amas",
+                "Lune",
+                "Planète",
+                "Soleil",
+                "Étoile",
+                "Comète",
+                "Grand champ"
+              ]
+            },
+            { "type": "null" }
+          ]
+        },
+        "nightDate": {
+          "description": "Items of `GET /v1/captures` only: the night of its plan, else of its session, `YYYY-MM-DD`.",
+          "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }]
+        },
+        "width": {
+          "description": "Items of `GET /v1/captures` only: the main image's pixels, once read.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "height": { "type": ["integer", "null"], "minimum": 1 },
+        "targets": {
+          "description": "Items of `GET /v1/captures` only: the targets of `targetIds`, resolved in their order — a catalogue target with its designation, type, aliases and position (hours, degrees), a personal target of the space with its name and label.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/listedTarget" }
+        },
+        "mainImageId": {
+          "description": "Items of `GET /v1/captures` only: the id of the main image (capture-variant.schema.json).",
+          "type": ["string", "null"]
+        },
+        "imageCount": {
+          "description": "Items of `GET /v1/captures` only: how many images the capture holds, its main image included.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "mainImageSource": {
+          "description": "Items of `GET /v1/captures` only: where the main image came from (`phone`, `web`, `astro-sync`, `stacking`; `null` when never recorded). Astro Sync's « Annotations » says « Envoyée depuis le téléphone » and fetches its original (`GET /v1/captures/{id}/original`).",
+          "$ref": "capture-variant.schema.json#/$defs/source"
+        },
+        "replacedAt": {
+          "description": "Additive: when the capture's image was last **replaced** by another one for the same session and target (a space without the right to variants, `capture.variant_limit` = 0, keeps one image per capture: the new one takes the place of the old, the old bytes released from the quota). `null` while it never was. The screens say it (« Astro Sync a remplacé la photo envoyée du téléphone par son image. »). Written by the service; optional so that a reader of an earlier answer still validates.",
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "replacedSource": {
+          "description": "Additive: the `source` of the image that was replaced (`phone` for the photo sent from the phone, the usual case); the source of the new image is `mainImageSource`. `null` while `replacedAt` is. With `replacedAt`, the most recent replacement only.",
+          "$ref": "capture-variant.schema.json#/$defs/source"
+        },
+        "replacedMadePrivate": {
+          "description": "Additive, present and `true` only: the replacement of the capture's image turned a **public** capture back to **private** (the new image has passed no check; a public capture must be validated again explicitly). It stays `true` until the owner next writes the visibility (publishes it again, or chooses private); absent otherwise, and a reader reads absent as `false`. The screens say so at the replacement (« Votre capture est redevenue privée, car son image a été remplacée. ») and on the capture afterwards, which an Astro Sync replacement leaves unseen.",
+          "const": true
+        },
+        "skySolved": {
+          "description": "Items of `GET /v1/captures` only: whether the main image has its sky solution (`sky-solution.schema.json`); `?skySolution=missing` lists the captures where it is `false`, whatever device or page sent them.",
+          "type": "boolean"
+        },
+        "projectId": {
+          "description": "Only on the image of a multi-night plan (role `plan`): the plan it belongs to. Absent on every other capture.",
+          "$ref": "#/$defs/uuid"
+        },
+        "plan": {
+          "description": "With `projectId`: the nights it combines, its totals by filter and its render (`integration.schema.json`, `planCapture`).",
+          "type": "object",
+          "required": ["combinedNightIds", "totalsByFilter", "render"],
+          "properties": {
+            "combinedNightIds": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/uuid" }
+            },
+            "totalsByFilter": { "type": "array" },
+            "render": {
+              "anyOf": [
+                { "enum": ["natural", "dualband", "polished", "hoo", "none"] },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "description": "The tenant's own storage position, mirroring the capability values so a client can show a bar without a second call. `quotaBytes` and `maxFileBytes` are zero when media storage is not part of the current profile — zero means none, not unlimited. `captureCount` is how many captures the space holds, the uploads in progress included in an upload answer and its refusal, and `captureCountLimit` is the value of `capture.count_limit` (`0` no allowance, the unlimited sentinel no cap): « 2 captures sur 3 » and the number in the refusal come from them, never from a constant. The service always writes the two; they stay optional so that a reader of an earlier answer still validates. `usedBytes` counts every stored image of every capture.",
+      "required": ["usedBytes", "quotaBytes", "maxFileBytes"],
+      "properties": {
+        "usedBytes": { "type": "integer", "minimum": 0 },
+        "quotaBytes": { "type": "integer", "minimum": 0 },
+        "maxFileBytes": { "type": "integer", "minimum": 0 },
+        "captureCount": { "type": "integer", "minimum": 0 },
+        "captureCountLimit": { "type": "integer", "minimum": 0 },
+        "variantLimit": {
+          "description": "`Capture.variant_limit`, the variants a capture may hold besides its main image (`0`: the main image only; the unlimited sentinel: no cap).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "variantCount": {
+          "description": "In the answer and the refusal of an upload that adds a variant to a capture, how many variants it holds besides its main image.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "uploadResponse": {
+      "type": "object",
+      "description": "`201` on the first upload of these bytes, `200` with `deduplicated: true` on any later one. A replay returns the existing capture, never a second row, and never re-associates it with another session or plan. It MAY grow `capture.targetIds`: a replay's targets are unioned onto the existing list idempotently, and `targetsAdded` (present whenever `deduplicated` is true) counts how many were new — 0 when the replay named the same targets or none.",
+      "required": ["capture", "deduplicated"],
+      "properties": {
+        "capture": { "$ref": "#/$defs/capture" },
+        "deduplicated": { "type": "boolean" },
+        "targetsAdded": { "type": "integer", "minimum": 0 },
+        "replaced": {
+          "description": "Additive: true when this upload's image **replaced** the image of the capture it belongs to (one capture per session and target; a space without the right to variants), false when it was added as a variant, as the main image with the former one kept as a variant, or created a capture. Absent on an answer written before the lot; a reader assumes false.",
+          "type": "boolean"
+        },
+        "storage": { "$ref": "#/$defs/storage" },
+        "variant": {
+          "description": "The variant an upload with `captureId` added (or the image found already there).",
+          "$ref": "capture-variant.schema.json#/$defs/variant"
+        },
+        "skipped": { "$ref": "#/$defs/skipped" }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "description": "GET /v1/captures (additive). The private My Captures view: the person's own captures with the observation session, plan and targets each one belongs to. By default the synchronisation's reading: oldest first by the later of `createdAt` and the instant the capture came back from the trash of its session (`createdAt` itself is the date it was added and never moves), walked by `?since=` and `nextSince` (that instant, for the last row). With `?order=recent` (Journal F, additive) the most recent first -- by the night of the capture, then by the moment it was added -- walked by `?before=` and `nextBefore` (`nextSince` is then `null`); `order=recent` and `since` are not asked together. An optional `?targetId=` query filters to captures whose `targetIds` contains it, and (additive) `?sessionId=` to the captures of one session (the session's id; a capture belongs to at most one); the two add up. The schema does not model query parameters, only this response shape.",
+      "required": ["captures"],
+      "properties": {
+        "captures": { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+        "nextSince": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "nextBefore": {
+          "description": "Journal F (additive), only with `?order=recent`: the opaque cursor to send back as `?before=` for the next page, `null` on the last. Absent on the synchronisation's reading; a reader assumes null.",
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "hasMore": { "type": "boolean" },
+        "storage": { "$ref": "#/$defs/storage" },
+        "publishingBlocked": {
+          "description": "Whether the person is blocked from making a capture public (the block on publishing, `publishing_blocked`, a state of the person, not the capability `capture.public`). Uploading is never refused for it. The phone shows it and never asks to make a capture public. Written by the service; optional so that a reader of an earlier answer still validates.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "The capability refusal body. It repeats the deciding numbers so an interface can explain the refusal without a second call, and names no product or offer. `capture_variant_limit_reached` (409) refuses an image added to a capture past `capture.variant_limit`, with `storage.variantLimit` and `storage.variantCount`.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "capture_limit_reached",
+                "storage_quota_reached",
+                "file_too_large",
+                "capture_variant_limit_reached",
+                "invalid_metadata"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 },
+            "field": {
+              "description": "With `invalid_metadata` (400), the field refused (`calibration`, `acquisition[0].exposureSeconds`, `metadataSource`…).",
+              "type": "string"
+            },
+            "limit": {
+              "description": "With `invalid_metadata`, the field's limit (characters, or the bound), `null` when it has none.",
+              "type": ["integer", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "storage": { "$ref": "#/$defs/storage" }
+      },
+      "additionalProperties": false
+    },
+    "uploadSession": {
+      "type": "object",
+      "description": "The resumable protocol (`api/uploads.md`): the shared envelope `POST /v1/uploads` (JSON create), `PUT /v1/uploads/{id}` and `GET /v1/uploads/{id}` all answer. `offset` is always the server's own durable count — after a `PUT` it is what was actually written, never an echo of what the client asked to write. `expiresAt` is `null` once `completed` is true: a completed session is not subject to the 72-hour expiry. `captureId` appears only once `completed` is true.",
+      "required": ["uploadId", "offset", "byteSize", "chunkSize", "completed"],
+      "properties": {
+        "uploadId": { "$ref": "#/$defs/uuid" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "chunkSize": { "type": "integer", "minimum": 1 },
+        "completed": { "type": "boolean" },
+        "expiresAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "captureId": { "$ref": "#/$defs/uuid" },
+        "present": {
+          "description": "`true` when the create step found these bytes already held by the space (any image of any capture) and answered before any chunk — `completed` is then `true` with that `captureId` and `imageId`.",
+          "const": true
+        },
+        "imageId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "uploadFinalizeResponse": {
+      "type": "object",
+      "description": "`POST /v1/uploads/{id}/finalize` on success: `uploadSession`'s own fields (always `completed: true`, always a `captureId`) plus the created-or-deduplicated capture, exactly like the non-resumable `uploadResponse`. Idempotent — calling finalize again after success replays this same body.",
+      "required": [
+        "uploadId",
+        "offset",
+        "byteSize",
+        "chunkSize",
+        "completed",
+        "captureId",
+        "capture",
+        "deduplicated"
+      ],
+      "properties": {
+        "uploadId": { "$ref": "#/$defs/uuid" },
+        "offset": { "type": "integer", "minimum": 0 },
+        "byteSize": { "type": "integer", "minimum": 1 },
+        "chunkSize": { "type": "integer", "minimum": 1 },
+        "completed": { "const": true },
+        "expiresAt": { "type": "null" },
+        "captureId": { "$ref": "#/$defs/uuid" },
+        "capture": { "$ref": "#/$defs/capture" },
+        "deduplicated": { "type": "boolean" },
+        "targetsAdded": { "type": "integer", "minimum": 0 },
+        "replaced": {
+          "description": "Additive: true when this upload's image **replaced** the image of the capture it belongs to (one capture per session and target; a space without the right to variants), false when it was added as a variant, as the main image with the former one kept as a variant, or created a capture. Absent on an answer written before the lot; a reader assumes false.",
+          "type": "boolean"
+        },
+        "storage": { "$ref": "#/$defs/storage" },
+        "variant": {
+          "description": "The variant an upload with `captureId` added (or the image found already there).",
+          "$ref": "capture-variant.schema.json#/$defs/variant"
+        },
+        "skipped": { "$ref": "#/$defs/skipped" }
+      },
+      "additionalProperties": false
+    },
+    "uploadRefusal": {
+      "type": "object",
+      "description": "The resumable protocol's own structured refusals (`api/uploads.md`): a wrong `PUT` offset, a finalize whose bytes have not all arrived yet, a finalize whose assembled digest disagrees with what was declared at creation, or a finalize whose capture (`captureId` at creation) has left the space since (`upload_capture_gone`: create again, the bytes are kept). `offset` repeats the server's own current, durable offset — `0` after a hash mismatch resets the session for a full re-upload — so a client can resume without a second `GET`. Distinct from `refusal` above, which is the capability/quota refusal shape.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "upload_offset_mismatch",
+                "upload_hash_mismatch",
+                "upload_incomplete",
+                "upload_not_found",
+                "upload_capture_gone"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "offset": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "listedTarget": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["id", "source", "designation"],
+          "properties": {
+            "id": { "$ref": "#/$defs/targetIdValue" },
+            "source": { "const": "catalogue" },
+            "designation": { "type": "string" },
+            "type": { "type": ["string", "null"] },
+            "aliases": { "type": "array", "items": { "type": "string" } },
+            "raHours": { "type": ["number", "null"] },
+            "decDegrees": { "type": ["number", "null"] }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["id", "source", "name", "label"],
+          "properties": {
+            "id": { "$ref": "#/$defs/targetIdValue" },
+            "source": { "const": "personal" },
+            "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "label": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+            "raHours": { "type": ["number", "null"] },
+            "decDegrees": { "type": ["number", "null"] }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/uploadMetadata" },
+    { "$ref": "#/$defs/capture" },
+    { "$ref": "#/$defs/uploadResponse" },
+    { "$ref": "#/$defs/list" },
+    { "$ref": "#/$defs/refusal" },
+    { "$ref": "#/$defs/uploadSession" },
+    { "$ref": "#/$defs/uploadFinalizeResponse" },
+    { "$ref": "#/$defs/uploadRefusal" }
+  ]
+}

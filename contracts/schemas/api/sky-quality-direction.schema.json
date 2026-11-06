@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/sky-quality-direction.schema.json",
+  "title": "Astro Portal API v1 sky brightness by direction",
+  "description": "GET /v1/sky-quality/direction query and response (packages/portal/src/planner/sky-quality.server.js `loadPlannerSkyDirection`; packages/portal-app/src/routes/api/v1/sky-quality/direction/route.js). Public read, like GET /v1/sky-quality: a present Authorization header must still be a valid device bearer. The ESTIMATED sky brightness, in mag/arcsec², by altitude and azimuth around a place, computed by `skyBrightnessByDirection` (packages/portal/src/sky-quality-direction.js, model `line-of-sight-v1`) from the installed VIIRS-derived raster. The coordinates are rounded to 0.01° before computing and never echoed back. `sqm[i][j]` is the value at `altitudes[i]` and azimuth `j × azimuthStepDegrees` (0 = north, 90 = east). The grid is derived data: a client may keep it per place and per `rasterChecksum`, never synchronizes it and never writes it into a plan. Without an installed raster the route answers 503 `sky_quality_unavailable` with Retry-After, exactly like GET /v1/sky-quality.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "string" },
+        "longitude": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "sqm": { "type": "number", "minimum": 10, "maximum": 22.1 },
+    "result": {
+      "type": "object",
+      "required": [
+        "model",
+        "estimate",
+        "azimuthStepDegrees",
+        "altitudes",
+        "sqm",
+        "zenithSqm",
+        "source",
+        "rasterChecksum",
+        "calibration",
+        "calculatedAt"
+      ],
+      "properties": {
+        "model": { "const": "line-of-sight-v1" },
+        "estimate": { "const": true },
+        "azimuthStepDegrees": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 360
+        },
+        "altitudes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0, "maximum": 90 }
+        },
+        "sqm": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "anyOf": [{ "$ref": "#/$defs/sqm" }, { "type": "null" }]
+            }
+          }
+        },
+        "zenithSqm": {
+          "anyOf": [{ "$ref": "#/$defs/sqm" }, { "type": "null" }]
+        },
+        "source": { "type": "string", "pattern": "^viirs-vnl-[0-9]{4}$" },
+        "rasterChecksum": {
+          "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+          "description": "The installed raster's checksum (its manifest's `checksum`). A cached grid whose checksum differs from the current raster's is recomputed."
+        },
+        "calibration": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}/[a-z0-9-]+$",
+          "description": "`<calibration-set version>/<region id>`, as in GET /v1/sky-quality."
+        },
+        "calculatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/query" }, { "$ref": "#/$defs/result" }]
+}

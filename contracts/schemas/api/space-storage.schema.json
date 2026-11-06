@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/space-storage.schema.json",
+  "title": "Astro Portal API v1 — the storage of a space, for a device",
+  "description": "`GET /v1/space/storage` (a device token or the web session): the bytes the space uses (every stored image of every capture, the uploads in progress included), its quota and what remains, the per-file ceiling, its captures and their limit (`capture.count_limit`), the images a capture may hold beyond its main one (`capture.variant_limit`), and the composed capabilities of the person — exactly those `GET /v1/capabilities` answers, fourteen keys. Astro Sync's « Récapitulatif » checks a sending against it before any byte leaves; the service checks again at reception. A number the profile does not cap is the unlimited sentinel (`Number.MAX_SAFE_INTEGER`, capabilities.ts), never a missing field; a private server answers what its profile carries.",
+  "type": "object",
+  "required": [
+    "usedBytes",
+    "quotaBytes",
+    "remainingBytes",
+    "maxFileBytes",
+    "captureCount",
+    "captureCountLimit",
+    "variantLimit",
+    "capabilities"
+  ],
+  "properties": {
+    "usedBytes": { "type": "integer", "minimum": 0 },
+    "quotaBytes": { "type": "integer", "minimum": 0 },
+    "remainingBytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "`quotaBytes - usedBytes` (never below 0); the unlimited sentinel when the quota is."
+    },
+    "maxFileBytes": { "type": "integer", "minimum": 0 },
+    "captureCount": { "type": "integer", "minimum": 0 },
+    "captureCountLimit": { "type": "integer", "minimum": 0 },
+    "variantLimit": { "type": "integer", "minimum": 0 },
+    "capabilities": { "$ref": "capabilities.schema.json" }
+  },
+  "additionalProperties": false
+}

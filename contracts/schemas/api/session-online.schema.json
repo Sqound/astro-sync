@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session-online.schema.json",
+  "title": "Astro Portal API v1 what is online for a night",
+  "description": "GET /v1/sessions/{id}/online: what is already in the space for one night, read by Astro Sync's resume and its « Nuits » list before anything is sent, and later by the phone. Per target of the night (the night's targets first, in their order — its own or its plan's —, then the targets only a capture names, then the captures with no target under `targetId: null`): its captures, each with its source, stage, visibility, its main image and every image (the main one first, then the variants), each image with its SHA-256 (an identical image is never sent again) and whether a sky solution exists for it (the solution belongs to each image, sky-solution.schema.json). And for the night, the analysis in place (one per night, the next sending replaces it). By a device token of the space or the owner's web session; never gated by a capability; another space's night is 404 `session_not_found`, a caller without credentials 401.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "source": {
+      "description": "Where an image came from (capture-variant.schema.json): `phone`, `web`, `astro-sync`, `stacking`; null for an image stored before the images had a source. A capture's source is its main image's.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["phone", "web", "astro-sync", "stacking"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "image": {
+      "description": "One image of a capture: `main` for the main image; its digest, size, the name it was sent with, its date, and `skySolution`: `present` when a sky solution is stored for this image, `missing` otherwise.",
+      "type": "object",
+      "required": [
+        "id",
+        "main",
+        "sha256",
+        "byteSize",
+        "originalName",
+        "source",
+        "createdAt",
+        "skySolution"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "main": {
+          "type": "boolean"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "originalName": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "skySolution": {
+          "type": "string",
+          "enum": ["present", "missing"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "description": "A capture of the night (`captures.session_id`): its targets, source, stage (`draft` from a device until finalized), visibility, `uploaded` (its bytes are all in), the main image (null only for a capture whose image row is missing) and the number of images with each of them.",
+      "type": "object",
+      "required": [
+        "id",
+        "targetIds",
+        "source",
+        "stage",
+        "visibility",
+        "uploaded",
+        "createdAt",
+        "mainImage",
+        "imageCount",
+        "images"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "targetIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "stage": {
+          "type": "string",
+          "enum": ["draft", "finalized"]
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["private", "public"]
+        },
+        "uploaded": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "mainImage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/image"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "imageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "description": "One target of the night: `planned` when it is one of the night's own or its plan's targets; `name`, its designation (null for an identifier the space no longer knows).",
+      "type": "object",
+      "required": ["targetId", "name", "planned", "captures"],
+      "properties": {
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planned": {
+          "type": "boolean"
+        },
+        "captures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capture"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "analysis": {
+      "description": "The night's analysis in place: when it was sent and by which device (`deviceName` null when the device is gone), its report version and producer, `stepCount` the night's steps it proposed (origin `analysis` or `import`) and `editedStepCount` those corrected by hand. `present: false` and the rest null or zero without an analysis.",
+      "type": "object",
+      "required": [
+        "present",
+        "sentAt",
+        "originDeviceId",
+        "deviceName",
+        "reportVersion",
+        "producer",
+        "stepCount",
+        "editedStepCount"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "sentAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "originDeviceId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deviceName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reportVersion": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 2
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["astro-sync", "import"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stepCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "editedStepCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "online": {
+      "type": "object",
+      "required": ["sessionId", "targets", "analysis"],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "analysis": {
+          "$ref": "#/$defs/analysis"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$ref": "#/$defs/online"
+}

@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/app-log-batch.schema.json",
+  "title": "Astro Portal API v1 application error logs",
+  "description": "A phone sends (on by default for a fresh installation, the person can turn « Envoyer les journaux d'erreur de l'application » off in Réglages), with its device token and the installation's diagnostic token, the entries of the application's error logs: uncaught errors, failures of the device clients and the notes of an execution's launch, each with its diagnosis and a breadcrumb of the last actions, already sanitized on the phone (no coordinates, place or plan names, e-mail or network addresses, secrets). The service checks every entry again and refuses the whole batch at the first match (422 app_log_unredacted, the index of the entry and the rules' names, never the value). A web session alone or no credential answers 401; a private server answers 404 not_available unless its operator set ASTRO_PORTAL_APP_LOGS=accept, and the phone asks GET first. An entry sent after an error or with a problem report may carry `debugTrail`, the last minutes (10 minutes or 2 000 lines on the phone, 200 lines at most on the wire) of the phone's rolling local debug log, kept in memory only and never sent alone, with the same sanitizing and the same second check as the breadcrumbs. Batches of 1 to 20 entries and 256 KiB; 500 entries per diagnostic token in any rolling 24 hours (429 app_log_limit); an entry id already held is a duplicate. Entries are anonymous: kept under the diagnostic token alone (never the space nor the device; the device token only opens the door), 30 days, expiring by age (not erased with the space), and read in the administration's « Journaux » with the source mobile, filtered by the token a person handed over. An entry of the event device.incident carries an `incident`: what a smart telescope or a mount refused or did not do (its header flat: the device, the command and its parameters, the answer or the silence, a stable cause code, before and after) and up to 90 exchange lines around it (the start of the connection, the last useful exchanges with identical readings grouped, what followed), sanitized like the breadcrumbs (a removed key may hold `[retiré]` or one of the device journal's marks: `[secret]`, `[id]`, `[réseau]`, `[plan]`, `[lieu]`, `[coord]`, `[e-mail]`); a follow-up entry may repeat an incident's id with no lines and a larger `occurrences`. A service may check the incidents more strictly (the place, even a whole degree, is never sent) and keep them apart: the hosted service keeps them 90 days in its administration's « Incidents d'appareil ».",
+  "x-limits": {
+    "bodyBytes": 262144,
+    "entriesPerBatch": 20,
+    "entriesPerTokenPerDay": 500,
+    "breadcrumbsPerEntry": 30,
+    "debugTrailPerEntry": 200,
+    "fieldsPerBreadcrumb": 12,
+    "retentionDays": 30,
+    "incidentLinesPerEntry": 90,
+    "fieldsPerIncidentLine": 12
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "network": {
+      "description": "The network the phone saw: wifiWithoutInternet and cellularWithoutInternet when the service could not be reached on it (a smart telescope's own Wi-Fi).",
+      "enum": [
+        "wifi",
+        "wifiWithoutInternet",
+        "cellular",
+        "cellularWithoutInternet",
+        "ethernet",
+        "none",
+        "other"
+      ]
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["platform"],
+      "properties": {
+        "platform": { "enum": ["ios", "android"] },
+        "osVersion": { "type": ["string", "null"], "maxLength": 80 },
+        "appVersion": { "type": ["string", "null"], "maxLength": 40 },
+        "appBuild": { "type": ["string", "null"], "maxLength": 20 },
+        "model": {
+          "type": ["string", "null"],
+          "maxLength": 80,
+          "description": "The raw hardware model (iPhone17,1), never the device's name."
+        },
+        "locale": { "type": ["string", "null"], "maxLength": 35 },
+        "screen": { "type": ["string", "null"], "maxLength": 120 },
+        "route": {
+          "type": ["string", "null"],
+          "maxLength": 200,
+          "description": "The route's path, without its query string."
+        },
+        "network": {
+          "oneOf": [{ "$ref": "#/$defs/network" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "breadcrumb": {
+      "type": "object",
+      "description": "One of the last actions before the entry: a navigation, an action of the interface, a step of an execution's launch (sendPlan, rounding, refused, readBack…) or a line of a device client, with the device's model and the state read back in its fields.",
+      "required": ["at", "kind", "name"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "kind": {
+          "enum": ["navigation", "action", "launch", "device", "debug"]
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "fields": {
+          "type": "object",
+          "maxProperties": 12,
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"],
+            "maxLength": 120
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": ["id", "at", "level", "event", "message", "diagnostic"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "at": { "type": "string", "format": "date-time" },
+        "level": { "enum": ["info", "warning", "error"] },
+        "event": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,79}$",
+          "description": "The kind of the entry: device.failure, device.launch…"
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1200 },
+        "stack": { "type": ["string", "null"], "maxLength": 6000 },
+        "diagnostic": { "$ref": "#/$defs/diagnostic" },
+        "breadcrumbs": {
+          "type": "array",
+          "maxItems": 30,
+          "items": { "$ref": "#/$defs/breadcrumb" }
+        },
+        "debugTrail": {
+          "type": "array",
+          "maxItems": 200,
+          "description": "The last minutes of the phone's local debug log, oldest first, joined to an error or to a problem report; same shape and same sanitizing as the breadcrumbs.",
+          "items": { "$ref": "#/$defs/breadcrumb" }
+        },
+        "incident": {
+          "$ref": "#/$defs/incident",
+          "description": "Only on an entry of the event device.incident (level warning, no debugTrail)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "incidentLine": {
+      "type": "object",
+      "description": "One exchange of an incident, oldest first: a command sent, an answer, an event or a state the device pushed, a change of the link, an error, a note, or a stub that stands for lines left out.",
+      "required": ["seq", "at", "part", "channel", "kind", "name"],
+      "properties": {
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The line's number in the connection's journal (gaps are lines left out)."
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "UTC, to the second."
+        },
+        "part": {
+          "enum": ["head", "before", "after"],
+          "description": "head: the first lines of the connection; before: the last useful exchanges up to the failure; after: what followed (20 s at most)."
+        },
+        "channel": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "kind": {
+          "enum": [
+            "sent",
+            "answer",
+            "event",
+            "state",
+            "link",
+            "error",
+            "note",
+            "stub"
+          ]
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "code": { "type": ["string", "null"], "maxLength": 40 },
+        "ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "The delay of an answer."
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Identical routine readings grouped into one line (×18)."
+        },
+        "cause": {
+          "type": "boolean",
+          "default": false,
+          "description": "The line of the failure."
+        },
+        "fields": {
+          "type": "object",
+          "maxProperties": 12,
+          "propertyNames": { "maxLength": 40 },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"],
+            "maxLength": 120
+          },
+          "description": "Up to 12 scalar fields, sanitized by the rules of a breadcrumb's fields."
+        }
+      },
+      "additionalProperties": false
+    },
+    "incident": {
+      "type": "object",
+      "description": "A device incident, carried by an entry device.incident.",
+      "required": [
+        "id",
+        "kind",
+        "family",
+        "action",
+        "cause",
+        "occurrences",
+        "sealedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid",
+          "description": "The incident's own id: a follow-up entry may repeat it with no lines and a larger occurrences."
+        },
+        "kind": { "enum": ["telescope", "mount"] },
+        "family": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]{1,24}$",
+          "description": "The driver's family: seestar, vespera, dwarf, lx200, synscan, ioptron, nexstar, alpaca, indi…"
+        },
+        "model": { "type": ["string", "null"], "maxLength": 80 },
+        "firmware": { "type": ["string", "null"], "maxLength": 40 },
+        "makerApp": {
+          "type": ["string", "null"],
+          "maxLength": 40,
+          "description": "The version of the maker's application, when the device tells it."
+        },
+        "linkKind": {
+          "enum": [
+            "telescopeWifi",
+            "network",
+            "ethernet",
+            "bluetooth",
+            "bridge",
+            null
+          ]
+        },
+        "verified": {
+          "type": ["boolean", "null"],
+          "description": "Whether the application holds the device as proven on the bench (true) or on trial (false)."
+        },
+        "action": {
+          "enum": [
+            "pointing",
+            "stacking",
+            "schedule",
+            "init",
+            "eviction",
+            "busy",
+            "plan",
+            "client",
+            "connect",
+            "sync",
+            "goTo",
+            "move",
+            "park",
+            "home",
+            "tracking",
+            "linkLost",
+            "silence",
+            "stop",
+            "other"
+          ]
+        },
+        "command": {
+          "type": ["string", "null"],
+          "maxLength": 120,
+          "description": "The command as the driver wrote it (iscope_start_view, :CM#)."
+        },
+        "params": {
+          "type": "object",
+          "maxProperties": 12,
+          "propertyNames": { "maxLength": 40 },
+          "additionalProperties": {
+            "type": ["string", "number", "boolean", "null"],
+            "maxLength": 120
+          },
+          "description": "The command's parameters, sanitized by the rules of a breadcrumb's fields."
+        },
+        "variant": { "type": ["string", "null"], "maxLength": 80 },
+        "step": { "type": ["string", "null"], "maxLength": 80 },
+        "attempt": { "type": ["integer", "null"], "minimum": 0 },
+        "attempts": { "type": ["integer", "null"], "minimum": 0 },
+        "durationMs": { "type": ["integer", "null"], "minimum": 0 },
+        "code": {
+          "type": ["string", "null"],
+          "maxLength": 80,
+          "description": "The device's code (251, e11, ASTROMETRY.IMAGE_TOO_DARK)."
+        },
+        "answer": {
+          "type": ["string", "null"],
+          "maxLength": 500,
+          "description": "The raw answer, already sanitized."
+        },
+        "elapsedMs": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "From the sending to the answer, or to the end of the wait."
+        },
+        "outcome": { "enum": ["answer", "silence", "error", "refused", null] },
+        "cause": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_.:-]{0,119}$",
+          "description": "A short stable code of the cause (seestar.pointing.251, lx200.sync.e11, synscan.goto.silence)."
+        },
+        "before": { "type": ["string", "null"], "maxLength": 200 },
+        "after": { "type": ["string", "null"], "maxLength": 200 },
+        "occurrences": { "type": "integer", "minimum": 1 },
+        "connectedMs": { "type": ["integer", "null"], "minimum": 0 },
+        "sealedAt": { "type": "string", "format": "date-time" },
+        "lines": {
+          "type": "array",
+          "maxItems": 90,
+          "items": { "$ref": "#/$defs/incidentLine" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "required": ["token", "entries"],
+      "properties": {
+        "token": {
+          "description": "The installation's diagnostic token: a random UUID born at installation, regenerated when the app is reinstalled or its data erased, never derived from the device or the space. Nothing on the service links it to a person.",
+          "$ref": "#/$defs/uuid"
+        },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/entry" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "accepting": {
+      "type": "object",
+      "required": ["accepting", "retentionDays"],
+      "properties": {
+        "accepting": { "const": true },
+        "retentionDays": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "received": {
+      "type": "object",
+      "required": ["received", "duplicates"],
+      "properties": {
+        "received": { "type": "integer", "minimum": 0 },
+        "duplicates": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "unredacted": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message", "entry", "rules"],
+          "properties": {
+            "code": { "const": "app_log_unredacted" },
+            "message": { "type": "string" },
+            "entry": { "type": "integer", "minimum": 0 },
+            "rules": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": ["secret", "identity", "network", "place", "plan"]
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

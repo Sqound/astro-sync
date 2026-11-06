@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/entitlements-private-server.schema.json",
+  "title": "Astro Portal API v1 entitlements of a private server",
+  "description": "The answer of GET /v1/entitlements on a private server: nothing is sold there, so purchases is always empty, and capabilities is the complete map of GET /v1/capabilities. A client ignores any other field.",
+  "type": "object",
+  "required": ["purchases", "capabilities"],
+  "properties": {
+    "purchases": {
+      "type": "array",
+      "maxItems": 0
+    },
+    "capabilities": {
+      "$ref": "capabilities.schema.json#"
+    }
+  }
+}

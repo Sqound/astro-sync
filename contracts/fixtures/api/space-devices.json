@@ -1,0 +1,255 @@
+{
+  "contract": "space-devices.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "list-devices",
+      "description": "« Mes appareils », from the phone or the web. `current` marks the caller. Astro Sync appears with `application: sync`.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/devices",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "devices": [
+            {
+              "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+              "name": "iPhone 16 Pro",
+              "application": "planner",
+              "platform": "ios",
+              "current": true,
+              "createdAt": "2026-09-29T21:15:30.000Z",
+              "lastSeenAt": "2026-09-29T21:14:00.000Z",
+              "lastSyncAt": "2026-09-29T21:14:00.000Z"
+            },
+            {
+              "id": "a0cba022-8caf-4cff-b9f7-d97506b07cdf",
+              "name": "iPad Air",
+              "application": "planner",
+              "platform": "ios",
+              "current": false,
+              "createdAt": "2026-09-20T19:02:11.000Z",
+              "lastSeenAt": "2026-09-27T22:40:00.000Z",
+              "lastSyncAt": "2026-09-27T22:40:00.000Z"
+            },
+            {
+              "id": "98dc0200-d02c-44a3-899b-129fa99f3e0c",
+              "name": "Astro Sync — MacBook Pro",
+              "application": "sync",
+              "platform": "macos",
+              "current": false,
+              "createdAt": "2026-09-21T08:00:00.000Z",
+              "lastSeenAt": "2026-09-28T06:10:00.000Z",
+              "lastSyncAt": null
+            }
+          ]
+        },
+        "schema": "space-devices.schema.json#/$defs/deviceList"
+      }
+    },
+    {
+      "id": "rename-device",
+      "description": "The pencil beside a device.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "PATCH",
+        "path": "/api/v1/devices/6daf99d9-1c14-4206-bae2-3cec9456a714",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": { "name": "iPhone de terrain" }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+          "name": "iPhone de terrain",
+          "application": "planner",
+          "platform": "ios",
+          "current": true,
+          "createdAt": "2026-09-29T21:15:30.000Z",
+          "lastSeenAt": "2026-09-29T21:16:00.000Z",
+          "lastSyncAt": "2026-09-29T21:14:00.000Z"
+        },
+        "schema": "space-devices.schema.json#/$defs/spaceDevice"
+      }
+    },
+    {
+      "id": "detach-lost-device",
+      "description": "A lost device detached from another device of the space, or from the web (with the CSRF header). Its next call answers `device_detached` and it erases its copy.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/devices/a0cba022-8caf-4cff-b9f7-d97506b07cdf",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": { "status": 204, "headers": {}, "body": null }
+    },
+    {
+      "id": "detach-this-device",
+      "description": "« Détacher cet appareil », the only way out. The application first sends what it has not sent yet, then calls this route, then erases the copy of the space; plans made without a space stay.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:14:00.000Z",
+        "deviceLastLeftASpaceAt": null
+      },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/devices/6daf99d9-1c14-4206-bae2-3cec9456a714",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": { "status": 204, "headers": {}, "body": null }
+    },
+    {
+      "id": "detach-this-device-limited",
+      "description": "The phone already left a space less than 24 hours ago: « Cet appareil a déjà été détaché aujourd'hui ». It stays attached.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:14:00.000Z",
+        "deviceLastLeftASpaceAt": "2026-09-29T09:30:00.000Z"
+      },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/devices/6daf99d9-1c14-4206-bae2-3cec9456a714",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 409,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "device_change_limited",
+            "message": "This device already left a space in the last 24 hours."
+          },
+          "retryAt": "2026-09-30T09:30:00.000Z",
+          "currentSpaceEmail": "v…@exemple.fr"
+        },
+        "schema": "space-devices.schema.json#/$defs/changeLimited"
+      }
+    },
+    {
+      "id": "sign-in-with-phone-without-space",
+      "description": "A phone that left a space two hours ago and belongs to none: attaching it is never refused, whatever the 24 hours.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "deviceLastLeftASpaceAt": "2026-09-29T19:15:00.000Z",
+        "phoneAttachedTo": null
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          },
+          "deviceToken": "wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "astro-sync-in-two-spaces",
+      "description": "Astro Sync on a computer already signed in to another space: no refusal, no limit, no message to the other space. It only sends.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "installationSignedInTo": "valerie@exemple.fr"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "730418",
+          "client": "app",
+          "device": {
+            "application": "sync",
+            "installationId": "astrosync-mac-7f3a9c2e1b4d",
+            "name": "Astro Sync — MacBook Pro",
+            "platform": "macos"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "98dc0200-d02c-44a3-899b-129fa99f3e0c",
+            "name": "Astro Sync — MacBook Pro"
+          },
+          "deviceToken": "QJR3D-0HcwGBdSXJ8IpOIuINTTIPAl2OHFyn1hIeyUQ"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "call-from-detached-device",
+      "description": "Any bearer call from a device that was detached — from the web, from another device, or because it was attached to another space.",
+      "given": { "authMode": "email-code", "deviceDetached": true },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/plans",
+        "headers": {
+          "authorization": "Bearer _TnPFO2hDeJ2METfMFu3N-zkfHiiMgEukkuU91Q6g10"
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "device_detached",
+            "message": "This device was detached from its space."
+          }
+        },
+        "schema": "space-devices.schema.json#/$defs/detached"
+      }
+    }
+  ]
+}

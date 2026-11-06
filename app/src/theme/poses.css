@@ -1,0 +1,299 @@
+/*
+ * « Mesure des poses »: the card of a target in
+ * « Fichiers » -- its curves, its table of the poses that depart -- and the
+ * case « Écarter les poses signalées » of « Traitements ». Every value is a
+ * `var(--as-*)` reference (no colour literal).
+ */
+
+.as-poses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  box-sizing: border-box;
+  border: 1px dashed var(--as-color-tertiary-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-poses__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-poses__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-poses__info {
+  min-height: 2rem;
+  padding: 0 var(--as-space-xs);
+}
+
+.as-poses__again {
+  margin-left: auto;
+}
+
+.as-poses__sample {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.as-poses__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-poses__foot--end {
+  justify-content: flex-end;
+}
+
+.as-poses__progress {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.as-poses__remaining {
+  margin-left: auto;
+}
+
+.as-poses__headline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.as-poses__headline--warning .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-poses__segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-sm);
+}
+
+.as-poses__curves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-poses__curve {
+  margin: 0;
+}
+
+.as-poses__curve figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-poses__curve svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.as-poses__axis {
+  fill: var(--as-color-muted-text);
+  font-size: 9px;
+}
+
+.as-poses__mark {
+  fill: var(--as-color-gold-accent);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.as-poses__baseline,
+.as-poses__grid {
+  stroke: var(--as-color-border);
+  stroke-width: 1;
+}
+
+.as-poses__grid {
+  opacity: 0.55;
+}
+
+.as-poses__median-line {
+  stroke: var(--as-color-muted-text);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.as-poses__twenty {
+  stroke: var(--as-color-gold-accent);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.as-poses__line {
+  stroke: var(--as-color-muted-text);
+  stroke-width: 1.2;
+}
+
+.as-poses__dot {
+  fill: var(--as-color-primary-text);
+}
+
+.as-poses__dot.is-flagged {
+  fill: var(--as-color-gold-accent);
+  stroke: var(--as-color-page-background);
+  stroke-width: 1;
+}
+
+.as-poses__band {
+  fill: var(--as-color-gold-accent);
+  opacity: 0.18;
+}
+
+.as-poses__hatch {
+  stroke: var(--as-color-border);
+  stroke-width: 3;
+}
+
+.as-poses__legend {
+  margin: 0;
+}
+
+.as-poses__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+}
+
+.as-poses__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.as-poses__table th,
+.as-poses__table td {
+  padding: var(--as-space-xs) var(--as-space-sm);
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* The reason is the one long cell: it wraps, so that nothing is cut in a
+   narrow card (« Traitements »). */
+.as-poses__table th:last-child,
+.as-poses__table td:last-child {
+  white-space: normal;
+  min-width: 9rem;
+}
+
+.as-pose-discard .as-poses__table th,
+.as-pose-discard .as-poses__table td {
+  padding: var(--as-space-xs);
+  font-size: 0.75rem;
+}
+
+.as-poses__table th {
+  color: var(--as-color-muted-text);
+  font-weight: 500;
+}
+
+.as-poses__table tbody tr {
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-poses__median td {
+  color: var(--as-color-muted-text);
+}
+
+.as-poses__table tr.is-flagged .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-poses__table tr.is-kept td {
+  color: var(--as-color-muted-text);
+}
+
+.as-poses__dialog {
+  max-width: 40rem;
+}
+
+.as-poses__rules {
+  margin: 0;
+}
+
+.as-poses__rules > div {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: var(--as-space-md);
+  padding: var(--as-space-sm) 0;
+  border-top: 1px solid var(--as-color-border);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.as-poses__rules dt {
+  font-weight: 700;
+}
+
+.as-poses__rules dd {
+  margin: 0;
+}
+
+/* « Traitements »: the case under a target's pipelines. */
+.as-pose-discard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-pose-discard--plain {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border-style: dashed;
+  font-size: 0.8125rem;
+}
+
+.as-pose-discard--plain p {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+}
+
+.as-pose-discard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  cursor: pointer;
+}
+
+.as-pose-discard__stacked {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.as-pose-discard__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}

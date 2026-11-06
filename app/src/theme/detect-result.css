@@ -1,0 +1,265 @@
+/* detect-result: « Détecter les sessions », the result. Only `var(--as-*)`
+   tokens. */
+
+.as-result__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-lg);
+  background: var(--as-color-panel);
+  padding: 0 var(--as-space-md);
+}
+
+.as-result__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr) auto 1.5rem;
+  align-items: start;
+  gap: var(--as-space-md);
+  padding: var(--as-space-md) 0;
+  border: 0;
+  border-bottom: 1px solid var(--as-color-border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.as-result__row:last-child {
+  border-bottom: 0;
+}
+
+/* Before step 4's primary the sessions do not exist yet: a row says what
+   will be created and opens nothing. */
+.as-result__row:disabled {
+  cursor: default;
+}
+
+.as-result__day,
+.as-result__what {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-result__what .as-nights__plan-tag {
+  align-self: flex-start;
+}
+
+.as-result__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--as-space-sm);
+}
+
+.as-result__origin {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-result__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin-top: var(--as-space-sm);
+}
+
+.as-result__heading {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.as-result__why {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-sm);
+}
+
+.as-result__row .as-badge {
+  font-size: 0.75rem;
+}
+
+/* The information above the cards of « Traitements »: what stays on this
+   computer, how long it may take, where the results are. */
+.as-treat__info-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-xs) var(--as-space-md);
+}
+
+/* The treatments of the sessions created and « Images à envoyer » -- steps 3
+   and 4 of the import. */
+.as-treat__cards,
+.as-treat__images {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-treat__card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-treat__card label,
+.as-treat__image label {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: var(--as-space-sm);
+}
+
+/* A target's card says its renders by name under its line (« Rendu
+   naturel · Correction bibande »), beside « Modifier ». */
+.as-treat__what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--as-space-xs);
+}
+
+.as-treat__pipelines {
+  color: var(--as-color-gold-accent);
+  font-size: 0.8125rem;
+}
+
+.as-treat__finish {
+  display: block;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.as-treat__card > .as-button {
+  flex: none;
+}
+
+.as-treat__card input,
+.as-treat__image input {
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-treat__image {
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-sm) 0;
+}
+
+.as-treat__image.is-full {
+  color: var(--as-color-muted-text);
+}
+
+.as-treat__meta {
+  display: block;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+/* A variant stands beneath its capture; every image shows a thumbnail, its
+   path (a link that opens it) and « Afficher dans le Finder ». */
+.as-treat__image.is-variant {
+  margin-left: var(--as-space-lg);
+  border-top-style: dashed;
+}
+
+.as-treat__why {
+  color: var(--as-color-warning);
+}
+
+.as-treat__file {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  margin-top: var(--as-space-xs);
+  padding-left: calc(var(--as-space-lg) + var(--as-space-sm));
+}
+
+.as-treat__thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 7.5rem;
+  height: 5rem;
+  overflow: hidden;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-sm);
+  background: var(--as-color-panel);
+}
+
+.as-treat__thumb img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.as-treat__links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  gap: var(--as-space-xs);
+  justify-items: start;
+}
+
+.as-treat__path {
+  max-width: 100%;
+  font-size: 0.8125rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.as-treat__running {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-sm);
+}
+
+.as-result__skipped ul {
+  margin: var(--as-space-xs) 0 0;
+  padding-left: var(--as-space-lg);
+}
+
+/* « Vos fichiers » of « Récapitulatif » is an option ticked with the others,
+   applied by the step's primary: a tick, its words, the link to the sheet; or
+   one line when every file is in place already. */
+.as-tidy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-tidy__option {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  cursor: pointer;
+}
+
+.as-tidy__state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+}
+
+.as-tidy__glyph {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+  color: var(--as-color-success);
+}

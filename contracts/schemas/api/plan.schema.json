@@ -1,0 +1,529 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/plan.schema.json",
+  "title": "Astro Portal API v1 plan resources",
+  "$defs": {
+    "darkness": {
+      "description": "The darkness threshold that bounds this plan's night: the Sun below -18° (`astronomical`), -12° (`nautical`) or -6° (`civil`). ABSENT means astronomical, the planner's own definition; a reader treats any other value as absent (packages/portal/src/planner/state.js `normalizePlanDarkness`).",
+      "enum": ["astronomical", "nautical", "civil"]
+    },
+    "nightSpan": {
+      "description": "The span of the night this plan keeps: the whole usable night of its `darkness` (`astronomical` mode), or a `custom` span between two UTC instants. ABSENT means `astronomical`. A reader normalises it once (packages/portal/src/planner/state.js `normalizeNightSpan`): an unknown value is dropped; a custom span is rounded to ten minutes, kept between the night's sunset and sunrise, and falls back to `astronomical` when it lasts less than thirty minutes. Shortening the night never deletes a target.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["mode"],
+          "properties": { "mode": { "const": "astronomical" } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["mode", "start", "end"],
+          "properties": {
+            "mode": { "const": "custom" },
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "closedAs": {
+      "description": "Additive: the status a device recorded on this plan once it ran its night, before any debriefing: `executed` (every target finished), `partial`, or `abandoned` / `archived` (the person's own gesture on the device). `PUT /v1/plans/{planId}` writes only active plans, so the resource `status` stays `active` and the plan stays writable: the field is what carries a finished night across the plan sync, in both directions. A device sends it whenever the plan it holds is in one of these states, and OMITS it for an active plan (which is how « Reprendre la nuit » clears it). A reader takes the resource `status` when it is not `active` (the debriefing decision froze the plan: it is the authority) and `closedAs` otherwise, so a sync never turns a finished plan back into `active`. `abandoned` is the exception: a night given up needs no debriefing, so the write that sets `closedAs: \"abandoned\"` (a creation, or a change of the value) is also the decision « Abandonné », taken in the same transaction: the answer reads `status: \"abandoned\"` with `frozenAt` set, the plan is not in the debrief queue and its next write is refused `409 plan_frozen`. The server stores and serves it untouched, refuses any other value with `400 invalid_payload`, and keeps it through a whole-document save of a browser that does not carry it; a stale write (revision behind) is set aside as ever and never clears it.",
+      "enum": ["executed", "partial", "abandoned", "archived"]
+    },
+    "archivedFrom": {
+      "description": "Additive: the state an archived plan had before its archive: `executed`, `partial` or `abandoned`. An archive replaces the plan's status, so this is what lets a card say « Abandonné » then « Archivé » instead of « Archivé » alone.",
+      "enum": ["executed", "partial", "abandoned"]
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "place": {
+      "type": "object",
+      "description": "The plan's observing place, as the web planner and the mobile planner both write it (packages/portal/src/planner/state.js `normalizePlace`). It is what the server derives `nightStartAt`/`nightEndAt` from. Coordinates may arrive as numbers or as decimal strings; `timeZone` is an IANA name and an absent or unusable one is read as UTC, exactly as the planner's own `validTimeZone` does. The whole object stays OPTIONAL: a plan created by a surface that has no place carries none, and its night is then simply unknown.",
+      "properties": {
+        "id": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string" },
+        "locality": { "type": "string" },
+        "latitude": { "type": ["number", "string"] },
+        "longitude": { "type": ["number", "string"] },
+        "elevation": { "type": ["number", "string"] },
+        "timeZone": { "type": "string" },
+        "timeZoneSource": { "enum": ["chosen"] },
+        "horizonStatus": { "enum": ["verified", "unverified"] },
+        "knownPlace": {
+          "description": "Additive: the link to the known place this place was added from, as in planner/planner-document.schema.json. The known place's details are never stored here.",
+          "type": "object",
+          "required": ["source", "id", "type", "linkedAt"],
+          "properties": {
+            "source": { "const": "osm" },
+            "id": {
+              "type": "string",
+              "pattern": "^(node|way|relation)/[1-9][0-9]*$"
+            },
+            "type": { "enum": ["viewpoint", "campsite", "park", "picnic"] },
+            "linkedAt": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
+        },
+        "skyEntered": {
+          "description": "Additive: the sky background the observer typed for the place, as in planner/planner-document.schema.json.",
+          "type": "object",
+          "required": ["sqm", "enteredAt"],
+          "properties": {
+            "sqm": { "type": "number", "minimum": 14, "maximum": 22.5 },
+            "enteredAt": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "acquisitionLine": {
+      "description": "Additive (« Prise de vue par cible »): one acquisition line a person chose for a plan — the line of the captures' contract (capture.schema.json `proposedAcquisitionLine`) with the same names, units and bounds, plus `binning`, so that what was planned and what was measured compare field by field. Every field is OPTIONAL and an absent one is INHERITED (the target's line, then `item.filter` for the filter of the first line, then the plan's `acquisitionDefaults`, then the suggestion computed on reading — never stored). `filter`: the filter as the person names it (1 to 40 characters, trimmed, never normalised; its family is derived on reading), `null` for « no filter ». `exposureSeconds`: one exposure, in seconds (0.005 for 5 ms). `gain`: the camera's gain, or a camera body's ISO, as an integer; `null` for « the device's own setting ». `binning`: 1 to 8. `frameCount`: the number of exposures; absent lets the time slot decide. Written by the web planner and the mobile planner when the person chooses a value, never by a rule. A write that carries a value out of these bounds is refused `400 invalid_payload` with `error.field` (its path in the payload, `items[0].acquisition.lines[0].exposureSeconds`) and `error.limit`; a field the line does not define is dropped. Every reader (the service, packages/portal/src/planner/plan-acquisition.js `normalizePlanAcquisition`, and the clients) keeps what it understands and discards the rest.",
+      "type": "object",
+      "properties": {
+        "filter": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 40 },
+            { "type": "null" }
+          ]
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "gain": {
+          "anyOf": [
+            { "type": "integer", "minimum": -1000, "maximum": 100000 },
+            { "type": "null" }
+          ]
+        },
+        "binning": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "frameCount": { "type": "integer", "minimum": 1, "maximum": 100000 }
+      },
+      "additionalProperties": false
+    },
+    "acquisition": {
+      "description": "Additive: the acquisition lines of one target, 1 to 8 (one for a colour camera or a single filter; several for a mono camera, L, R, G, B or Hα, O III, or an alternation of filters). The first line's `filter`, when it is present, is copied into the item's `filter` by every writer and by the service (`null` as `\"\"`), so that a reader that does not know `acquisition` — the iCalendar export, the printable sheet, an installed application of an earlier version — still shows the right filter: the first line wins.",
+      "type": "object",
+      "required": ["lines"],
+      "properties": {
+        "lines": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/acquisitionLine" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "launchedSchedule": {
+      "description": "The plan as it stood when its night was launched (additive): one entry per slotted item, in the order of the slots, with the minutes the item's `startMinute`/`endMinute` held at that instant, counted from the plan's night start. Written ONCE, by the mobile application's launch (`NightSessionController.launchPlan`, before any start of the launch is trimmed), and never rewritten: every surface that saves the plan keeps it as it is. `targetId` is the item's `targetId`, else the item's own `id` (the key the execution screen folds a target by). The execution screen draws every drift of the night against it (the frozen plan), the visual night draws it as its « Prévu » rail; a plan launched without it simply has no frozen reference. ABSENT before the launch.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["planItemId", "targetId", "startMinute", "endMinute"],
+        "properties": {
+          "planItemId": { "type": "string", "minLength": 1 },
+          "targetId": { "type": "string", "minLength": 1 },
+          "startMinute": { "type": "number", "minimum": 0 },
+          "endMinute": { "type": "number", "minimum": 0 },
+          "acquisition": {
+            "$ref": "#/$defs/acquisition",
+            "description": "Additive: the EFFECTIVE acquisition lines of this item at the instant of the launch — the person's choices and the suggestion resolved, every field the launch knew written — frozen with the slot by the same launch (`NightSessionController.launchPlan`) and never rewritten: the debriefing compares what was measured to them, and a later change of the suggestion rule does not rewrite what was planned. ABSENT for a plan launched before it existed (its debriefing shows the measured lines alone)."
+          },
+          "ruleVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Additive: the version of the suggestion rule that resolved the frozen `acquisition`, written with it by the launch."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "planItem": {
+      "type": "object",
+      "description": "One planned target. The write route requires a unique non-empty `id` of at most 200 characters and accepts anything else; the fields named here are the ones a plan written by the web planner or by the mobile planner really carries. `startMinute`/`endMinute`/`durationMinutes` are the step-4 timeline's TIME SLOT, counted in whole minutes from the START OF THE NIGHT — `nightStartAt`, the same origin the planner measures its own timeline from. A zero-length slot (`startMinute == endMinute`) is a real, deliberate value: it is what a catalogue-sourced add produces before the schedule editor places it. `target` is the frozen catalogue snapshot the planner keeps so a later catalogue refresh cannot rewrite the plan. Nothing here is required by this schema: an item from a surface that has no timeline carries no slot at all, and the plan-to-session mapping has an explicit fallback for it.\n\nPhase 6 ter: an item MAY carry `framingId`, referencing an independent framing resource (`framing.schema.json`) instead of embedding one. STORED form (what a client writes): `target` is reduced to `{ id, plannerSource: \"framing\", framingId }` — any other `target`/`target.framing` content a client sends alongside `framingId` is ignored by the server, never a backdoor to edit a framing through a plan write. SERVED form (what every read hydrates to): `target` is replaced by the framing's own `savedFramingTarget` shape (name included), plus `framingId`, `framingRevision` and `framingState` layered on top. An item whose `target.framing` exists WITHOUT `framingId` (data predating this field) is a tolerated read-only relic: it is neither migrated nor refused, just never treated as a library framing.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "framingId": { "$ref": "#/$defs/uuid" },
+        "projectId": {
+          "$ref": "#/$defs/uuid",
+          "description": "Additive: the project — shown as a multi-night plan — this interval works for (`project.schema.json`). The server stores and serves it on every write and read path. When it appears or changes on an item, the write is checked as `POST /v1/projects/{projectId}/nights` checks a plan: `403 multi_night_not_active` with `capability: \"planner.mosaic\"` (also on a private server), `404 project_not_found`, `409 target_mismatch` for an item that is not of the target of that multi-night plan; taking it away detaches and needs the same right. A write that leaves every `projectId` as it was is never checked, and a client without `planner.mosaic` simply shows a normal plan."
+        },
+        "filter": {
+          "type": "string",
+          "description": "The item's filter, as the planners have always written it (`\"\"` for none). When `acquisition.lines[0].filter` is present it is the same value (`\"\"` for its `null`), copied by every writer and aligned by the service on every write and read."
+        },
+        "acquisition": {
+          "$ref": "#/$defs/acquisition",
+          "description": "Additive: the acquisition lines the person chose for this target, written by the web planner and the mobile planner; absent while nothing was chosen (every value then comes from the plan's `acquisitionDefaults`, else the suggestion). « Revenir aux suggestions » removes it. Shown and proposed in photography mode only; kept as it is in visual mode. Needs no capability."
+        },
+        "startMinute": { "type": "number", "minimum": 0 },
+        "endMinute": { "type": "number", "minimum": 0 },
+        "durationMinutes": { "type": "number", "minimum": 0 },
+        "target": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object",
+      "description": "The plan document as the browser and the mobile planner exchange it. `id` is the BROWSER client id, never the server UUID. Beyond the four required fields it stays open, and the properties named here are the ones the server reads: `location` and `date` derive the night boundaries, `items` carry the time slots, and `equipment` is the night's equipment selection — the frozen plan remains its single source of truth and it is never copied onto a session.",
+      "required": ["id", "date", "name", "items"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "date": { "type": "string", "format": "date" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "location": {
+          "anyOf": [{ "$ref": "#/$defs/place" }, { "type": "null" }]
+        },
+        "equipment": {
+          "anyOf": [{ "type": "object" }, { "type": "null" }],
+          "description": "The night's equipment selection, an open object. `windTolerance` (optional): `{ preset: \"light\" | \"standard\" | \"heavy\" | \"custom\", sustainedKmh, gustKmh }`, the wind and gust limits of the plan's mount in km/h, copied from the device or browser setting of that mount; absent reads as standard. The server stores it as given."
+        },
+        "darkness": { "$ref": "#/$defs/darkness" },
+        "nightSpan": { "$ref": "#/$defs/nightSpan" },
+        "acquisitionDefaults": {
+          "$ref": "#/$defs/acquisitionLine",
+          "description": "Additive: the plan's defaults — the line the person chose for the whole night (exposure, gain, filter; binning and frame count under « Plus de réglages »), written by the web planner and the mobile planner; a field chosen here holds for every target that does not choose its own, a field left absent stays suggested target by target. ABSENT while nothing was chosen; a reader removes an empty one."
+        },
+        "launchedSchedule": { "$ref": "#/$defs/launchedSchedule" },
+        "closedAs": { "$ref": "#/$defs/closedAs" },
+        "guidedEvening": {
+          "type": "boolean",
+          "description": "Additive: `true` on the internal plan of a guided evening (an evening with help to aim, a mount or a shared screen), made by the phone for the sake of the data model. It is outside the rule of one plan per night (`planner.multiple`, `409 plan_limit_reached` with `reason: night`) and outside the rule of one place per night (`409 plan_night_place_conflict`): it is never refused by them and never counts for them, and it lives the same night as the night's ordinary plan; it is outside the numeric guard on pending plans (`sync.plan_limit`) too. It is never in the debrief queue and never asked for a debriefing, it is not the plan of the night's execution, and it is shown as « Soirée guidée » (named by its `name`, the evening's title), never as a plan. A phone sends it with `blankExecution: true` and the `guided_evening` event of its session. The service stores it untouched, serves it back, and keeps it through a whole-document save of a browser that does not carry it; omitted or `false` for every other plan."
+        },
+        "archivedFrom": {
+          "$ref": "#/$defs/archivedFrom",
+          "description": "Additive: written by a device beside `closedAs: \"archived\"` when it archives a plan, the state the plan had (`executed`, `partial` or `abandoned`), so that a plan archived on a device before the service answers still reads « Abandonné » then « Archivé ». A device omits it for a plan that is not archived or was still planned. The service stores it untouched and serves it back; the resource-level `archivedFrom` is the one a reader takes first."
+        },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/planItem" } }
+      },
+      "additionalProperties": true
+    },
+    "resource": {
+      "type": "object",
+      "description": "`nightStartAt` and `nightEndAt` are SERVER-DERIVED from the payload's night-of `date` and observing place, with the planner's own definition of the night (Sun at or below -18 degrees, searched from local civil noon). They are read-only: a client never sends them, and a payload that carries fields of those names does not set them. Both are null together when the payload names no usable place or the Sun never crosses -18 degrees that night; the portal then never invents a night. See api/v1.md, section \"The night boundaries of a plan\". Additive: `sessionMissing` (`true`) and `deletedSessionId` are written only for a plan a debriefing froze (`executed`, `partial`, `abandoned`, or archived after one) that holds **no live session**: its session was deleted or is gone (« Session manquante »). `deletedSessionId` names the deleted session the trash can restore (the one deleted last); without it the session cannot come back and `POST /v1/plans/{planId}/session` makes it again. A plan with a live session, and a plan that was never debriefed, carry neither.",
+      "required": ["id", "revision", "status", "payload", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["active", "executed", "partial", "abandoned", "archived"]
+        },
+        "nightStartAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "nightEndAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "frozenAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "archivedFrom": {
+          "description": "Additive, read-only: the state the plan had before its archive (`executed`, `partial` or `abandoned`), `null` for a plan that is not archived, was archived while it was still planned, or was archived before the service recorded it. A plan the service froze and archives keeps its outcome (`plans.archived_from`); a plan a device archived without the service freezing it (`status` `active`, `payload.closedAs` `archived`) reports the `payload.archivedFrom` the device wrote. A reader takes this field first and falls back to `payload.archivedFrom` when it is absent (a service that predates it); a client that predates it ignores it. Never written: a write that carries it does not set it.",
+          "anyOf": [{ "$ref": "#/$defs/archivedFrom" }, { "type": "null" }]
+        },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "payload": { "$ref": "#/$defs/payload" },
+        "sessionMissing": {
+          "description": "`true` when the plan was debriefed and its session is missing (« Session manquante »).",
+          "type": "boolean",
+          "const": true
+        },
+        "deletedSessionId": {
+          "description": "The deleted session of the plan that the trash can restore, when there is one.",
+          "$ref": "#/$defs/uuid"
+        },
+        "liveSessionId": {
+          "description": "Additive, read-only: written only for an `executed`, `partial` or `archived` plan that a live session (not in the trash) still names, the oldest one. Such a plan goes to the trash (`DELETE /v1/plans/{planId}`) once no live session names it; until then the deletion answers `403 plan_not_deletable` with `sessionIds`.",
+          "$ref": "#/$defs/uuid"
+        },
+        "executionState": {
+          "description": "Additive, read-only: where the night of this plan stands on a device. `running` — a live session of the plan is open; `paused` — it is open and its last `pause` event has no `resume` after it. ABSENT means `none`: no session of the plan is open (never started, finished, abandoned, debriefed). Derived by the service from the session, never written by a client: a write that carries it does not set it. A surface that reads `running` or `paused` shows the plan as « Nuit en cours » with its `launchedSchedule` read-only, and does not offer to edit, delete or execute it (api/v1.md, « A night that runs on a device »).",
+          "enum": ["running", "paused"]
+        },
+        "executionSessionId": {
+          "description": "Additive, read-only: the open session behind `executionState`; present exactly when `executionState` is.",
+          "$ref": "#/$defs/uuid"
+        }
+      },
+      "additionalProperties": false
+    },
+    "version": {
+      "type": "object",
+      "required": ["versionId", "revision", "state", "payload", "createdAt"],
+      "properties": {
+        "versionId": { "$ref": "#/$defs/uuid" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "state": { "type": "string", "enum": ["history", "set_aside"] },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "purgeAfter": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "origin": { "type": "string", "enum": ["field", "web"] },
+        "deviceLabel": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 120 },
+            { "type": "null" }
+          ]
+        },
+        "payload": { "$ref": "#/$defs/payload" }
+      },
+      "additionalProperties": false
+    },
+    "archiveResponse": {
+      "description": "`POST /v1/plans/{planId}/archive` and `POST /v1/plans/{planId}/unarchive` (D-extra): the plan, archived (`status: \"archived\"`; its payload, its debriefing and its session untouched) or given back the status it had. `archive` is for a plan the service froze, which `PUT` no longer writes; an active plan is archived by writing it with `closedAs: \"archived\"` (`409 plan_not_frozen`).",
+      "type": "object",
+      "required": ["plan"],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/resource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recreateSessionResponse": {
+      "description": "`POST /v1/plans/{planId}/session` : « Recréer la session à partir du plan ». The plan, back to the debriefing (active, not frozen, its closure in `payload.closedAs`), and the session made from it (finished, `origin: \"debrief\"`, no event, `outcome: null`: « À débriefer »). `409 plan_not_debriefed`, `409 plan_archived`, `409 session_exists` (with the `sessionId`).",
+      "type": "object",
+      "required": ["plan", "session"],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/resource"
+        },
+        "session": {
+          "$ref": "session.schema.json#/$defs/resource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deletedPlanEntry": {
+      "description": "One plan of one night in the trash, as `GET /v1/plans/deleted` lists it: the plan as it was (`plan`, the resource with its revision and payload), when it was deleted (`deletedAt`), when the maintenance erases it (`purgeAt`, `deletedAt` plus `graceDays`), the whole days left (`daysRemaining`, rounded up, never below 0), and the multi-night plan it went to the trash with (`projectId`, `null` when it was deleted on its own; restoring that multi-night plan brings it back too).",
+      "type": "object",
+      "required": [
+        "plan",
+        "deletedAt",
+        "purgeAt",
+        "daysRemaining",
+        "projectId"
+      ],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/resource"
+        },
+        "deletedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "purgeAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "daysRemaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "deletedProjectEntry": {
+      "description": "One multi-night plan in the trash: the resource as it was (`project`), `deletedAt`, `purgeAt`, `daysRemaining`, the plans of one night that went to the trash with it (`planIds`: its nights still to come) and how many nights already run were detached from it (`detachedSessionCount`: they stayed in the Journal as ordinary sessions; its restoration attaches them again when they are still free).",
+      "type": "object",
+      "required": [
+        "project",
+        "deletedAt",
+        "purgeAt",
+        "daysRemaining",
+        "planIds",
+        "detachedSessionCount"
+      ],
+      "properties": {
+        "project": {
+          "$ref": "project.schema.json#/$defs/resource"
+        },
+        "deletedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "purgeAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "daysRemaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        "detachedSessionCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "deletedList": {
+      "description": "`GET /v1/plans/deleted` (web session only): the plans of one night (`plans`) and the multi-night plans (`projects`) in the trash, the most recently deleted first. `graceDays` is how long they are kept (30). A read never held by a right.",
+      "type": "object",
+      "required": ["plans", "projects", "graceDays"],
+      "properties": {
+        "plans": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deletedPlanEntry"
+          }
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deletedProjectEntry"
+          }
+        },
+        "graceDays": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "restoreResponse": {
+      "description": "`POST /v1/plans/{planId}/restore`: the plan back from the trash, its revision up by one (a device's stale copy then conflicts instead of overwriting it).",
+      "type": "object",
+      "required": ["plan"],
+      "properties": {
+        "plan": {
+          "$ref": "#/$defs/resource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "eraseResponse": {
+      "description": "`POST /v1/plans/{planId}/erase`: the plan of the trash erased for good.",
+      "type": "object",
+      "required": ["planId", "erased"],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "erased": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "inProgressError": {
+      "description": "`409 plan_in_progress`: the web asked to delete a plan whose night runs on a device. `executionSessionId` is the open session, `lastSignalAt` the last time the service heard of it; `DELETE /v1/plans/{planId}?force=true` deletes the plan anyway and takes that session to the trash with it.",
+      "type": "object",
+      "required": ["error", "executionSessionId", "lastSignalAt"],
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/error/properties/error"
+        },
+        "executionSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastSignalAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 },
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Additive: with `400 invalid_payload` for a value of the acquisition lines out of bounds, the refused field by its path in the payload (`acquisitionDefaults.gain`, `items[2].acquisition.lines[0].exposureSeconds`, `launchedSchedule[0].ruleVersion`), as a capture's `invalid_metadata` names it."
+            },
+            "limit": {
+              "type": ["number", "null"],
+              "description": "Additive: with `field`, the bound the value crossed (`40` for a filter, `0` or `86400` for an exposure, `8` for a binning or a number of lines), `null` for a type."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/resource" },
+    {
+      "type": "object",
+      "required": ["plans"],
+      "properties": {
+        "plans": { "type": "array", "items": { "$ref": "#/$defs/resource" } },
+        "deletedPlanIds": {
+          "description": "Additive (SPACE-DATA-MANAGE-01): the ids of the space's deleted plans — in the trash, or deleted before it existed — so that a device drops the copy it keeps of a plan deleted on another surface (a copy with a local edit not sent yet is kept). A plan restored from the trash is in `plans` again and no longer here; an erased plan is no longer named. A reader that predates it ignores it.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["payload"],
+      "properties": { "payload": { "$ref": "#/$defs/payload" } },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "The refused plan write. `versionId` names the set_aside version a stale PUT was stored as. `supplementId` and `sessionId` name the session supplement a PUT to a FROZEN plan that already has a session was stored as instead: nothing is discarded, nothing is rewritten, and the submitted payload is readable again through that session's supplements.",
+      "required": ["error", "serverRevision", "serverPayload"],
+      "properties": {
+        "error": { "$ref": "#/$defs/error/properties/error" },
+        "serverRevision": { "type": "integer", "minimum": 1 },
+        "serverPayload": { "$ref": "#/$defs/payload" },
+        "versionId": { "$ref": "#/$defs/uuid" },
+        "supplementId": { "$ref": "#/$defs/uuid" },
+        "sessionId": { "$ref": "#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

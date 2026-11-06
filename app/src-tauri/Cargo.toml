@@ -1,0 +1,48 @@
+[package]
+name = "app"
+version = "1.0.0"
+description = "The desktop application of Astro Sync"
+authors = ["Sqound"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The behavior library: every mutating command below is a thin wrapper
+# calling into it, never a reimplementation (see README.md and
+# this crate's own module doc comment).
+astro-sync-core = { version = "1.0.0", path = "../../crates/astro-sync-core" }
+
+[dev-dependencies]
+# Tauri's own mock runtime, to drive the real command wrappers through the
+# IPC without a window (`src/wake_tests.rs`).
+tauri = { version = "2", features = ["test"] }
+# The mock keyring, so no test ever touches the OS credential store.
+keyring = "3.6"
+# Only for `astro-sync-core`'s shared fake service, which checks a finalized
+# file's SHA-256.
+sha2 = "0.10"
+
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

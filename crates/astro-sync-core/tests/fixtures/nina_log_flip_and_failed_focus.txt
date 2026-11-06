@@ -1,0 +1,8 @@
+DATE|LEVEL|SOURCE|MEMBER|LINE|MESSAGE
+2026-10-08T00:10:00.0000|INFO|SequenceItem.cs|Run|50|Starting target IC 1396
+2026-10-08T00:11:00.0000|INFO|CameraVM.cs|Capture|88|Starting Exposure - Exposure Time: 300s; Filter: OIII; Gain: 120; Offset: 30; Binning: 2x2;
+2026-10-08T00:30:00.0000|INFO|MeridianFlipVM.cs|DoFlip|12|Meridian Flip - Initiating meridian flip
+2026-10-08T00:34:00.0000|INFO|MeridianFlipVM.cs|DoFlip|80|Meridian Flip - finished
+2026-10-08T00:35:00.0000|INFO|AutoFocusVM.cs|StartAutoFocus|120|Starting AutoFocus
+2026-10-08T00:38:00.0000|WARNING|AutoFocusVM.cs|StartAutoFocus|300|AutoFocus failed: not enough stars detected
+2026-10-08T00:40:00.0000|INFO|CameraVM.cs|Capture|88|Starting Exposure - Exposure Time: 300s; Filter: OIII; Gain: 120; Offset: 30; Binning: 2x2;

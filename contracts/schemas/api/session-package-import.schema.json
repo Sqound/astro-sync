@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session-package-import.schema.json",
+  "title": "Astro Portal API v1 open session package import",
+  "description": "POST /v1/sessions/{id}/imports/preview and .../imports/confirm (the package contract itself is packages/astro-contracts/schemas/session-package/). Both routes share one request shape: the exact raw text of manifest.json (`manifestJson`) and of checksums.sha256 (`checksums`), plus an optional `documents` map carrying the inline bytes of every metric-log/event-log/other asset. Image and progression assets are never inlined in this request — they are stored media and must already have been uploaded ahead of the import through POST /v1/uploads (capture.schema.json), then resolved here by the sha256 checksums.sha256 names, on the same content-addressed doctrine every other capture write already follows. `preview` validates, checks idempotency and reports exactly what would happen, persisting nothing; `confirm` does the same and then persists, idempotently keyed on the manifest's own fingerprint (the SHA-256 of manifestJson's exact bytes) at the tenant level: re-confirming the same bytes, for this session or any other, replays the first result and writes nothing new. See api/v1.md, section \"Open session package import\".",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "assetKind": {
+      "type": "string",
+      "enum": ["image", "metric-log", "event-log", "progression", "other"]
+    },
+    "importRequest": {
+      "type": "object",
+      "description": "The shared request body of both routes. `manifestJson` and `checksums` MUST be the exact raw text of the package's own manifest.json and checksums.sha256 files -- not a re-serialized JSON object -- so the manifest fingerprint this contract's idempotency depends on is stable and reproducible. `documents` is required only when the manifest lists at least one metric-log/event-log/other asset; a request omitting an entry a listed document asset needs is refused, never silently skipped.",
+      "required": ["manifestJson", "checksums"],
+      "properties": {
+        "manifestJson": { "type": "string", "minLength": 1 },
+        "checksums": { "type": "string", "minLength": 1 },
+        "documents": {
+          "type": "object",
+          "description": "Package-root-relative path (exactly as it appears in the manifest) to base64-encoded file content, for every metric-log/event-log/other asset only.",
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "byKindCount": {
+      "type": "object",
+      "required": ["count", "bytes"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "recognized": {
+      "type": "object",
+      "description": "What the package contains, exactly as `confirm` would persist it -- the dry-run report's core (README, \"Portal import begins with a dry-run report showing recognized data, warnings, visibility, and exact transfer size\").",
+      "required": ["assetCount", "totalBytes", "byKind"],
+      "properties": {
+        "assetCount": { "type": "integer", "minimum": 1 },
+        "totalBytes": { "type": "integer", "minimum": 0 },
+        "byKind": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/byKindCount" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "warning": {
+      "type": "object",
+      "description": "A non-fatal note about one asset -- the package still imports, but something about it is worth surfacing. `capture_attached_elsewhere`: this asset's bytes are already a capture belonging to a different session, and that association will not change (a capture's session is fixed at its first creation, everywhere in this contract). `capture_session_unset`: this asset's bytes are an existing capture with no session at all; confirming this import will not retroactively attach it.",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": ["capture_attached_elsewhere", "capture_session_unset"]
+        },
+        "path": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "previousImportSummary": {
+      "type": "object",
+      "required": ["sessionId", "importedAt", "assetCount", "bytes"],
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "importedAt": { "$ref": "#/$defs/timestamp" },
+        "assetCount": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "previewResponse": {
+      "type": "object",
+      "description": "200 response of POST .../imports/preview. Persists nothing, always -- calling this repeatedly for the same or a different package never changes portal state.",
+      "required": [
+        "manifestSha256",
+        "alreadyImported",
+        "recognized",
+        "warnings",
+        "visibility"
+      ],
+      "properties": {
+        "manifestSha256": { "$ref": "#/$defs/sha256" },
+        "alreadyImported": { "type": "boolean" },
+        "previousImport": { "$ref": "#/$defs/previousImportSummary" },
+        "recognized": { "$ref": "#/$defs/recognized" },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/warning" }
+        },
+        "visibility": { "const": "private" }
+      },
+      "additionalProperties": false
+    },
+    "confirmResponse": {
+      "type": "object",
+      "description": "200 response of POST .../imports/confirm, on the first confirm of this manifest fingerprint AND on every later replay alike -- `alreadyImported` is the only field that tells them apart; every other field replays the first confirm's own recorded values. `capturesLinked`/`documentsAttached` are present only on the first confirm (a replay does not recompute them from a request it may not even re-derive the same way).",
+      "required": [
+        "manifestSha256",
+        "alreadyImported",
+        "sessionId",
+        "importedAt",
+        "assetCount",
+        "bytes",
+        "warnings"
+      ],
+      "properties": {
+        "manifestSha256": { "$ref": "#/$defs/sha256" },
+        "alreadyImported": { "type": "boolean" },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "importedAt": { "$ref": "#/$defs/timestamp" },
+        "assetCount": { "type": "integer", "minimum": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "capturesLinked": { "type": "integer", "minimum": 0 },
+        "documentsAttached": { "type": "integer", "minimum": 0 },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/warning" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "The route-specific refusal codes, on top of the generic v1 error envelope (api/v1.md, \"Error envelope\"). `invalid_path`: a manifest asset path fails either of the two independent traversal checks the session-package README requires. `checksum_mismatch`: a checksums.sha256 line is missing/malformed/duplicated, an inline document's bytes do not hash to its declared digest, or an already-uploaded capture's byte size disagrees with the manifest. `asset_not_uploaded`: an image/progression asset's sha256 is not yet a capture in this tenant -- upload it through POST /v1/uploads first. `entitlement_read_only`: the soft-downgrade write gate, exactly as POST /v1/uploads already answers it.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "invalid_request",
+                "invalid_path",
+                "checksum_mismatch",
+                "asset_not_uploaded",
+                "session_not_found",
+                "entitlement_read_only"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/importRequest" },
+    { "$ref": "#/$defs/previewResponse" },
+    { "$ref": "#/$defs/confirmResponse" },
+    { "$ref": "#/$defs/refusal" }
+  ]
+}

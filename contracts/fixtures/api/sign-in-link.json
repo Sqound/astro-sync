@@ -1,0 +1,47 @@
+{
+  "contract": "sign-in.schema.json",
+  "status": "built",
+  "links": [
+    {
+      "id": "link-of-the-message",
+      "description": "The « Ouvrir PlanAstro » button of the message. Its origin is the public address of the service (`webUrl`); its path is always `/auth/link`; everything else is in the fragment, which a browser never sends to the service. On a phone where the application is installed, the operating system hands the whole address to the application (universal link on iOS, verified App Link on Android, both declared for the path `/auth/link`); the application uses it only when it has a request in progress on this device, for the address the person typed: it reads `token` and calls POST /v1/sign-in/verify with `linkToken` and that address; otherwise it ignores the token and opens its sign-in screen. Anywhere else the browser opens the page below, which shows the code and nothing else.",
+      "url": "https://portal.example.test/auth/link#v=1&token=L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s&code=481207&expires=2026-09-29T21%3A24%3A00.000Z&lang=fr",
+      "fragment": {
+        "v": "1",
+        "token": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+        "code": "481207",
+        "expires": "2026-09-29T21:24:00.000Z",
+        "lang": "fr"
+      },
+      "schema": "sign-in.schema.json#/$defs/linkFragment"
+    }
+  ],
+  "exchanges": [
+    {
+      "id": "link-page-visited",
+      "description": "Any visit of the link in a browser — a person on a computer, or a mail scanner. The service receives no token and no code (they are in the fragment); it answers the same static page every time, reads nothing, writes nothing, uses up nothing and opens no session. The page reads the fragment in the browser and shows « Votre code de connexion », the code in large digits and « Valable encore 8 minutes » (or « Ce code a expiré » past `expires`). A fragment it cannot read shows only a sentence asking to use the code of the message.",
+      "given": { "authMode": "email-code" },
+      "request": { "method": "GET", "path": "/auth/link", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer"
+        },
+        "body": null
+      }
+    },
+    {
+      "id": "link-page-on-private-server",
+      "description": "A private server signing in by password sends no message and has no such page.",
+      "given": { "authMode": "password" },
+      "request": { "method": "GET", "path": "/auth/link", "headers": {} },
+      "response": {
+        "status": 404,
+        "headers": { "content-type": "text/html; charset=utf-8" },
+        "body": null
+      }
+    }
+  ]
+}

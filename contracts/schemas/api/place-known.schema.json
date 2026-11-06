@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place-known.schema.json",
+  "title": "Astro Portal API v1 known place",
+  "description": "GET /v1/places/known query and response (packages/portal/src/places/suggested.js `knownPlaceDetails`; packages/portal-app/src/routes/api/v1/places/known/route.js). The current details of the known place a personal place is linked to (the planner document's `knownPlace`, `{ source: \"osm\", id, type, linkedAt }`): read through the service when shown, never stored in a plan. `id` is the OpenStreetMap type and number (`node/123`). Same access, throttle, cache, attribution and 503 places_unavailable as GET /v1/places/suggested; 404 known_place_gone when the source no longer has it as a named place of a supported type (the personal place is untouched); 400 invalid_request for a malformed id or a source other than osm.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "source": {
+          "const": "osm"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^(node|way|relation)/[1-9][0-9]*$"
+        },
+        "locale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attribution": {
+      "type": "object",
+      "required": ["text", "url", "licence"],
+      "properties": {
+        "text": {
+          "const": "© OpenStreetMap contributors"
+        },
+        "url": {
+          "const": "https://www.openstreetmap.org/copyright"
+        },
+        "licence": {
+          "const": "ODbL-1.0"
+        }
+      },
+      "additionalProperties": false
+    },
+    "place": {
+      "type": "object",
+      "required": ["id", "name", "type", "latitude", "longitude", "skyQuality"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^osm:(node|way|relation)/[1-9][0-9]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "type": {
+          "enum": ["viewpoint", "campsite", "park", "picnic"]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "website": {
+          "type": "string",
+          "pattern": "^https?://",
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "openingHours": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "access": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fee": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "elevation": {
+          "type": "integer",
+          "minimum": -500,
+          "maximum": 9000
+        },
+        "skyQuality": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["bortle", "sqm", "estimate"],
+              "properties": {
+                "bortle": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9
+                },
+                "sqm": {
+                  "type": "number",
+                  "minimum": 10,
+                  "maximum": 22.1
+                },
+                "estimate": {
+                  "const": true
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["place", "attribution", "source", "fetchedAt"],
+      "properties": {
+        "place": {
+          "$ref": "#/$defs/place"
+        },
+        "attribution": {
+          "$ref": "#/$defs/attribution"
+        },
+        "source": {
+          "const": "osm"
+        },
+        "fetchedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gone": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "const": "known_place_gone"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/gone"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place-search.schema.json",
+  "title": "Astro Portal API v1 place search",
+  "description": "GET /v1/places/search query and response (packages/portal/src/planner/location.server.js). Public read: a thin wrapper over the same throttled, cached Photon/OSM geocoder lookup the web planner's location route performs for its 'search' operation. A present Authorization header must still be a valid device bearer. A trimmed query shorter than 2 or longer than 240 characters is rejected; a provider outage answers 503 rather than degrading, since there is no local fallback for a search.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["q"],
+      "properties": {
+        "q": { "type": "string", "minLength": 1 },
+        "locale": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["results"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "required": [
+              "latitude",
+              "longitude",
+              "timeZone",
+              "timeZones",
+              "name",
+              "locality",
+              "shortName"
+            ],
+            "properties": {
+              "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "timeZone": { "type": "string", "minLength": 1 },
+              "timeZones": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "name": { "type": "string" },
+              "locality": { "type": "string" },
+              "shortName": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/query" }, { "$ref": "#/$defs/result" }]
+}

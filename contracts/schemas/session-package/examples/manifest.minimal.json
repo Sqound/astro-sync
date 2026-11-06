@@ -1,0 +1,13 @@
+{
+  "packageVersion": 1,
+  "generatedAt": "2026-09-20T21:04:00Z",
+  "assets": [
+    {
+      "path": "images/frame-0001.fits",
+      "kind": "image",
+      "bytes": 41943040,
+      "capturedAt": "2026-09-20T19:12:03Z",
+      "addedAt": "2026-09-20T21:03:58Z"
+    }
+  ]
+}

@@ -1,0 +1,325 @@
+/*
+ * « Liste des incidents »: the card of « Récapitulatif »
+ * -- the list of the signalements declared and the incidents detected, the pairs
+ * that seem to go together, the quick choice. Every value is a `var(--as-*)`
+ * reference (no colour literal).
+ */
+
+.as-incidents {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+}
+
+.as-incidents__head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-incidents__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-incidents__info {
+  margin-left: auto;
+  min-height: 2rem;
+  padding: 0 var(--as-space-xs);
+}
+
+.as-incidents__state {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.as-incidents__state--warning .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-incidents--offline {
+  border-style: dashed;
+}
+
+.as-incidents__quick {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+  box-sizing: border-box;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-incidents__segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-sm);
+}
+
+.as-incidents__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  overflow: hidden;
+}
+
+.as-incidents__pair {
+  border-top: 1px dashed var(--as-color-gold-accent);
+  border-bottom: 1px dashed var(--as-color-gold-accent);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 5%,
+    transparent
+  );
+}
+
+.as-incidents__list > :first-child {
+  border-top: 0;
+}
+
+.as-incidents__pair-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: var(--as-space-sm) var(--as-space-md) 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.as-incidents__pair-head .as-line__glyph {
+  color: var(--as-color-warning);
+}
+
+.as-incident {
+  display: grid;
+  grid-template-columns: 1.5rem 6.5rem minmax(0, 1fr) auto;
+  gap: var(--as-space-sm);
+  padding: var(--as-space-md);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-incidents__pair .as-incident:first-of-type,
+.as-incidents__pair-head + .as-incident {
+  border-top: 0;
+}
+
+.as-incident.is-dim .as-incident__body {
+  opacity: 0.65;
+}
+
+.as-incident__tick input {
+  margin: 0.15rem 0 0;
+}
+
+.as-incident__fixed {
+  color: var(--as-color-success);
+  width: 1rem;
+  height: 1rem;
+}
+
+.as-incident__when {
+  font-variant-numeric: tabular-nums;
+}
+
+.as-incident__until,
+.as-incident__duration {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-incident__body p {
+  margin: 0;
+}
+
+.as-incident__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-xs);
+}
+
+.as-incident__text {
+  margin-top: var(--as-space-xs) !important;
+}
+
+.as-incident__evidence,
+.as-incident__fate {
+  margin-top: var(--as-space-xs) !important;
+}
+
+/* The badges are labels of state, never buttons. */
+.as-incident__badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.25rem;
+  padding: 0 var(--as-space-sm);
+  border-radius: var(--as-radius-sm);
+  border: 1px solid var(--as-color-tertiary-border);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--as-color-muted-text);
+}
+
+.as-incident__badge--detected {
+  border-color: var(--as-color-focus);
+  color: var(--as-color-focus);
+}
+
+.as-incident__tools {
+  display: flex;
+  align-items: flex-start;
+}
+
+.as-incident__tool {
+  min-height: 2rem;
+  padding: 0 var(--as-space-xs);
+}
+
+/* The lock stands where the pencil would: a grey state icon the
+   size of the buttons beside it, not focusable, not clickable. */
+.as-incident__lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  cursor: default;
+  color: var(--as-color-muted-text);
+}
+
+.as-incidents__unproposed {
+  margin: 0;
+}
+
+.as-incidents__summary {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.as-incidents__double {
+  color: var(--as-color-warning);
+}
+
+.as-incidents__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  flex-wrap: wrap;
+}
+
+.as-incidents__foot--end {
+  justify-content: flex-end;
+}
+
+.as-incidents__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-incident-dialog {
+  max-width: 40rem;
+}
+
+.as-incident-dialog__label {
+  display: block;
+  margin: var(--as-space-md) 0 var(--as-space-xs);
+  font-size: 0.8125rem;
+}
+
+.as-incident-dialog__segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-sm);
+}
+
+.as-incident-dialog__detected-help {
+  margin: var(--as-space-sm) 0 0;
+}
+
+.as-incident-dialog__times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--as-space-md);
+}
+
+.as-incident-dialog__times label {
+  display: block;
+}
+
+.as-incident-dialog__text {
+  width: 100%;
+  min-height: 5rem;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.as-incident-dialog__count {
+  text-align: right;
+  margin: var(--as-space-xs) 0;
+}
+
+.as-incident-dialog__foot {
+  justify-content: space-between;
+}
+
+.as-incident-dialog__end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  margin-left: auto;
+}
+
+/* The result of « Détecter les sessions »: the card of
+   each session created, under the treatments, the choice of session under its
+   title. */
+.as-result__incidents {
+  margin-top: var(--as-space-sm);
+}
+
+.as-incidents__sessions {
+  align-items: center;
+}
+
+.as-incidents__no-measure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-xs) var(--as-space-md);
+  margin: 0;
+}
+
+.as-incidents__no-measure > span {
+  flex: 1 1 24rem;
+}
+
+.as-incidents__no-measure > .as-button {
+  flex: none;
+}
+
+/* « Mesurer les poses » brings the card of the target here and focuses it:
+   the focus is shown to the keyboard, never as a box after a click. */
+.as-file-card:focus {
+  outline: none;
+}
+
+.as-file-card:focus-visible {
+  outline: 2px solid var(--as-color-primary-edge);
+  outline-offset: 2px;
+}

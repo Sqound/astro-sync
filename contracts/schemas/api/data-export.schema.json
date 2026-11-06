@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/data-export.schema.json",
+  "title": "Data export routes",
+  "description": "`GET /v1/data-export/summary` and `GET /v1/data-export?parts=…&date=AAAA-MM-JJ` (« Exporter mes données »), for the credential's own space. The summary counts each box and estimates the bytes it adds to the ZIP (its entry, deflated); the file route answers the ZIP itself (`application/zip`, `Content-Disposition: attachment; filename=\"planastro-export-<date>.zip\"`) — its files are described by ../export/data-export-*.schema.json.",
+  "$defs": {
+    "summary": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "date",
+        "filename",
+        "overheadBytes",
+        "parts"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "filename": {
+          "type": "string",
+          "pattern": "^planastro-export-\\d{4}-\\d{2}-\\d{2}\\.zip$"
+        },
+        "overheadBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "What every archive carries whatever the boxes: the README's entry and the end record."
+        },
+        "parts": {
+          "type": "object",
+          "required": [
+            "plans",
+            "places",
+            "equipment",
+            "framings",
+            "journal",
+            "sky-measurements"
+          ],
+          "properties": {
+            "plans": {
+              "type": "object",
+              "required": ["count", "estimatedBytes", "multiNight"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "multiNight": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "places": {
+              "type": "object",
+              "required": ["count", "estimatedBytes", "horizons"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "horizons": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "equipment": {
+              "type": "object",
+              "required": ["count", "estimatedBytes"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "framings": {
+              "type": "object",
+              "required": ["count", "estimatedBytes"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "journal": {
+              "type": "object",
+              "required": ["count", "estimatedBytes"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "sky-measurements": {
+              "type": "object",
+              "required": ["count", "estimatedBytes"],
+              "properties": {
+                "count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "estimatedBytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "authentication_required",
+                "device_authentication_required",
+                "data_export_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

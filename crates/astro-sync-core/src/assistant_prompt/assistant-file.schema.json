@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "astro-sync/assistant-file.schema.json",
+  "title": "The source of ASSISTANT-IA.md (Astro Sync)",
+  "description": "Folders, rules and the step-by-step procedure an AI assistant follows to gather a night's files. Rendered into ASSISTANT-IA.md by assistant_prompt::render_assistant_file. The cross-references (step ids, kinds, questions, answers, placeholders) are checked by the tests of assistant_prompt.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "title",
+    "intro",
+    "context",
+    "folders",
+    "folders_note",
+    "rules",
+    "kinds",
+    "actions",
+    "phrases",
+    "questions",
+    "answers",
+    "steps"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "minimum": 1 },
+    "title": { "$ref": "#/$defs/text" },
+    "intro": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "context": {
+      "description": "What the copied prompt gives the assistant (build_prompt injects each).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "enum": ["night_folder", "night_date", "targets"] },
+          "text": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "folders": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "text"],
+        "properties": {
+          "path": { "$ref": "#/$defs/text" },
+          "text": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "folders_note": { "$ref": "#/$defs/text" },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "text"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "title": { "$ref": "#/$defs/text" },
+          "text": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "multi_night": {
+      "description": "The section written only when the multi-night plans are open for the space (analysis.progression, on the hosted service).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heading", "paragraphs"],
+      "properties": {
+        "heading": { "$ref": "#/$defs/text" },
+        "paragraphs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "kinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "label": { "$ref": "#/$defs/text" },
+          "destination": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "actions": {
+      "description": "The closed set of actions a step may take.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["search", "ask_path", "place", "summarize"],
+      "properties": {
+        "search": { "$ref": "#/$defs/text" },
+        "ask_path": { "$ref": "#/$defs/text" },
+        "place": { "$ref": "#/$defs/text" },
+        "summarize": { "$ref": "#/$defs/text" }
+      }
+    },
+    "phrases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedure_intro",
+        "procedure_follow",
+        "step",
+        "ask",
+        "branch",
+        "then",
+        "rules_heading",
+        "folders_heading",
+        "procedure_heading",
+        "list_and",
+        "list_separator",
+        "destination_item",
+        "destination_separator"
+      ],
+      "properties": {
+        "procedure_intro": { "$ref": "#/$defs/text" },
+        "procedure_follow": { "$ref": "#/$defs/text" },
+        "step": { "$ref": "#/$defs/text" },
+        "ask": { "$ref": "#/$defs/text" },
+        "branch": { "$ref": "#/$defs/text" },
+        "then": { "$ref": "#/$defs/text" },
+        "rules_heading": { "$ref": "#/$defs/text" },
+        "folders_heading": { "$ref": "#/$defs/text" },
+        "procedure_heading": { "$ref": "#/$defs/text" },
+        "list_and": { "type": "string", "minLength": 1 },
+        "list_separator": { "type": "string", "minLength": 1 },
+        "destination_item": { "$ref": "#/$defs/text" },
+        "destination_separator": { "type": "string", "minLength": 1 }
+      }
+    },
+    "questions": { "$ref": "#/$defs/texts" },
+    "answers": { "$ref": "#/$defs/texts" },
+    "steps": {
+      "description": "In the order they are numbered; the first step is where the procedure starts.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "text": { "type": "string", "minLength": 1 },
+    "texts": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/text" }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "say": { "$ref": "#/$defs/text" },
+        "ask": {
+          "description": "A key of `questions`.",
+          "$ref": "#/$defs/id"
+        },
+        "action": { "enum": ["search", "ask_path", "place", "summarize"] },
+        "files": {
+          "description": "Ids of `kinds`, put in place of {files}.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "options": {
+          "description": "One branch per answer; a step has `options` or `next`, or neither when it ends the procedure.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["answer", "next"],
+            "properties": {
+              "answer": {
+                "description": "A key of `answers`.",
+                "$ref": "#/$defs/id"
+              },
+              "next": { "$ref": "#/$defs/id" }
+            }
+          }
+        },
+        "next": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

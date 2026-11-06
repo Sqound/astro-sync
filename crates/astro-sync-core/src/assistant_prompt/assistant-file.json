@@ -1,0 +1,475 @@
+{
+  "$schema": "./assistant-file.schema.json",
+  "version": 2,
+  "title": "Astro Sync — how this folder is organised",
+  "intro": [
+    "This is the working folder of Astro Sync, an application that sends astrophotography nights to an Astro Portal space. Astro Sync never sends the FITS frames or the raw logs: they stay on this computer.",
+    "The person writes to you in their own language: answer in that language; this file stays in English."
+  ],
+  "context": [
+    {
+      "id": "night_folder",
+      "text": "the night's folder, by its full path"
+    },
+    {
+      "id": "night_date",
+      "text": "the night's date: the evening it began and the morning after"
+    },
+    {
+      "id": "targets",
+      "text": "its targets: designation (the name of the target's folder) and, when known, common name"
+    }
+  ],
+  "folders": [
+    {
+      "path": "<date> · <plan or place> · <short identifier>/",
+      "text": "one folder per night, at the root of this folder; the date is the evening's. The paths below are inside a night's folder"
+    },
+    {
+      "path": "logs/",
+      "text": "the logs (NINA, PHD2, ASIAIR)"
+    },
+    {
+      "path": "calibration/darks/",
+      "text": "the darks"
+    },
+    {
+      "path": "calibration/flats/",
+      "text": "the flats (one sub-folder per filter is allowed)"
+    },
+    {
+      "path": "calibration/dark-flats/",
+      "text": "the dark-flats"
+    },
+    {
+      "path": "calibration/biases/",
+      "text": "the offsets (biases)"
+    },
+    {
+      "path": "<target>/lights/",
+      "text": "one folder per target (\"M31\", \"NGC 7000\"…): its raw frames, FITS or XISF (sub-folders are allowed)"
+    },
+    {
+      "path": "<target>/final/",
+      "text": "the target's processed final image: TIFF, JPEG or PNG"
+    },
+    {
+      "path": "<target>/stacked/",
+      "text": "written by Astro Sync's stacking only: write nothing there. `<family>_integration.fit` in it is the linear master of a family of the night (filter, exposure, gain, binning), kept on purpose: never move, rename or delete it"
+    },
+    {
+      "path": ".astro-sync-work/",
+      "text": "a hidden folder, at the root of a night's folder, that may exist while Astro Sync is processing the night (the stacking's temporary files); it is removed when the work ends. Put nothing in it and do not touch it"
+    }
+  ],
+  "folders_note": "Folder names stay in English. A frame's type is read from its FITS header (`IMAGETYP`: LIGHT, DARK, FLAT, DARKFLAT, BIAS or OFFSET), its target from `OBJECT`, its filter from `FILTER`, its time from `DATE-OBS` (in UTC).",
+  "rules": [
+    {
+      "id": "one_question",
+      "title": "One question at a time",
+      "text": "ask one question, then wait for the answer before going on."
+    },
+    {
+      "id": "list_first",
+      "title": "List before writing",
+      "text": "before any write, show the list of the files you found (name, date, target, type) and the exact commands you would run, then wait for the person's agreement."
+    },
+    {
+      "id": "recognise",
+      "title": "Recognising a file",
+      "text": "use the file's date and its FITS headers: `DATE-OBS` (UTC) between the evening of the night and the morning after, `OBJECT` for the target, `IMAGETYP` for the type. A final image (TIFF, JPEG, PNG) has no FITS header: recognise it by its name and date, and ask for its target when in doubt; a FITS file is never a final image. A file whose type or night is doubtful stays where it is: tell the person."
+    },
+    {
+      "id": "placement",
+      "title": "Placing a file",
+      "text": "never place one of the person's files without offering them the choice. Offer three choices, in this order: (1) a symbolic link, on macOS and Linux only (the original does not move); (2) a copy; (3) a move. On Windows, offer only (2) a copy and (3) a move. Wait for the answer before any write. If the person says so (\"the same choice for everything\"), keep that choice for the next files."
+    },
+    {
+      "id": "links",
+      "title": "Following links",
+      "text": "when you search, follow symbolic links, to folders and to files (`find -L`, or resolve each link yourself): a link to a folder of darks or of flats counts as that folder. On macOS, also look for Finder aliases (they are not symbolic links), and on Windows for `.lnk` shortcuts and junctions: report them and ask whether to follow them. In the list of the files you found, mark those that come through a link, with the link's target. When you place a file by symbolic link, point to the real file, never to a link. Do not loop on a link that leads back to a parent folder: follow each real folder once. Never modify or delete a link that already exists on the person's computer."
+    },
+    {
+      "id": "untouched",
+      "title": "What you never do",
+      "text": "never delete, rename or modify a FITS file; do not touch files whose name starts with a dot (`.astro-sync-…`); send nothing online."
+    },
+    {
+      "id": "end",
+      "title": "At the end",
+      "text": "sum up what was placed, where and how, and what is still missing; then tell the person to go back to Astro Sync."
+    }
+  ],
+  "multi_night": {
+    "heading": "Multi-night plans",
+    "paragraphs": [
+      "This space has the multi-night plans of Astro Sync: one target photographed over several nights, whose integrations Astro Sync combines into one image of the plan.",
+      "Keep **one folder per night**, as above: never put the frames of two nights in the same night's folder, even for the same target. A frame taken outside its night (from local noon to local noon the next day) is left out of that night's integration.",
+      "Use **the same target folder name** from one night to the next (\"IC 1805\" every night, not \"Heart\" one night and \"IC1805\" the next): Astro Sync finds the plan's target in each night by it.",
+      "Each night's integration is kept as `<target>/stacked/<family>_integration.fit`, one per family: the linear master Astro Sync combines later. Never move, rename or delete it. To combine a night stacked on another computer, copy that whole night's folder into this working folder.",
+      "The image of a multi-night plan is written by Astro Sync in the plan's own folder, at the root of this folder (`<target> · <short identifier>/stacked/`): write nothing there."
+    ]
+  },
+  "kinds": [
+    {
+      "id": "night",
+      "label": "this night's files"
+    },
+    {
+      "id": "lights",
+      "label": "the light frames (raw FITS)",
+      "destination": "`<target>/lights/` (the target its `OBJECT` header names)"
+    },
+    {
+      "id": "darks",
+      "label": "the darks",
+      "destination": "`calibration/darks/`"
+    },
+    {
+      "id": "flats",
+      "label": "the flats",
+      "destination": "`calibration/flats/`"
+    },
+    {
+      "id": "dark_flats",
+      "label": "the dark-flats",
+      "destination": "`calibration/dark-flats/`"
+    },
+    {
+      "id": "biases",
+      "label": "the offsets (biases)",
+      "destination": "`calibration/biases/`"
+    },
+    {
+      "id": "logs",
+      "label": "the logs of the night (NINA, PHD2, ASIAIR)",
+      "destination": "`logs/`"
+    },
+    {
+      "id": "final",
+      "label": "the final image (TIFF, JPEG or PNG)",
+      "destination": "`<target>/final/`"
+    }
+  ],
+  "actions": {
+    "search": "Search for {files}, by the rule \"{links}\": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found.",
+    "ask_path": "Ask: \"Please give me the full path of the folder that holds {files}.\"",
+    "place": "Propose placing {destinations}, by the rule \"{rule}\".",
+    "summarize": "Sum up: what was placed, where, by link, copy or move, and what is still missing. Then tell the person to go back to Astro Sync and open the night again."
+  },
+  "phrases": {
+    "procedure_intro": "The prompt that sent you here gives you:",
+    "procedure_follow": "Follow these steps in order; the answers decide the next step.",
+    "step": "Step {n}.",
+    "ask": "Ask: \"{question}\"",
+    "branch": "If the answer is \"{answer}\": step {step}.",
+    "then": "Then step {step}.",
+    "rules_heading": "Rules for you, the assistant",
+    "folders_heading": "Folders",
+    "procedure_heading": "Procedure: gathering a night's files",
+    "list_and": " and ",
+    "list_separator": ", ",
+    "destination_item": "{label} in {destination}",
+    "destination_separator": "; "
+  },
+  "questions": {
+    "layout": "Are all your files from this night together in one folder where I can search, or are they in separate places?",
+    "raw": "Did you take raw frames (FITS) this night, or do you only have an image already processed?",
+    "where": "Do you want me to search for {files} of this night, or would you rather give me the full path?",
+    "where_optional": "Do you want me to search for {files} of this night, or would you rather give me the full path? Tell me as well if you had none.",
+    "processed": "Do you also have an image already processed (a final image)?",
+    "logs": "Do you have the logs of this night (NINA, PHD2, ASIAIR)? They give the night's steps and the quality of the guiding. Do you want me to search for them, or would you rather give me the full path? Tell me as well if you had none."
+  },
+  "answers": {
+    "one_folder": "In one folder",
+    "separate": "In separate places",
+    "fits": "Raw frames (FITS)",
+    "final_only": "Only a processed image",
+    "search": "Please search",
+    "path": "Here is the path",
+    "none": "I had none",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "steps": [
+    {
+      "id": "layout",
+      "say": "Tell the person you are going to look for this night's light frames (raw FITS), darks, flats and dark-flats, offsets (biases), logs and final image.",
+      "ask": "layout",
+      "options": [
+        { "answer": "one_folder", "next": "source_path" },
+        { "answer": "separate", "next": "raw" }
+      ]
+    },
+    {
+      "id": "source_path",
+      "action": "ask_path",
+      "files": ["night"],
+      "next": "source_raw"
+    },
+    {
+      "id": "source_raw",
+      "ask": "raw",
+      "options": [
+        { "answer": "fits", "next": "source_search" },
+        { "answer": "final_only", "next": "source_final_search" }
+      ]
+    },
+    {
+      "id": "source_search",
+      "action": "search",
+      "files": [
+        "lights",
+        "darks",
+        "flats",
+        "dark_flats",
+        "biases",
+        "logs",
+        "final"
+      ],
+      "next": "source_place"
+    },
+    {
+      "id": "source_place",
+      "action": "place",
+      "files": [
+        "lights",
+        "darks",
+        "flats",
+        "dark_flats",
+        "biases",
+        "logs",
+        "final"
+      ],
+      "next": "summary"
+    },
+    {
+      "id": "source_final_search",
+      "action": "search",
+      "files": ["logs", "final"],
+      "next": "source_final_place"
+    },
+    {
+      "id": "source_final_place",
+      "action": "place",
+      "files": ["logs", "final"],
+      "next": "summary"
+    },
+    {
+      "id": "raw",
+      "ask": "raw",
+      "options": [
+        { "answer": "fits", "next": "lights_where" },
+        { "answer": "final_only", "next": "final_logs_where" }
+      ]
+    },
+    {
+      "id": "lights_where",
+      "ask": "where",
+      "files": ["lights"],
+      "options": [
+        { "answer": "search", "next": "lights_search" },
+        { "answer": "path", "next": "lights_path" }
+      ]
+    },
+    {
+      "id": "lights_path",
+      "action": "ask_path",
+      "files": ["lights"],
+      "next": "lights_search"
+    },
+    {
+      "id": "lights_search",
+      "action": "search",
+      "files": ["lights"],
+      "next": "lights_place"
+    },
+    {
+      "id": "lights_place",
+      "action": "place",
+      "files": ["lights"],
+      "next": "darks_where"
+    },
+    {
+      "id": "darks_where",
+      "ask": "where_optional",
+      "files": ["darks"],
+      "options": [
+        { "answer": "search", "next": "darks_search" },
+        { "answer": "path", "next": "darks_path" },
+        { "answer": "none", "next": "flats_where" }
+      ]
+    },
+    {
+      "id": "darks_path",
+      "action": "ask_path",
+      "files": ["darks"],
+      "next": "darks_search"
+    },
+    {
+      "id": "darks_search",
+      "action": "search",
+      "files": ["darks"],
+      "next": "darks_place"
+    },
+    {
+      "id": "darks_place",
+      "action": "place",
+      "files": ["darks"],
+      "next": "flats_where"
+    },
+    {
+      "id": "flats_where",
+      "ask": "where_optional",
+      "files": ["flats", "dark_flats"],
+      "options": [
+        { "answer": "search", "next": "flats_search" },
+        { "answer": "path", "next": "flats_path" },
+        { "answer": "none", "next": "biases_where" }
+      ]
+    },
+    {
+      "id": "flats_path",
+      "action": "ask_path",
+      "files": ["flats", "dark_flats"],
+      "next": "flats_search"
+    },
+    {
+      "id": "flats_search",
+      "action": "search",
+      "files": ["flats", "dark_flats"],
+      "next": "flats_place"
+    },
+    {
+      "id": "flats_place",
+      "action": "place",
+      "files": ["flats", "dark_flats"],
+      "next": "biases_where"
+    },
+    {
+      "id": "biases_where",
+      "ask": "where_optional",
+      "files": ["biases"],
+      "options": [
+        { "answer": "search", "next": "biases_search" },
+        { "answer": "path", "next": "biases_path" },
+        { "answer": "none", "next": "logs_where" }
+      ]
+    },
+    {
+      "id": "biases_path",
+      "action": "ask_path",
+      "files": ["biases"],
+      "next": "biases_search"
+    },
+    {
+      "id": "biases_search",
+      "action": "search",
+      "files": ["biases"],
+      "next": "biases_place"
+    },
+    {
+      "id": "biases_place",
+      "action": "place",
+      "files": ["biases"],
+      "next": "logs_where"
+    },
+    {
+      "id": "logs_where",
+      "say": "The logs are important: they give the night's steps and the quality of the guiding. NINA writes its logs in `%LOCALAPPDATA%\\NINA\\Logs` (Windows), PHD2 its guide logs (`PHD2_GuideLog_*.txt`) in its `PHD2` folder (Documents on Windows and macOS), the ASIAIR its `Autorun_Log*` files in its `Autorun/Log` folder. Keep the logs of this night only (by their date).",
+      "ask": "logs",
+      "files": ["logs"],
+      "options": [
+        { "answer": "search", "next": "logs_search" },
+        { "answer": "path", "next": "logs_path" },
+        { "answer": "none", "next": "processed" }
+      ]
+    },
+    {
+      "id": "logs_path",
+      "action": "ask_path",
+      "files": ["logs"],
+      "next": "logs_search"
+    },
+    {
+      "id": "logs_search",
+      "action": "search",
+      "files": ["logs"],
+      "next": "logs_place"
+    },
+    {
+      "id": "logs_place",
+      "action": "place",
+      "files": ["logs"],
+      "next": "processed"
+    },
+    {
+      "id": "processed",
+      "ask": "processed",
+      "options": [
+        { "answer": "yes", "next": "final_where" },
+        { "answer": "no", "next": "summary" }
+      ]
+    },
+    {
+      "id": "final_logs_where",
+      "say": "The logs are important: they give the night's steps and the quality of the guiding. NINA writes its logs in `%LOCALAPPDATA%\\NINA\\Logs` (Windows), PHD2 its guide logs (`PHD2_GuideLog_*.txt`) in its `PHD2` folder (Documents on Windows and macOS), the ASIAIR its `Autorun_Log*` files in its `Autorun/Log` folder. Keep the logs of this night only (by their date).",
+      "ask": "logs",
+      "files": ["logs"],
+      "options": [
+        { "answer": "search", "next": "final_logs_search" },
+        { "answer": "path", "next": "final_logs_path" },
+        { "answer": "none", "next": "final_where" }
+      ]
+    },
+    {
+      "id": "final_logs_path",
+      "action": "ask_path",
+      "files": ["logs"],
+      "next": "final_logs_search"
+    },
+    {
+      "id": "final_logs_search",
+      "action": "search",
+      "files": ["logs"],
+      "next": "final_logs_place"
+    },
+    {
+      "id": "final_logs_place",
+      "action": "place",
+      "files": ["logs"],
+      "next": "final_where"
+    },
+    {
+      "id": "final_where",
+      "ask": "where",
+      "files": ["final"],
+      "options": [
+        { "answer": "search", "next": "final_search" },
+        { "answer": "path", "next": "final_path" }
+      ]
+    },
+    {
+      "id": "final_path",
+      "action": "ask_path",
+      "files": ["final"],
+      "next": "final_search"
+    },
+    {
+      "id": "final_search",
+      "action": "search",
+      "files": ["final"],
+      "next": "final_place"
+    },
+    {
+      "id": "final_place",
+      "action": "place",
+      "files": ["final"],
+      "next": "summary"
+    },
+    {
+      "id": "summary",
+      "action": "summarize"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/change-signal.schema.json",
+  "title": "Astro Portal reactive change signal",
+  "description": "The `data:` payload of GET /v1/changes. Two SSE event kinds share this contract: `change` (`changeEvent`) and `resync` (`resyncEvent`, the same shape without `domains` — \"re-read everything\"). The `id:` line of the SSE frame carries the same value as `cursor`; a reconnecting client's `Last-Event-ID` echoes it back. No other event kind, and no other field on either shape, is ever emitted: this channel carries a signal, never business data (no plan id, no device name, no content) — the whole point being that a divergence is always resolved by the existing synchronization doctrine, never by a second merge path riding this wire. A `: ping` comment line (not a JSON payload at all) is sent every 25 s and is outside this schema's scope.",
+  "$defs": {
+    "domain": {
+      "enum": [
+        "plans",
+        "sessions",
+        "debrief",
+        "equipment",
+        "places",
+        "framings",
+        "favorites",
+        "captures",
+        "devices",
+        "projects"
+      ]
+    },
+    "cursor": {
+      "type": "string",
+      "pattern": "^[^:\\s]+:(0|[1-9][0-9]*)$"
+    },
+    "changeEvent": {
+      "type": "object",
+      "required": ["cursor", "domains"],
+      "properties": {
+        "cursor": { "$ref": "#/$defs/cursor" },
+        "domains": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/domain" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "resyncEvent": {
+      "type": "object",
+      "required": ["cursor"],
+      "properties": {
+        "cursor": { "$ref": "#/$defs/cursor" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/changeEvent" },
+    { "$ref": "#/$defs/resyncEvent" }
+  ]
+}

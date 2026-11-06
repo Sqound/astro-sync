@@ -1,0 +1,22 @@
+# Python >=3.12,<3.14: the range the pinned packages really support (numpy,
+# scipy, tifffile and imagecodecs need 3.12; sep, which astroalign reads the
+# stars with, has no wheel for 3.14).
+# Verified with pip --require-hashes and check_environment.py on 3.12 and 3.13.
+numpy==2.5.1
+astropy==8.0.1
+scipy==1.18.0
+scikit-image==0.26.0
+tifffile==2026.7.31
+pillow==12.3.0
+imagecodecs==2026.6.26
+astropy-iers-data==0.2026.8.3.0.53.6
+pyerfa==2.0.1.5
+pyyaml==6.0.3
+packaging==26.3
+networkx==3.6.1
+imageio==2.37.4
+lazy-loader==0.5
+# The registration of the masters of a plan on the dual-band one (dualband_reference.py),
+# pinned so that the same transform is reproduced, to the bit.
+astroalign==2.6.2
+sep==1.4.1

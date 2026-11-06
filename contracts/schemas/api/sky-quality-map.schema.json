@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/sky-quality-map.schema.json",
+  "title": "Astro Portal API v1 geographic light-pollution map tiles",
+  "description": "GET /v1/sky-quality/map/{z}/{x}/{y}.png (a private server has no such route). One 256 × 256 Web Mercator PNG tile (RGBA) of the ESTIMATED zenith sky brightness of the region, cut on request from the installed sky-quality raster and coloured with the ramp of the free horizon layer (`horizonLightColor`: transparent at 21.6 mag/arcsec² and darker, strongest at 18.0 and brighter). Access: a device bearer, the web session, or a phone with no space by its anonymous bearer (its capabilities are those of its purchases; 429 `sky_light_map_rate_limited` with Retry-After beyond 1,200 tiles an hour per anonymous device or 3,000 per network origin), then the capability `planner.mosaic` (403 `capability_required` naming it otherwise). A tile outside the zoom range or the zoom's grid answers 400 `invalid_request`; without an installed raster 503 `sky_quality_unavailable` with Retry-After, like GET /v1/sky-quality. The success is the PNG itself with `headers`; this schema describes the path, the headers and the JSON error body, the only JSON the route answers.",
+  "$ref": "#/$defs/error",
+  "$defs": {
+    "path": {
+      "type": "object",
+      "required": ["z", "x", "y"],
+      "properties": {
+        "z": { "type": "integer", "minimum": 3, "maximum": 10 },
+        "x": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0 to 2^z − 1, west to east from 180° W."
+        },
+        "y": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0 to 2^z − 1, north to south from 85.0511° N; written `{y}.png` in the path."
+        }
+      },
+      "additionalProperties": false
+    },
+    "headers": {
+      "type": "object",
+      "description": "The headers of a 200 (with the PNG) and of a 304 (on a matching If-None-Match, no body).",
+      "required": ["Cache-Control", "ETag"],
+      "properties": {
+        "Content-Type": { "const": "image/png" },
+        "Cache-Control": { "const": "private, max-age=86400" },
+        "ETag": {
+          "type": "string",
+          "pattern": "^\"sky-light-[0-9]+-[0-9a-zA-Z]{1,32}\"$",
+          "description": "The renderer's version and the raster's checksum: every tile of one raster shares it; a new raster or renderer is a new tile."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "capability_required",
+                "invalid_request",
+                "sky_quality_unavailable",
+                "authentication_required",
+                "device_authentication_required",
+                "authentication_unavailable",
+                "sky_light_map_rate_limited"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "capability": {
+          "const": "planner.mosaic",
+          "description": "With `capability_required` only: the capability the map needs."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

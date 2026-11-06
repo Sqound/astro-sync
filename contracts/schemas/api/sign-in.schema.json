@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/sign-in.schema.json",
+  "title": "Astro Portal API v1 sign-in by e-mail code",
+  "description": "Bodies of POST /v1/sign-in/code, POST /v1/sign-in/verify and GET /v1/space, answered only by a service whose GET /v1/service announces `signIn.method: email-code`; any other service answers 404 `not_found`. Requests: unknown fields are ignored by the service. Responses: clients ignore fields they do not know. See v1.md, section « Sign-in by e-mail code ».",
+  "$defs": {
+    "language": {
+      "description": "The language of the message. Absent or unknown: `en`.",
+      "enum": [
+        "fr",
+        "en",
+        "ja",
+        "de",
+        "es",
+        "it",
+        "pt-BR",
+        "zh-Hans",
+        "zh-Hant",
+        "ru"
+      ]
+    },
+    "email": {
+      "description": "An e-mail address as typed. The service gives it one form (v1.md « Requesting a code »): composed Unicode (NFC); spaces, tabs, line breaks, no-break and ideographic spaces removed; any other control or formatting character (U+0000–U+001F, U+007F, U+200B–U+200F, U+202A–U+202E, U+2060–U+206F, U+FEFF) refused; the local part ASCII « dot-atom », 64 characters at most, lowercased (dots and `+` stay); the domain in punycode, lowercase, without its final dot, with two labels or more, the last not all digits; 254 characters at most. Otherwise the answer is 400 `email_invalid`.",
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 320
+    },
+    "normalizedEmail": {
+      "description": "The one form of an address, as the service writes it.",
+      "type": "string",
+      "pattern": "^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?=[a-z0-9-]*[a-z-])[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$",
+      "maxLength": 254
+    },
+    "code": {
+      "description": "Six digits. The service ignores spaces and hyphens around and between them.",
+      "type": "string",
+      "pattern": "^[0-9]{6}$"
+    },
+    "linkToken": {
+      "description": "The opaque token of the link of the message (32 random bytes, base64url, no padding).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "deviceToken": {
+      "description": "The device bearer credential, returned once; only its SHA-256 is kept. Sent as `Authorization: Bearer <token>`.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "deviceProof": {
+      "description": "Optional proof that the device is genuine, issued by its platform: the kind of the proof and its token. A server whose rules rest on such a proof verifies the kinds it knows; any other kind, and a proof that cannot be verified, is ignored and never stops a sign-in. A private server reads none.",
+      "type": "object",
+      "required": ["kind", "token"],
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z-]{1,40}$" },
+        "token": { "type": "string", "minLength": 1, "maxLength": 16384 }
+      }
+    },
+    "device": {
+      "description": "The application signing in. `installationId` is an identifier of the application's own, generated once and kept in the keychain (iOS) or the equivalent protected store, so that the same phone is recognised after a reinstallation. `name` is the name shown in « Mes appareils », by default the model of the phone. `application: sync` is Astro Sync: it signs in the same way and may be signed in to several spaces.",
+      "type": "object",
+      "required": ["application", "installationId", "name", "platform"],
+      "properties": {
+        "application": { "enum": ["planner", "sync"] },
+        "installationId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{16,128}$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "platform": {
+          "enum": ["ios", "android", "macos", "windows", "linux"]
+        },
+        "model": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "proof": { "$ref": "#/$defs/deviceProof" }
+      }
+    },
+    "codeRequest": {
+      "description": "POST /v1/sign-in/code. The answer is the same whether the address already has a space or not.",
+      "type": "object",
+      "required": ["email"],
+      "properties": {
+        "email": { "$ref": "#/$defs/email" },
+        "language": { "$ref": "#/$defs/language" },
+        "device": { "$ref": "#/$defs/device" }
+      }
+    },
+    "codeRequestAccepted": {
+      "description": "202 of POST /v1/sign-in/code: a message is on its way. Any earlier code of this address stops being valid.",
+      "type": "object",
+      "required": [
+        "email",
+        "codeLength",
+        "expiresAt",
+        "expiresInSeconds",
+        "resendAt",
+        "resendAfterSeconds"
+      ],
+      "properties": {
+        "email": { "$ref": "#/$defs/normalizedEmail" },
+        "codeLength": { "const": 6 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "expiresInSeconds": { "const": 600 },
+        "resendAt": { "type": "string", "format": "date-time" },
+        "resendAfterSeconds": { "const": 60 }
+      }
+    },
+    "verifyWithCodeForApp": {
+      "type": "object",
+      "required": ["email", "code", "client", "device"],
+      "properties": {
+        "email": { "$ref": "#/$defs/email" },
+        "code": { "$ref": "#/$defs/code" },
+        "client": { "const": "app" },
+        "device": { "$ref": "#/$defs/device" }
+      }
+    },
+    "verifyWithCodeForWeb": {
+      "type": "object",
+      "required": ["email", "code", "client"],
+      "properties": {
+        "email": { "$ref": "#/$defs/email" },
+        "code": { "$ref": "#/$defs/code" },
+        "client": { "const": "web" }
+      }
+    },
+    "verifyWithLinkForApp": {
+      "description": "The link of a message, used by the application only while it has a request in progress on this device, with the address the person typed there; otherwise it ignores the token and opens its sign-in screen. A token that does not belong to `email` is refused (400 `sign_in_code_incorrect`) and counted as a failed attempt for `email`.",
+      "type": "object",
+      "required": ["linkToken", "email", "client", "device"],
+      "properties": {
+        "linkToken": { "$ref": "#/$defs/linkToken" },
+        "email": { "$ref": "#/$defs/email" },
+        "client": { "const": "app" },
+        "device": { "$ref": "#/$defs/device" }
+      }
+    },
+    "verifyWithLinkForWeb": {
+      "type": "object",
+      "required": ["linkToken", "email", "client"],
+      "properties": {
+        "linkToken": { "$ref": "#/$defs/linkToken" },
+        "email": { "$ref": "#/$defs/email" },
+        "client": { "const": "web" }
+      }
+    },
+    "verifyRequest": {
+      "description": "POST /v1/sign-in/verify: an address with its code, or an address with the token of the link — never a code and a token together.",
+      "oneOf": [
+        { "$ref": "#/$defs/verifyWithCodeForApp" },
+        { "$ref": "#/$defs/verifyWithCodeForWeb" },
+        { "$ref": "#/$defs/verifyWithLinkForApp" },
+        { "$ref": "#/$defs/verifyWithLinkForWeb" }
+      ]
+    },
+    "space": {
+      "type": "object",
+      "required": ["id", "email", "webUrl"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "email": { "$ref": "#/$defs/normalizedEmail" },
+        "webUrl": {
+          "description": "The address of the space on the web, where one signs in with the same e-mail address.",
+          "type": "string",
+          "pattern": "^https?://"
+        },
+        "demoModeAllowed": {
+          "description": "Present, and true, only for a space the service's configuration allows a demo mode for: the application then offers its demo mode. Absent for every other space; an application reads absent as false.",
+          "type": "boolean"
+        }
+      }
+    },
+    "registeredDevice": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 }
+      }
+    },
+    "verifiedForApp": {
+      "description": "200 of POST /v1/sign-in/verify with `client: app`. `created` is true when this verification created the space.",
+      "type": "object",
+      "required": ["created", "space", "device", "deviceToken"],
+      "properties": {
+        "created": { "type": "boolean" },
+        "space": { "$ref": "#/$defs/space" },
+        "device": { "$ref": "#/$defs/registeredDevice" },
+        "deviceToken": { "$ref": "#/$defs/deviceToken" }
+      }
+    },
+    "verifiedForWeb": {
+      "description": "200 of POST /v1/sign-in/verify with `client: web`; the response also sets the web session's cookies: `__Host-astro_portal_session` (HttpOnly) and `__Host-astro_portal_csrf` when they are `Secure`, `astro_portal_session` and `astro_portal_csrf` over plain http in development.",
+      "type": "object",
+      "required": ["created", "space"],
+      "properties": {
+        "created": { "type": "boolean" },
+        "space": { "$ref": "#/$defs/space" }
+      }
+    },
+    "currentSpace": {
+      "description": "200 of GET /v1/space: the space of the credential. `device` is the calling device for a bearer, null for a web session.",
+      "type": "object",
+      "required": ["space", "device"],
+      "properties": {
+        "space": { "$ref": "#/$defs/space" },
+        "device": {
+          "anyOf": [{ "$ref": "#/$defs/registeredDevice" }, { "type": "null" }]
+        }
+      }
+    },
+    "errorCode": {
+      "enum": [
+        "invalid_request",
+        "email_invalid",
+        "sign_in_code_incorrect",
+        "sign_in_code_expired",
+        "sign_in_link_invalid",
+        "sign_in_locked",
+        "sign_in_rate_limited",
+        "email_delivery_failed",
+        "sign_in_unavailable",
+        "space_unavailable",
+        "service_starting",
+        "not_owner",
+        "not_initialized",
+        "not_found",
+        "authentication_required"
+      ]
+    },
+    "error": {
+      "description": "The v1 error envelope. `attemptsRemaining` comes with `sign_in_code_incorrect`; `retryAt` (also sent as `Retry-After`, in seconds) with `sign_in_locked`, `sign_in_rate_limited`, `service_starting`, and `sign_in_unavailable` when the e-mail budget of the service is spent.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "$ref": "#/$defs/errorCode" },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        },
+        "attemptsRemaining": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "retryAt": { "type": "string", "format": "date-time" },
+        "bootstrapPath": {
+          "description": "With `not_initialized`: the web page where the owner installs the private server.",
+          "type": "string",
+          "pattern": "^/"
+        }
+      }
+    },
+    "linkFragment": {
+      "description": "The fragment of the link of the message, `https://<service>/auth/link#v=1&token=<linkToken>&code=<code>&expires=<date-time>&lang=<language>`, read as URL-encoded pairs. The fragment never reaches the service: a visit to the link (a mail scanner) sends nothing and consumes nothing.",
+      "type": "object",
+      "required": ["v", "token", "code", "expires", "lang"],
+      "properties": {
+        "v": { "const": "1" },
+        "token": { "$ref": "#/$defs/linkToken" },
+        "code": { "$ref": "#/$defs/code" },
+        "expires": { "type": "string", "format": "date-time" },
+        "lang": { "$ref": "#/$defs/language" }
+      }
+    }
+  }
+}

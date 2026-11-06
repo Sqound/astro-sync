@@ -1,0 +1,212 @@
+/* send-detect
+   The sending of a session: the two boxes of « Dossier » and the detection
+   sheet of « Fichiers ». Only `var(--as-*)` tokens. */
+
+.as-send-locations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-send-location {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  min-width: 0;
+}
+
+.as-send-location__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.as-send-location__lead {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+/* The sheet is a wide window over the step. */
+.as-send-sheet {
+  width: min(52rem, 94vw);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+.as-send-sheet__lead {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.as-send-sheet__reading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-send-sheet__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.as-send-sheet__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-send-sheet__mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  flex: 1 1 22rem;
+  min-width: 0;
+}
+
+.as-send-sheet__note {
+  margin: 0;
+}
+
+.as-send-sheet__actions {
+  align-items: center;
+}
+
+/* A target, the calibration, the logs: one fold each. */
+.as-send-fold {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background: var(--as-color-panel);
+}
+
+.as-send-fold__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-sm);
+  padding: 0 var(--as-space-md) 0 0;
+}
+
+.as-send-fold__toggle {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  padding: var(--as-space-md);
+  cursor: pointer;
+}
+
+.as-send-fold__name {
+  font-size: 1rem;
+}
+
+.as-send-fold__body {
+  padding: 0 var(--as-space-md) var(--as-space-md);
+}
+
+/* The complete list of a target's files. */
+.as-send-files {
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-sm);
+  background: var(--as-color-page-background);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.as-send-files__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-family: var(--as-font-family-mono, ui-monospace, Menlo, monospace);
+}
+
+.as-send-files__table th,
+.as-send-files__table td {
+  padding: var(--as-space-xs) var(--as-space-md);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.as-send-files__table th {
+  color: var(--as-color-muted-text);
+  font-weight: 400;
+  position: sticky;
+  top: 0;
+  background: var(--as-color-page-background);
+}
+
+.as-send-files__table td:first-child {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.as-send-files__more {
+  margin: 0;
+  padding: var(--as-space-xs) var(--as-space-md);
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-send-unassigned {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin-top: var(--as-space-sm);
+}
+
+.as-send-unassigned__head {
+  margin: 0;
+}
+
+/* « Déplacer »: the summary before acting. */
+.as-send-move {
+  width: min(40rem, 94vw);
+}
+
+.as-send-move__summary {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.as-send-move__steps {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  line-height: 1.5;
+}
+
+.as-send-fold__toggle .as-badge {
+  font-size: 0.75rem;
+}
+
+/* « Revoir la détection » beside
+   « Vérifier à nouveau », on one line. */
+.as-step__head-row > .as-actions {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--as-space-md);
+  margin-top: 0;
+}
+
+.as-step__head-row > .as-actions .as-button {
+  white-space: nowrap;
+}

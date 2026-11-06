@@ -1,0 +1,1756 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session.schema.json",
+  "title": "Astro Portal API v1 observation sessions and supplements",
+  "description": "An observation session is the append-only record of a night: a resource plus a journal of events (session-event-ingest.schema.json) and, when field data arrives after a plan was frozen, proposed supplements. \"Session\" here always means an observation session; a browser authentication session is called a web session throughout this contract. Event bodies are never part of the session resource; a reader pages them separately. See api/v1.md, section \"Observation sessions and debriefing\".",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableUuid": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+    },
+    "executionId": {
+      "description": "Additive: the identity of one execution of a night that carries several plans, a ULID the client generates once; every observation session launched together for the plans of that execution carries the same one, one session per plan as always. Null for an execution of a single plan.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ulid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "piloting": {
+      "description": "Additive: how the plan of this observation session is piloted — `mount` (the application points a mount), `smart_telescope` (the plan runs in a smart telescope), `assisted` (manual pointing assisted by a phone's plate solving, possibly with a satellite phone), `free` (the person drives the equipment; the plan is a reference). Null when not told. Written at the creation and changed afterwards by `PATCH /v1/sessions/{id}` (the mode of a night changed in « Nuit en cours »).",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["mount", "smart_telescope", "assisted", "free"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "closedBy": {
+      "description": "Additive: how the night was closed, told by the phone when it finishes the session — `automatic` (the night closed by itself at its end) or `manual` (the person's own « Terminer »). Absent or null: unknown (a session that never said, an earlier one, a debriefing's or an import's). Written with the finish and never moved by a replay of it; a reopen clears it.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["automatic", "manual"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "deviceLabel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "createRequest": {
+      "type": "object",
+      "description": "POST /v1/sessions. `planId` is the server plan UUID, never a browser client id. `clientSessionId` is the caller's own idempotency key for a direct (plan-less) session; a plan-linked session is idempotent on `planId` alone. `executionId` and `piloting` (additive) are written when the session is created; a replay returning an existing session never changes them. Additive: `origin` says where the session is created from. Only `execution` (the default), `astro-sync` and `capture` (the night of a capture the person adds, built by the client as `POST /v1/sessions`, `POST /v1/sessions/{id}/finish`, `PATCH /v1/sessions/{id}/night`) are accepted; `debrief` and `import` are set by the service's own creation paths and answer `400 invalid_request`; an existing session returned by a replay never changes its origin.",
+      "required": ["startedAt"],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "clientSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ulid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/executionId"
+        },
+        "piloting": {
+          "$ref": "#/$defs/piloting"
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["execution", "astro-sync", "capture"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "pilotingRequest": {
+      "type": "object",
+      "description": "PATCH /v1/sessions/{id}: the mode of a night changed in « Nuit en cours ». `piloting` is one of the four values and is required; the answer is the session `resource` with the new value. The same value again changes nothing.",
+      "required": ["piloting"],
+      "properties": {
+        "piloting": {
+          "type": "string",
+          "enum": ["mount", "smart_telescope", "assisted", "free"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "description": "`updatedAt` is the server-side high-water mark of the observation session: the latest of its own creation, its finish, and the `receivedAt` of its newest event or supplement. It is the cursor `GET /v1/sessions?since=` compares against. Additive: `outcome`, `origin`, `projectId`, `eveningDate`, `reworkRevision` and `reworkedAt` are written by the service on every answer; they are optional in the schema only so that a reader of an earlier answer still validates (such a reader assumes `outcome: null`, `origin: \"execution\"`, `projectId: null`, `reworkRevision: 0`, `reworkedAt: null`).",
+      "required": [
+        "id",
+        "planId",
+        "status",
+        "startedAt",
+        "finishedAt",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "planId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["open", "paused", "finished"]
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "clientSessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ulid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/executionId"
+        },
+        "piloting": {
+          "$ref": "#/$defs/piloting"
+        },
+        "closedBy": {
+          "$ref": "#/$defs/closedBy"
+        },
+        "eventCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supplementCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pendingSupplementCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "origin": {
+          "$ref": "#/$defs/origin"
+        },
+        "projectId": {
+          "description": "The multi-night plan (`project.schema.json`, internally a « project ») the session belongs to: the link carried by the session's plan item of the session's target first (`planItem.projectId`), else the link the session carries itself (a night met in the field, a session without a plan attached afterwards), else `null`. A session with several targets of several multi-night plans reports the plan of its first target in the order of its plan.",
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "eveningDate": {
+          "$ref": "#/$defs/eveningDate"
+        },
+        "reworkRevision": {
+          "description": "The revision of the session's rework (`session-rework.schema.json`): 0 at creation, +1 on each `PUT /v1/sessions/{id}/rework`. It is the value of `If-Match` the next rework must send.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "reworkedAt": {
+          "description": "When the last rework was saved; `null` while there was none. `updatedAt` moves to this instant with each rework, so a reader that follows `GET /v1/sessions?since=` sees a reworked session again.",
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "readOnly": {
+          "description": "Additive: `true` for a catalogue night of a private server (an opaque identifier `catalogue:<date>:<target>`, origin `import`), which nothing writes to. Written only when `true`; absent reads `false`.",
+          "type": "boolean",
+          "const": true
+        },
+        "deletedAt": {
+          "description": "Additive: when the session was deleted. Written only for a deleted session (the answer of its deletion and of `GET /v1/sessions?deleted=include|only`); a live session carries neither this nor `purgeAt`.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "purgeAt": {
+          "description": "Additive: when the maintenance erases a deleted session: `deletedAt` plus 30 days.",
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "createResponse": {
+      "type": "object",
+      "description": "POST /v1/sessions. `created` is false when an existing observation session was returned instead of a new one (200 rather than 201) — the \"no duplicate session\" guarantee.",
+      "required": ["session", "created"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/resource"
+        },
+        "created": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "description": "GET /v1/sessions. `nextSince` is the `updatedAt` of the last returned session and is meant to be sent back verbatim; the `since` bound is inclusive, so a client may see a session twice and never misses one.",
+      "required": ["sessions"],
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/resource"
+          }
+        },
+        "nextSince": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "hasMore": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "deleteResponse": {
+      "description": "`DELETE /v1/sessions/{id}`: the session, deleted softly (it carries `deletedAt` and `purgeAt`), how long the space keeps it (`graceDays`, 30) and the whole days left (`daysRemaining`). Idempotent. `409 session_not_finished` for a night in progress.",
+      "type": "object",
+      "required": ["session", "graceDays", "daysRemaining"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/resource"
+        },
+        "graceDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "daysRemaining": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "restoreResponse": {
+      "description": "`POST /v1/sessions/{id}/restore`: the session, live again. A session that was not deleted is returned as it is. `409 session_plan_taken` (with the `sessionId` that holds the plan) when the plan has another session since.",
+      "type": "object",
+      "required": ["session"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/resource"
+        }
+      },
+      "additionalProperties": false
+    },
+    "erasure": {
+      "description": "`POST /v1/sessions/{id}/erase`: the definitive, immediate erasure of a session that was deleted. `erased` counts what went with it: its `captures` (their files and their lines of « Intégrations » included), `events`, `supplements`, `analyses`, `steps`, `packageImports`, `deviceJournalLines` (the journals Astro Sync sent) and `integrations` (the declared or measured lines of its multi-night plans). `409 session_not_deleted` for a session that is not deleted.",
+      "type": "object",
+      "required": ["sessionId", "erased"],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "erased": {
+          "type": "object",
+          "required": [
+            "captures",
+            "events",
+            "supplements",
+            "analyses",
+            "steps",
+            "packageImports",
+            "deviceJournalLines",
+            "integrations"
+          ],
+          "properties": {
+            "captures": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "events": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "supplements": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "analyses": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "steps": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "packageImports": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deviceJournalLines": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "integrations": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "finishRequest": {
+      "type": "object",
+      "description": "POST /v1/sessions/{id}/finish. An absent `finishedAt` means the server instant. A replay never moves an already recorded `finishedAt`. Additive: `closedBy` says how the night was closed (`automatic`: it closed by itself at its end; `manual`: the person's own « Terminer »); absent means unknown, and a replay never moves it either. Any other value answers `400 invalid_request`.",
+      "properties": {
+        "finishedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "closedBy": {
+          "$ref": "#/$defs/closedBy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "reopenRequest": {
+      "type": "object",
+      "description": "POST /v1/sessions/{id}/reopen (« Reprendre la nuit »): a finished session is open again, `finishedAt` cleared, while its plan is not debriefed. `reopenedAt` is the instant of the gesture on the device (absent: the server instant). Idempotent: a session that is not finished is returned unchanged. A replay older than the recorded `finishedAt` (a later stop already won) is returned unchanged too, and a `finish` whose `finishedAt` is older than the last `reopenedAt` is ignored: the latest gesture wins whatever the order of arrival. A session whose plan is frozen (debriefed) is refused: 409 `session_debriefed`.",
+      "properties": {
+        "reopenedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "supplement": {
+      "type": "object",
+      "description": "Late field data that reached a plan already frozen. `payload` is the submitted plan payload, stored verbatim and never rewritten; `eventIds` names the events an acceptance appended.",
+      "required": ["id", "sessionId", "status", "payload", "createdAt"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "planId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["proposed", "accepted", "dismissed"]
+        },
+        "payload": {
+          "type": "object"
+        },
+        "originDeviceId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "deviceLabel": {
+          "$ref": "#/$defs/deviceLabel"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "decidedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "eventIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ulid"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "supplementDecisionRequest": {
+      "type": "object",
+      "description": "POST /v1/sessions/{id}/supplements/{sid}. `dismiss` never deletes the payload; a dismissed supplement can still be accepted later, an accepted one can no longer be dismissed because its events are already appended.",
+      "required": ["decision"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["accept", "dismiss"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "supplementDecisionResponse": {
+      "type": "object",
+      "required": ["supplement", "eventsCreated", "replayed"],
+      "properties": {
+        "supplement": {
+          "$ref": "#/$defs/supplement"
+        },
+        "eventsCreated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replayed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "detail": {
+      "type": "object",
+      "description": "GET /v1/sessions/{id} (additive). `events` is the first page only, in the same shape GET /v1/sessions/{id}/events returns. It also carries the structured night (`night`, `steps`, `qualitySummary`, `guidingSummary`, `guidingSeries`), never gated by a capability. Additive: `events` are the **effective** events (the append-only journal read through the correction layer of the rework: added events with `timing: \"reconstructed\"`, moved events, without the events a rework removed; `session-event-ingest.schema.json`, `storedEnvelope.rework`), and `targets` the cards of the session. `GET /v1/sessions/{id}/events` reads through the same layer. This is also the answer of `PUT /v1/sessions/{id}/rework`. Answers also for the opaque identifier of a catalogue night of a private server (`readOnly: true`).",
+      "required": ["session", "supplements"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/resource"
+        },
+        "supplements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/supplement"
+          }
+        },
+        "events": {
+          "type": "object"
+        },
+        "debrief": {
+          "description": "Additive: the debriefing stored with this session's plan — its outcome, instant and per-target adjustments, `acquiredMinutes` included. Null for a direct session and for a plan not debriefed yet.",
+          "anyOf": [
+            {
+              "$ref": "debrief.schema.json#/$defs/record"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "debriefSummary": {
+          "description": "Additive: the summary of the night, computed at request time from the plan's items, the whole journal, the stored debriefing and, when shown, the guiding losses — never stored.",
+          "anyOf": [
+            {
+              "$ref": "debrief.schema.json#/$defs/summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidingLosses": {
+          "description": "Additive: the guiding losses of the night, present when the service holds an analysis of this session — whoever reads it (reading an analysis is never gated; `analysis.logs` gates its creation only). Null otherwise, with `guidingLossesReason` saying why; `debriefSummary` then has no guiding line.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "debrief.schema.json#/$defs/guidingLoss"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidingLossesReason": {
+          "description": "Why `guidingLosses` is null: `no_analysis` (no analysis of this session). Null when the losses are shown.",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["no_analysis"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "description": "A READ-THROUGH projection of the plan this observation session was generated from, resolved at request time and stored nowhere else. It is how the \"equipment pre-filled\" requirement is honoured without a second source of truth: `equipment` is the frozen plan payload's own `equipment` object, echoed verbatim, and `revision` names the exact revision it was read from, so an interface can show the night's equipment beside the journal without the session ever carrying a copy that could drift. `nightStartAt` is the origin the plan's time slots were counted from, which is what lets a reader place a `planned` event back on the night's timeline. Null for a direct session.",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["planId", "status"],
+              "properties": {
+                "planId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "executed",
+                    "partial",
+                    "abandoned",
+                    "archived"
+                  ]
+                },
+                "revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "frozenAt": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                },
+                "nightStartAt": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                },
+                "nightEndAt": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                },
+                "equipment": {
+                  "anyOf": [
+                    {
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "night": {
+          "description": "Additive: the night's own fields, each with its source.",
+          "$ref": "#/$defs/night"
+        },
+        "steps": {
+          "description": "Additive: the night's acquisition steps, in their order.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "qualitySummary": {
+          "description": "Additive: null without an analysis or without a quality row.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/qualitySummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidingSummary": {
+          "description": "Additive: null without an analysis or without guiding.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/guidingSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidingSeries": {
+          "description": "Additive: the night's guiding by slices of about 2 minutes — the report's own slices, or computed from its samples; empty without guiding.",
+          "type": "array",
+          "items": {
+            "$ref": "session-analysis.schema.json#/$defs/guidingSlice"
+          }
+        },
+        "guidingTrace": {
+          "description": "Additive (w61): the night's guiding at one point per 10 s with the corrections and the markers — the report v3's `guidingTrace` as sent, or rebuilt from a report v2's raw samples (then `raPulseMs`/`decPulseMs` are null: the v2 does not say which way the corrections went, and `scaleArcsecPerPx` is null); null without guide samples (an import, a night without PHD2).",
+          "anyOf": [
+            {
+              "$ref": "session-analysis.schema.json#/$defs/guidingTrace"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "posesSummary": {
+          "description": "Additive (w61): the night's frames kept and left out by the stacking; null without an analysis or without a quality row.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/posesSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zone": {
+          "description": "Additive (w61): the zone of the night's place and its offset at the night's start, for writing every instant in the place's hours (« heure du lieu »); both null when the place has none (the hours are then written in UTC, and said so).",
+          "$ref": "#/$defs/nightZone"
+        },
+        "targets": {
+          "description": "Additive: the session's targets in the order of the night, as the Journal draws them (`journal.schema.json`, `target`): planned, added and removed ones, with the figures taken from the debriefing, then the events, then Astro Sync's analysis. Empty for a session with neither plan nor event.",
+          "type": "array",
+          "items": {
+            "$ref": "journal.schema.json#/$defs/target"
+          }
+        },
+        "readOnly": {
+          "description": "Additive: `true` when the session is a catalogue night of a private server that `GET /v1/journal` lists (`readOnly: true`): no plan, no event, no supplement, its targets and nothing else; every write to it answers `409 session_read_only`. `false` for every other session.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightSource": {
+      "description": "Where a field of the night comes from: `night` when the night holds it (the person set it, or it is the night's own like its start), `plan` when it is read through the night's plan because the person never set it.",
+      "type": "string",
+      "enum": ["night", "plan"]
+    },
+    "nightPlace": {
+      "description": "The night's place: a name and, optionally, coordinates (never published). Never a time zone (the place rule): a reader shows instants in the viewer's own time. Read through the plan, `name` is the plan place's name or locality and may be null.",
+      "type": "object",
+      "required": ["name", "latitude", "longitude"],
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latitude": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "longitude": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightEquipment": {
+      "description": "The night's equipment: identifiers of the space's equipment (manage-equipment.schema.json) or of the platform's default equipment.",
+      "type": "object",
+      "required": ["telescopeId", "cameraId", "mountId", "filterIds"],
+      "properties": {
+        "telescopeId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cameraId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mountId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filterIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "night": {
+      "description": "The structured night, in GET /v1/sessions/{id} and the PATCH answer: each field with its value and its `source`. `title` null: the screen titles « Nuit du mer. 7 oct. »; `notes` is the night's note (the field notes stay events of the journal).",
+      "type": "object",
+      "required": [
+        "title",
+        "startedAt",
+        "finishedAt",
+        "place",
+        "equipment",
+        "targetIds",
+        "notes"
+      ],
+      "properties": {
+        "title": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "startedAt": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "finishedAt": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "$ref": "#/$defs/nullableTimestamp"
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "place": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/nightPlace"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "equipment": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/nightEquipment"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "targetIds": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "notes": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/nightSource"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightPatchRequest": {
+      "description": "PATCH /v1/sessions/{id}/night, by the owner's web session (CSRF) or a device token of the space: the fields named are written, the others untouched; `null` gives a field back to the plan. `place` has no time zone (a `timeZone` is refused, 400). `finishedAt` only once the night is finished (409 `night_not_finished`). Unknown equipment or target: 422 `equipment_not_found`, `target_not_found`.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "place": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "latitude": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": -90,
+                      "maximum": 90
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "longitude": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": -180,
+                      "maximum": 180
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipment": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "telescopeId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "cameraId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "mountId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "filterIds": {
+                  "type": "array",
+                  "maxItems": 20,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targetIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightPatchResponse": {
+      "type": "object",
+      "required": ["session", "night"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/resource"
+        },
+        "night": {
+          "$ref": "#/$defs/night"
+        }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "description": "One acquisition step of the night (`acquisition_steps`): target (catalogue or personal; null when unknown, `targetHint` keeping what the frames said), filter (the person's free text, never normalized; null reads « Sans filtre »), frames, exposure, gain, and the integration computed (frames × exposure, never entered). `origin`: `analysis` (proposed by Astro Sync's analysis), `import` (the old nights' import) or `manual`. `edited`: corrected by hand (« modifié »); a new analysis replaces the `analysis`/`import` steps never edited and keeps the others. `stepKey` is the report's key of a proposed step.",
+      "type": "object",
+      "required": [
+        "id",
+        "sessionId",
+        "targetId",
+        "targetHint",
+        "filter",
+        "frameCount",
+        "exposureSeconds",
+        "gain",
+        "integrationSeconds",
+        "origin",
+        "stepKey",
+        "edited",
+        "editedAt",
+        "position",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "targetHint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "minimum": 0.001
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "integrationSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["analysis", "manual", "import"]
+        },
+        "stepKey": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "edited": {
+          "type": "boolean"
+        },
+        "editedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stepCreateRequest": {
+      "description": "POST /v1/sessions/{id}/steps: a step added by hand (origin `manual`). 201 with the `step`.",
+      "type": "object",
+      "required": ["frameCount", "exposureSeconds"],
+      "properties": {
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 86400
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "stepPatchRequest": {
+      "description": "PATCH /v1/sessions/{id}/steps/{stepId}: a correction by hand; the step is marked `edited`. DELETE on the same path removes it (204). Unknown step: 404 `step_not_found`.",
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "targetId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "minimum": 0.001,
+          "maximum": 86400
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualityFigures": {
+      "description": "Medians of the measured frames: FWHM in pixels, and in arcseconds when the report knows the scale (`pixelScaleArcsec`; « 2,6 px · 8,1″ »), eccentricity, sky background and its noise in ADU, stars detected; `measuredFrames`, the frames holding at least one measure. A figure no frame gave is null.",
+      "type": "object",
+      "required": [
+        "fwhmPixels",
+        "fwhmArcsec",
+        "eccentricity",
+        "skyBackgroundAdu",
+        "skyBackgroundNoiseAdu",
+        "starCount",
+        "measuredFrames"
+      ],
+      "properties": {
+        "fwhmPixels": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fwhmArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eccentricity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skyBackgroundAdu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skyBackgroundNoiseAdu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starCount": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "measuredFrames": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualitySummary": {
+      "description": "The night's quality, computed at read time from its analysis, never stored: for the night and by step (`stepId`, the night's step proposed under that key, null when it no longer exists).",
+      "type": "object",
+      "required": ["pixelScaleArcsec", "night", "byStep"],
+      "properties": {
+        "pixelScaleArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "night": {
+          "$ref": "#/$defs/qualityFigures"
+        },
+        "byStep": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "stepKey",
+              "stepId",
+              "filter",
+              "exposureSeconds",
+              "fwhmPixels",
+              "fwhmArcsec",
+              "eccentricity",
+              "skyBackgroundAdu",
+              "skyBackgroundNoiseAdu",
+              "starCount",
+              "measuredFrames"
+            ],
+            "properties": {
+              "stepKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "stepId": {
+                "$ref": "#/$defs/nullableUuid"
+              },
+              "filter": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exposureSeconds": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fwhmPixels": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fwhmArcsec": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "eccentricity": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "skyBackgroundAdu": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "skyBackgroundNoiseAdu": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "starCount": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "measuredFrames": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidingSummary": {
+      "description": "The night's guiding, computed at read time from its analysis: root-mean-square in right ascension, declination and total over the night (arcseconds; from the raw samples, or the slices weighted by their samples), the guided duration, the samples, dithers, expired settles, focus runs launched and succeeded, meridian flips. Dithers are counted once: an ASIAIR dither within 30 s of a PHD2 dither is the same one (a report v2 holds it twice). Additive (w61): `starLost`, the star losses (those within 30 s one), and `guideScaleArcsecPerPx`, the guide camera's scale when the report v3 gives it; the RMS is the report v3's own `guidingTrace.rms` when it has one.",
+      "type": "object",
+      "required": [
+        "rmsRaArcsec",
+        "rmsDecArcsec",
+        "rmsTotalArcsec",
+        "guidedSeconds",
+        "samples",
+        "dithers",
+        "settleTimeouts",
+        "autofocusRuns",
+        "autofocusSucceeded",
+        "meridianFlips"
+      ],
+      "properties": {
+        "rmsRaArcsec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsDecArcsec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsTotalArcsec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidedSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dithers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "settleTimeouts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "autofocusRuns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "autofocusSucceeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "meridianFlips": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "starLost": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guideScaleArcsecPerPx": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0.001
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "posesSummary": {
+      "description": "The night's frames (the quality rows of its analysis): `total`, `kept`, `rejected` (left out by the stacking: `byReason` counts them by `rejectReason` — `unregistered`, `dawn`, `sky`, `clouds`, `trailed`, `wide`, `manual`), their exposure in seconds (`totalSeconds`, `keptSeconds`), and the same by filter (`byFilter`, `filter` null for « Sans filtre »). `rejectedKnown` is false for a report v2, which never said which frames the stacking left out: all count as kept.",
+      "type": "object",
+      "required": [
+        "total",
+        "kept",
+        "rejected",
+        "rejectedKnown",
+        "totalSeconds",
+        "keptSeconds",
+        "byReason",
+        "byFilter"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kept": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejectedKnown": {
+          "type": "boolean"
+        },
+        "totalSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "keptSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "byReason": {
+          "type": "object"
+        },
+        "byFilter": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["filter", "total", "kept", "rejected", "keptSeconds"],
+            "properties": {
+              "filter": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "kept": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rejected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "keptSeconds": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightZone": {
+      "description": "The zone of a night's place (IANA, `Europe/Paris`) and its offset east of UTC in minutes at the night's start (`120`), for the readers that cannot read a zone's rules; both null when the place has none.",
+      "type": "object",
+      "required": ["timeZone", "utcOffsetMinutes"],
+      "properties": {
+        "timeZone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "utcOffsetMinutes": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -900,
+              "maximum": 900
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "outcome": {
+      "description": "Additive: how the night turned out, `null` while it does not say. `executed` (the plan was carried out), `partial` (in part), `abandoned` (the plan was not carried out: the night is kept as a finished session with its reason). Taken from the debriefing of the session's plan; `null` for a session not debriefed yet and for a session without a plan (an observation made freely, an import): those have no promise to compare with. Never written by a client on the session itself: the debriefing (`debrief.schema.json`) is the only way to set it.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["executed", "partial", "abandoned"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "origin": {
+      "description": "Additive: where the session was created. `execution` (the phone's or the web's « Nuit en cours »; also what a reader assumes for a session that does not say), `debrief` (created by a debriefing of a plan carried out or not carried out without the application), `import` (an import: the package of a night, the old portal's nights, a night rebuilt from captures), `astro-sync` (created by Astro Sync's « Nuits »), `capture` (created when a capture is added with no session to join, for the night and the place of the photo; finished at once, editable like any session, never read-only, and not an import). Set once, by the creation path, and never changed.",
+      "type": "string",
+      "enum": ["execution", "debrief", "import", "astro-sync", "capture"]
+    },
+    "eveningDate": {
+      "description": "The night's date (`YYYY-MM-DD`), **the definition of the integrations** (`integration.schema.json`, `eveningDate`): the plan's date when the session has a plan, else the evening of its start at the place's longitude, local noon to local noon (12:00 UTC minus longitude / 15 h), UTC noon when no longitude is known. Never a time zone. `capture.nightDate` (`capture.schema.json`) keeps its own definition (the night of the capture's plan, else of its session) and is not changed.",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/createRequest"
+    },
+    {
+      "$ref": "#/$defs/createResponse"
+    },
+    {
+      "$ref": "#/$defs/resource"
+    },
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/finishRequest"
+    },
+    {
+      "$ref": "#/$defs/pilotingRequest"
+    },
+    {
+      "$ref": "#/$defs/supplement"
+    },
+    {
+      "$ref": "#/$defs/supplementDecisionRequest"
+    },
+    {
+      "$ref": "#/$defs/supplementDecisionResponse"
+    },
+    {
+      "$ref": "#/$defs/detail"
+    }
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Astro Sync",
+  "mainBinaryName": "astro-sync-app",
+  "version": "1.0.0",
+  "identifier": "space.planastro.astrosync",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Astro Sync",
+        "width": 1100,
+        "height": 760,
+        "minWidth": 1040,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
+    "publisher": "Sqound",
+    "category": "Utility",
+    "shortDescription": "Sends your astrophotography nights to your Astro Portal space, without ever modifying your files.",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "languages": [
+          "English",
+          "French",
+          "German",
+          "Italian",
+          "Spanish",
+          "PortugueseBR",
+          "Russian",
+          "Japanese",
+          "SimpChinese",
+          "TradChinese"
+        ]
+      }
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../../stacking/astro_sync_stack.py": "stacking/astro_sync_stack.py",
+      "../../stacking/check_environment.py": "stacking/check_environment.py",
+      "../../stacking/pipeline_defs.py": "stacking/pipeline_defs.py",
+      "../../stacking/renders.py": "stacking/renders.py",
+      "../../stacking/render_finish.py": "stacking/render_finish.py",
+      "../../stacking/linear_export.py": "stacking/linear_export.py",
+      "../../stacking/integration_master.py": "stacking/integration_master.py",
+      "../../stacking/device_master.py": "stacking/device_master.py",
+      "../../stacking/overscan.py": "stacking/overscan.py",
+      "../../stacking/raw_files.py": "stacking/raw_files.py",
+      "../../stacking/star_quality.py": "stacking/star_quality.py",
+      "../../stacking/pose_stats.py": "stacking/pose_stats.py",
+      "../../stacking/xisf_reader.py": "stacking/xisf_reader.py",
+      "../../stacking/plan_stack.py": "stacking/plan_stack.py",
+      "../../stacking/plan_combine.py": "stacking/plan_combine.py",
+      "../../stacking/dualband_reference.py": "stacking/dualband_reference.py",
+      "../../stacking/requirements.txt": "stacking/requirements.txt",
+      "../../stacking/requirements.in": "stacking/requirements.in",
+      "../../stacking/dependencies/registry.json": "stacking/dependencies/registry.json",
+      "../../stacking/pipelines/raw/pipeline.json": "stacking/pipelines/raw/pipeline.json",
+      "../../stacking/pipelines/raw/preview.jpg": "stacking/pipelines/raw/preview.jpg",
+      "../../stacking/pipelines/dualband-correction/pipeline.json": "stacking/pipelines/dualband-correction/pipeline.json",
+      "../../stacking/pipelines/dualband-correction/preview.jpg": "stacking/pipelines/dualband-correction/preview.jpg",
+      "../../stacking/pipelines/polished/pipeline.json": "stacking/pipelines/polished/pipeline.json",
+      "../../stacking/pipelines/polished/preview.jpg": "stacking/pipelines/polished/preview.jpg",
+      "../../stacking/pipelines/hoo/pipeline.json": "stacking/pipelines/hoo/pipeline.json",
+      "../../stacking/pipelines/hoo/preview.jpg": "stacking/pipelines/hoo/preview.jpg",
+      "../../stacking/registration_framing.py": "stacking/registration_framing.py",
+      "../../stacking/night_framing.py": "stacking/night_framing.py",
+      "../../stacking/level_match.py": "stacking/level_match.py",
+      "../../stacking/plan_framing.py": "stacking/plan_framing.py",
+      "../../stacking/plan_crop.py": "stacking/plan_crop.py",
+      "../../stacking/siril_config.py": "stacking/siril_config.py",
+      "../../stacking/software_tag.py": "stacking/software_tag.py"
+    }
+  }
+}

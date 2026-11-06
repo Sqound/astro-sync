@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place.schema.json",
+  "title": "Astro Portal API v1 places of a space",
+  "description": "A place belongs to the space, like a framing or an item of equipment, and is read and written by `/v1/places` with either credential. The most recent edit wins, the place as one block: every write carries `editedAt`, the instant of the person's gesture on the device; the service keeps the most recent one (an older or equal write is answered `200` with `applied: false` and what the service keeps), and caps `editedAt` at its own clock + 5 minutes. A deletion is soft and answers to the same rule (`DELETE …?at=`). A place used by a plan to execute cannot be deleted (`409 place_in_use`). `usage` is computed at each read, never written. A plan keeps its own copy of the place (`planner-document.schema.json`, `place`), with the same `id`; `note` and `kind` never enter it. The normative prose is `v1.md`, « Places ».",
+  "$defs": {
+    "placeId": {
+      "description": "Chosen by the client and never changed: a UUID for a new place, given as soon as its point is set. `known`, `search`, `suggested`, `resolve`, `extract`, `default` and `import` are segments of other routes and are refused as identifiers.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,120}$"
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "knownType": {
+      "description": "The four types of a known place (the suggested places).",
+      "enum": ["viewpoint", "campsite", "park", "picnic"]
+    },
+    "kind": {
+      "description": "The type of the place: « private » (a place of one's own, like a home or a garden: what a new place is by default) or one of the four types of a known place. A place created from a suggested place keeps the suggestion's type. Absent on a place written before the field: clients read it as « private », or as the type of its `knownPlace` when it has one.",
+      "enum": ["private", "viewpoint", "campsite", "park", "picnic"]
+    },
+    "horizonMask": {
+      "description": "36 points, one every 10° of azimuth from 0 to 350, in that order; altitudes in degrees. A point may carry `surveyedAt`, the instant its 10° sector was last surveyed (in augmented reality, or moved by hand in an editor); a point without it is « à relever ».",
+      "type": "object",
+      "required": ["enabled", "points"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "points": {
+          "type": "array",
+          "minItems": 36,
+          "maxItems": 36,
+          "items": {
+            "type": "object",
+            "required": ["azimuth", "altitude"],
+            "properties": {
+              "azimuth": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 350,
+                "multipleOf": 10
+              },
+              "altitude": { "type": "number", "minimum": 0, "maximum": 90 },
+              "surveyedAt": { "$ref": "#/$defs/timestamp" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "knownPlace": {
+      "description": "The link to the known place the place was added from; never the known place's details.",
+      "type": "object",
+      "required": ["source", "id", "type", "linkedAt"],
+      "properties": {
+        "source": { "const": "osm" },
+        "id": {
+          "type": "string",
+          "pattern": "^(node|way|relation)/[1-9][0-9]*$"
+        },
+        "type": { "$ref": "#/$defs/knownType" },
+        "linkedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "skyEntered": {
+      "description": "The sky background the person typed for the place, in mag/arcsec². Rule: measured > entered > estimation.",
+      "type": "object",
+      "required": ["sqm", "enteredAt"],
+      "properties": {
+        "sqm": { "type": "number", "minimum": 14, "maximum": 22.5 },
+        "enteredAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "planRef": {
+      "description": "A plan that names this place (`location.id`), in the shape of a framing's `planRef`.",
+      "type": "object",
+      "required": ["planId", "name", "planDate", "status"],
+      "properties": {
+        "planId": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "planDate": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "status": {
+          "type": "string",
+          "enum": ["active", "executed", "partial", "abandoned", "archived"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "description": "Computed at each read from the plans not deleted whose place is this one: `pendingPlans` are the plans to execute (`active`), which refuse a deletion; `pastPlans` every other plan (executed, partial, abandoned, archived), which keeps its own copy of the place.",
+      "type": "object",
+      "required": ["pendingPlans", "pastPlans"],
+      "properties": {
+        "pendingPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        },
+        "pastPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "placeFields": {
+      "description": "What the person writes. `name` is kept as typed (never trimmed nor rewritten); `elevation` is a decimal string, absent when unknown (never « 0 » for an unknown); `timeZone` is an IANA name or absent (without a time zone the night is computed from the longitude and shown in UTC; an explicit « UTC » is UTC); `timeZoneSource` is « chosen » when the person picked the zone themselves (a zone read by the table or the service never replaces it), absent otherwise.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "locality": { "type": "string", "maxLength": 200 },
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "elevation": {
+          "type": "string",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?$"
+        },
+        "timeZone": { "type": "string", "minLength": 1 },
+        "timeZoneSource": { "enum": ["chosen"] },
+        "horizonMask": {
+          "anyOf": [{ "$ref": "#/$defs/horizonMask" }, { "type": "null" }]
+        },
+        "horizonStatus": { "enum": ["verified", "unverified"] },
+        "skyEntered": { "$ref": "#/$defs/skyEntered" },
+        "kind": { "$ref": "#/$defs/kind" },
+        "knownPlace": { "$ref": "#/$defs/knownPlace" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
+    "placeWrite": {
+      "description": "The body of `PUT /v1/places/{placeId}`: the whole place (one block) and the instant of the gesture. `id`, when given, equals the path's. `usage`, `createdAt` and `updatedAt` are the service's and are ignored; any other unknown field is ignored too. `locality`, `elevation`, `note` given empty, and `timeZone`, `kind`, `skyEntered`, `knownPlace` given `null`, read as absent.",
+      "allOf": [{ "$ref": "#/$defs/placeFields" }],
+      "type": "object",
+      "required": ["name", "latitude", "longitude", "editedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/placeId" },
+        "editedAt": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "place": {
+      "description": "A place of the space, as the service keeps it. `editedAt` is the instant of the last gesture the service kept (capped at its clock + 5 minutes); `createdAt` and `updatedAt` are the service's.",
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "latitude",
+        "longitude",
+        "horizonMask",
+        "editedAt",
+        "createdAt",
+        "updatedAt",
+        "usage"
+      ],
+      "allOf": [{ "$ref": "#/$defs/placeFields" }],
+      "properties": {
+        "id": { "$ref": "#/$defs/placeId" },
+        "name": {},
+        "locality": {},
+        "latitude": {},
+        "longitude": {},
+        "elevation": {},
+        "timeZone": {},
+        "timeZoneSource": {},
+        "horizonMask": {},
+        "horizonStatus": {},
+        "skyEntered": {},
+        "kind": {},
+        "knownPlace": {},
+        "note": {},
+        "editedAt": { "$ref": "#/$defs/timestamp" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "usage": { "$ref": "#/$defs/usage" }
+      },
+      "additionalProperties": false
+    },
+    "placeList": {
+      "description": "`GET /v1/places`: every live place of the space (deleted ones are absent: absent means deleted), the most recently edited first, and the space's default place — `null` when none was chosen or when it names a place no longer there; the clients then fall back on their own rule (`defaultPlaceOf`).",
+      "type": "object",
+      "required": ["places", "defaultPlaceId", "defaultPlaceEditedAt"],
+      "properties": {
+        "places": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/place" }
+        },
+        "defaultPlaceId": {
+          "anyOf": [{ "$ref": "#/$defs/placeId" }, { "type": "null" }]
+        },
+        "defaultPlaceEditedAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "writeAnswer": {
+      "description": "`PUT /v1/places/{placeId}` (`201` when it created the place, `200` otherwise): `applied` says whether the write was kept; when it was not (an older or equal `editedAt`), `place` is what the service keeps and the client adopts it — `null` when the place was deleted by a more recent gesture (or longer ago than the tombstones are kept, 90 days), in which case the client drops its copy.",
+      "type": "object",
+      "required": ["place", "applied"],
+      "properties": {
+        "place": {
+          "anyOf": [{ "$ref": "#/$defs/place" }, { "type": "null" }]
+        },
+        "applied": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "deleteAnswer": {
+      "description": "`DELETE /v1/places/{placeId}?at=<instant>`: `deleted: true`, or `deleted: false` with the place when it was edited after `at` (a more recent edit gives the place back).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["deleted"],
+          "properties": { "deleted": { "const": true } },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["deleted", "place"],
+          "properties": {
+            "deleted": { "const": false },
+            "place": { "$ref": "#/$defs/place" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "defaultWrite": {
+      "description": "The body of `PUT /v1/places/default`: a live place's id, or `null` for none, and the instant of the choice (the same rule as a place).",
+      "type": "object",
+      "required": ["placeId", "editedAt"],
+      "properties": {
+        "placeId": {
+          "anyOf": [{ "$ref": "#/$defs/placeId" }, { "type": "null" }]
+        },
+        "editedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "defaultAnswer": {
+      "description": "`PUT /v1/places/default`: what the service keeps, and whether the write was kept.",
+      "type": "object",
+      "required": ["defaultPlaceId", "defaultPlaceEditedAt", "applied"],
+      "properties": {
+        "defaultPlaceId": {
+          "anyOf": [{ "$ref": "#/$defs/placeId" }, { "type": "null" }]
+        },
+        "defaultPlaceEditedAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "applied": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "importRequest": {
+      "description": "The body of `POST /v1/places/import`: what a device or a browser kept without a space, sent once (at the pairing of a phone, at the first sign-in of a browser). Each place carries its own `id` (never changed by the service); at most 200, each id once.",
+      "type": "object",
+      "required": ["places"],
+      "properties": {
+        "places": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "allOf": [{ "$ref": "#/$defs/placeWrite" }],
+            "required": ["id"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "importAnswer": {
+      "description": "`POST /v1/places/import`: the space's places after the import (the shape of `GET /v1/places`'s `places`) and, for each place sent, in order, whether it was created. An id the space already holds — live or deleted — is never changed (`created: false`): the import is idempotent.",
+      "type": "object",
+      "required": ["places", "imported"],
+      "properties": {
+        "places": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/place" }
+        },
+        "imported": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["id", "created"],
+            "properties": {
+              "id": { "$ref": "#/$defs/placeId" },
+              "created": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "description": "The v1 error envelope. `409 place_in_use` carries the `pendingPlans` that refuse the deletion; `409 place_limit_reached` carries the `limit` (200).",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "authentication_required",
+                "device_authentication_required",
+                "csrf_invalid",
+                "entitlement_read_only",
+                "place_not_found",
+                "place_in_use",
+                "place_limit_reached",
+                "place_storage_unavailable"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
+        "pendingPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        },
+        "limit": { "const": 200 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/placeList" },
+    { "$ref": "#/$defs/place" },
+    { "$ref": "#/$defs/writeAnswer" },
+    { "$ref": "#/$defs/deleteAnswer" },
+    { "$ref": "#/$defs/defaultAnswer" },
+    { "$ref": "#/$defs/importAnswer" },
+    { "$ref": "#/$defs/error" }
+  ]
+}

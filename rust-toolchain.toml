@@ -1,0 +1,6 @@
+# Pins the toolchain used for every `cargo` invocation under `astro-sync/`
+# (rustup reads this file automatically), so that `cargo fmt`, `cargo clippy`
+# and `cargo test` are reproducible without a separate rustup install step.
+[toolchain]
+channel = "1.93.1"
+components = ["rustfmt", "clippy"]

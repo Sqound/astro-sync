@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place-sky-measure.schema.json",
+  "title": "Astro Portal API v1 measured sky background",
+  "description": "POST and GET /v1/place-sky-measures (packages/portal/src/persistence/place-sky-measure-repository.js, table place_sky_measures; packages/portal-app/src/routes/api/v1/place-sky-measures/route.js). Astro Sync measures the sky background of a night on the observer's own solved frames, on their computer (astro-sync-core analysis::sky_night, method astro-sync-sky/1), and sends one number per night: the median in mag/arcsec², the number of poses it is the median of, the method version, the median instant, the session it was measured for and the frames' site. Never an image; nothing else is accepted (`upload` is closed). The service files the value under the account's place and night: a session with a plan gives the plan's night and place (its id among the account's places, else the place within 500 m of its position); otherwise the account's place within 500 m of `site`, and the night of `observedAt` at that place's longitude (the date of UTC + round(longitude / 15) h - 12 h). The site is used to find the place and never stored. One value per account, place and night: a later upload replaces it (200, `replaced: true`; 201 for a new one). Free: no capability is asked for, on every server. Either credential (a device bearer, or a web session with its CSRF token for the POST). Errors: 400 invalid_request, 404 session_not_found, 422 place_not_found (no place of the account within 500 m: nothing is stored). GET answers the account's values by place, newest night first; `placeId` narrows it to one place. A recorded value signals the `places` change domain.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "instant": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "night": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "sqm": {
+      "type": "number",
+      "minimum": 10,
+      "maximum": 25
+    },
+    "poseCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "methodVersion": {
+      "type": "string",
+      "pattern": "^astro-sync-sky/[1-9][0-9]{0,5}$"
+    },
+    "placeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "site": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "additionalProperties": false
+    },
+    "upload": {
+      "type": "object",
+      "required": ["observedAt", "sqm", "poseCount", "methodVersion"],
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": ["sessionId"]
+            },
+            {
+              "required": ["site"]
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "site": {
+          "$ref": "#/$defs/site"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "sqm": {
+          "$ref": "#/$defs/sqm"
+        },
+        "poseCount": {
+          "$ref": "#/$defs/poseCount"
+        },
+        "methodVersion": {
+          "$ref": "#/$defs/methodVersion"
+        }
+      },
+      "additionalProperties": false
+    },
+    "measure": {
+      "type": "object",
+      "required": [
+        "placeId",
+        "night",
+        "sqm",
+        "poseCount",
+        "methodVersion",
+        "observedAt",
+        "sessionId",
+        "updatedAt"
+      ],
+      "properties": {
+        "placeId": {
+          "$ref": "#/$defs/placeId"
+        },
+        "night": {
+          "$ref": "#/$defs/night"
+        },
+        "sqm": {
+          "$ref": "#/$defs/sqm"
+        },
+        "poseCount": {
+          "$ref": "#/$defs/poseCount"
+        },
+        "methodVersion": {
+          "$ref": "#/$defs/methodVersion"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "sessionId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/instant"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightMeasure": {
+      "type": "object",
+      "required": [
+        "night",
+        "sqm",
+        "poseCount",
+        "methodVersion",
+        "observedAt",
+        "sessionId",
+        "updatedAt"
+      ],
+      "properties": {
+        "night": {
+          "$ref": "#/$defs/night"
+        },
+        "sqm": {
+          "$ref": "#/$defs/sqm"
+        },
+        "poseCount": {
+          "$ref": "#/$defs/poseCount"
+        },
+        "methodVersion": {
+          "$ref": "#/$defs/methodVersion"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "sessionId": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "updatedAt": {
+          "$ref": "#/$defs/instant"
+        }
+      },
+      "additionalProperties": false
+    },
+    "uploaded": {
+      "type": "object",
+      "required": ["measure", "replaced"],
+      "properties": {
+        "measure": {
+          "$ref": "#/$defs/measure"
+        },
+        "replaced": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "listQuery": {
+      "type": "object",
+      "properties": {
+        "placeId": {
+          "$ref": "#/$defs/placeId"
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "required": ["places"],
+      "properties": {
+        "places": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["placeId", "measures"],
+            "properties": {
+              "placeId": {
+                "$ref": "#/$defs/placeId"
+              },
+              "measures": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/$defs/nightMeasure"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "session_not_found",
+                "place_not_found",
+                "payload_too_large",
+                "sky_measure_storage_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/upload"
+    },
+    {
+      "$ref": "#/$defs/uploaded"
+    },
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/error"
+    }
+  ]
+}

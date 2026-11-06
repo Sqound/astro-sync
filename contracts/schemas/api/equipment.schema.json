@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/equipment.schema.json",
+  "title": "Astro Portal API v1 equipment",
+  "description": "GET /v1/equipment response (packages/portal/src/persistence/equipment-reader.js). Device-bearer only, tenant-scoped to the authenticated device's owner; a paired device allowed to write also adds one item with POST /v1/equipment (the body and the answer of POST /v1/manage/equipment: manage-equipment.schema.json `equipmentInput` in `{ equipment }`, `item` with 201) — the same item shape the web planner's equipment endpoint returns. The schema adds, additively, `defaults` (the active « Matériel par défaut » every space is offered, without the organisation that holds it nor its notes) and `hideDefaultEquipment` (the space's option « Masquer le matériel par défaut »); a client reading an older portal finds neither. It also adds, additively, `defaultConfiguration`: « Ma configuration par défaut » of the space (`$defs/defaultConfiguration`, also the shape of GET /v1/manage/default-configuration), null when none is set.",
+  "type": "object",
+  "required": ["equipment"],
+  "properties": {
+    "equipment": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/equipmentItem"
+      }
+    },
+    "defaults": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/defaultEquipmentItem"
+      }
+    },
+    "hideDefaultEquipment": {
+      "type": "boolean"
+    },
+    "defaultConfiguration": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/defaultConfiguration"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "equipmentItem": {
+      "type": "object",
+      "required": ["id", "tenantId", "type", "name", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "telescope",
+            "guide-scope",
+            "camera",
+            "eyepiece",
+            "lens",
+            "filter",
+            "mount",
+            "controller"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "isBinoculars": {
+          "type": "boolean"
+        },
+        "specifications": {
+          "type": "object"
+        },
+        "planner": {
+          "type": "object",
+          "description": "What the planners read of the item. Additive fields: on a filter `equipmentIds` (the ids of the telescopes and cameras it is attached to) and `forAllEquipment` (offered for all equipment, the default true; false limits it to `equipmentIds`); on a telescope or a camera `ownFiltersOnly` (offer only the filters attached to it, default false, true for a telescope made from a smart-telescope profile); on a telescope `profileId` (the id of the common profile it was made from, which names its built-in filters); on a telescope `finder` (`aligned`: its finder is aligned with the tube; `none`: no finder; absent: not said — what the phone's axis calibration asks first); on every item `maker` (the maker's name, as the pickers' « Marque » menu lists it) and `kind` (a telescope's optical formula `refractor`, `newtonian`, `schmidt-cassegrain`, `maksutov`, `ritchey-chretien`, `cassegrain` or `smart`; an eyepiece's `zoom`, `plossl`, `orthoscopic`, `standard`, `wide-field` or `ultra-wide-field`; a camera's `colour` or `mono`; a reducer or Barlow's `reducer`, `barlow` or `flattener`), each absent on a generic entry; on a mount that can flip (equatorial, hybrid, or a kind not said) `meridianLimitMinutes` (a whole number of minutes, 0 to 120, that the mount can keep tracking past the meridian before it flips; 0: it flips at the meridian; absent: not said, no cut; never written for an alt-az mount, a tracker or a smart telescope). On a guide scope (made on the phone, edited on the web with the same fields) `guideScope`: `telescopeId` (the telescope it rides on; absent: none), `placement` (`guide` or `main`), `camera` (`name`, `pixelSizeUm`, `widthPx`, `heightPx`, `sensor` `mono` or `colour`), `protocol` (`alpaca` or `indi`), (the camera server's address, port and device are the phone's own: they stay on the phone, the web's form neither shows nor writes them), `method` (`rings` or `softwareOffset`), `lastAdjustment` (written by the phone only, shown read-only on the web and kept as read: `at`, `star`, `errorArcmin`, `offset` `{xDegrees, yDegrees}`), `exposureSeconds` (1–5), `binning` (1 or 2), `gain`; a guide scope is never an instrument to observe with.",
+          "properties": {
+            "equipmentIds": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "forAllEquipment": { "type": "boolean" },
+            "ownFiltersOnly": { "type": "boolean" },
+            "profileId": { "type": "string" },
+            "maker": { "type": "string" },
+            "kind": { "type": "string" },
+            "meridianLimitMinutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120
+            }
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "archivedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preferenceOrder": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "defaultEquipmentItem": {
+      "type": "object",
+      "required": ["id", "type", "name", "createdAt", "updatedAt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "telescope",
+            "guide-scope",
+            "camera",
+            "eyepiece",
+            "lens",
+            "filter",
+            "mount",
+            "controller"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "manufacturer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "isBinoculars": {
+          "type": "boolean"
+        },
+        "specifications": {
+          "type": "object"
+        },
+        "planner": {
+          "type": "object",
+          "description": "What the planners read of the item. Additive fields: on a filter `equipmentIds` (the ids of the telescopes and cameras it is attached to) and `forAllEquipment` (offered for all equipment, the default true; false limits it to `equipmentIds`); on a telescope or a camera `ownFiltersOnly` (offer only the filters attached to it, default false, true for a telescope made from a smart-telescope profile); on a telescope `profileId` (the id of the common profile it was made from, which names its built-in filters); on a telescope `finder` (`aligned`: its finder is aligned with the tube; `none`: no finder; absent: not said — what the phone's axis calibration asks first); on every item `maker` (the maker's name, as the pickers' « Marque » menu lists it) and `kind` (a telescope's optical formula `refractor`, `newtonian`, `schmidt-cassegrain`, `maksutov`, `ritchey-chretien`, `cassegrain` or `smart`; an eyepiece's `zoom`, `plossl`, `orthoscopic`, `standard`, `wide-field` or `ultra-wide-field`; a camera's `colour` or `mono`; a reducer or Barlow's `reducer`, `barlow` or `flattener`), each absent on a generic entry; on a mount that can flip (equatorial, hybrid, or a kind not said) `meridianLimitMinutes` (a whole number of minutes, 0 to 120, that the mount can keep tracking past the meridian before it flips; 0: it flips at the meridian; absent: not said, no cut; never written for an alt-az mount, a tracker or a smart telescope). On a guide scope (made on the phone, edited on the web with the same fields) `guideScope`: `telescopeId` (the telescope it rides on; absent: none), `placement` (`guide` or `main`), `camera` (`name`, `pixelSizeUm`, `widthPx`, `heightPx`, `sensor` `mono` or `colour`), `protocol` (`alpaca` or `indi`), (the camera server's address, port and device are the phone's own: they stay on the phone, the web's form neither shows nor writes them), `method` (`rings` or `softwareOffset`), `lastAdjustment` (written by the phone only, shown read-only on the web and kept as read: `at`, `star`, `errorArcmin`, `offset` `{xDegrees, yDegrees}`), `exposureSeconds` (1–5), `binning` (1 or 2), `gain`; a guide scope is never an instrument to observe with.",
+          "properties": {
+            "equipmentIds": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "forAllEquipment": { "type": "boolean" },
+            "ownFiltersOnly": { "type": "boolean" },
+            "profileId": { "type": "string" },
+            "maker": { "type": "string" },
+            "kind": { "type": "string" },
+            "meridianLimitMinutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 120
+            }
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "archivedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preferenceOrder": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "A row of « Matériel par défaut » as a space reads it: the item shape without `tenantId` and `notes`. A connected telescope's `planner` carries its `group`, `integratedCamera` and `mount`; a default filter's `planner` may carry its `family`."
+    },
+    "defaultConfiguration": {
+      "description": "« Ma configuration par défaut » (packages/portal/src/planner/default-configuration.js `normalizeDefaultConfiguration`): the keys of a plan's `equipment` that fill every new plan. A key left out is « à choisir » (never chosen, or an item archived since): a new plan then starts with no telescope, camera or eyepiece chosen (`null`, « Choisir… »), no reducer, no filter and no mount.",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": ["imaging", "visual"]
+        },
+        "telescopeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "cameraId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "eyepieceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "eyepieceFocalLengthMm": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "modifierId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "filterIds": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "mountId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

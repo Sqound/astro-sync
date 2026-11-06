@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in Astro Sync does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting. Please do not attach your images, your
+        acquisition logs or your portal's address. A security vulnerability
+        goes through SECURITY.md, never a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: Version of Astro Sync
+      description: Shown at the bottom of the application, or by `astro-sync --version`.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - macOS (Apple silicon)
+        - Windows (x64)
+        - Built from source on another system
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Where
+      options:
+        - The desktop application
+        - The command line (astro-sync)
+        - The stacking (Siril)
+    validations:
+      required: true
+  - type: input
+    id: software
+    attributes:
+      label: Acquisition software and devices
+      description: What wrote the night's folders (for example NINA, ASIAIR, a smart telescope), if it matters.
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: The steps that lead to the problem, one per line.
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What you saw, and what you expected
+    validations:
+      required: true

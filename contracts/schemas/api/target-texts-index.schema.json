@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/target-texts-index.schema.json",
+  "title": "Astro Portal target texts index",
+  "description": "`target-library/texts/index.json` of the static-data package: every shard file of the catalogue texts, per language (see target-texts-shard.schema.json). A reader imports a shard when its `revision` differs from the one it imported, and checks the bytes it read against `sha256` (the index and the shard are written one after the other: a file that is not the one the index describes is left for the next read). `path` is relative to the `texts/` folder; `shardCount` is the number of shards a target is spread over (a target's shard is the first four bytes of the SHA-1 of its identifier, big-endian, modulo `shardCount`, written on three digits).",
+  "$defs": {
+    "shard": {
+      "type": "object",
+      "required": ["shard", "path", "bytes", "sha256", "revision", "count"],
+      "properties": {
+        "shard": { "type": "string", "pattern": "^[0-9]{3}$" },
+        "path": { "type": "string", "pattern": "^[^/]+/[0-9]{3}\\.json$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revision": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "required": ["v", "shardCount", "locales"],
+  "properties": {
+    "v": { "const": 1 },
+    "shardCount": { "type": "integer", "minimum": 1 },
+    "locales": {
+      "type": "object",
+      "description": "Language tag to the shards that language has, in shard order.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/shard" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

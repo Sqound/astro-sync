@@ -1,0 +1,154 @@
+{
+  "contract": "service.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "hosted-service-announces-email-code",
+      "description": "A service whose spaces are open to any address: the application shows « Adresse e-mail » then « Saisissez votre code ». Terms and privacy links are present once configured.",
+      "given": {
+        "authMode": "email-code",
+        "termsUrl": "https://www.example.test/terms",
+        "privacyUrl": "https://www.example.test/privacy"
+      },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": {
+            "method": "email-code",
+            "spaceCreation": "open",
+            "codeLength": 6,
+            "termsUrl": "https://www.example.test/terms",
+            "privacyUrl": "https://www.example.test/privacy"
+          }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "hosted-service-announces-legal-pages-per-language",
+      "description": "A service naming one terms page and one privacy page per language (the settings hold `{lang}`): `termsUrl` / `privacyUrl` are the English pages, which any client opens, and `termsUrlTemplate` / `privacyUrlTemplate` the templates a client resolves with the language it is shown in.",
+      "given": {
+        "authMode": "email-code",
+        "termsUrl": "https://www.example.test/{lang}/terms/",
+        "privacyUrl": "https://www.example.test/{lang}/privacy/"
+      },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": {
+            "method": "email-code",
+            "spaceCreation": "open",
+            "codeLength": 6,
+            "termsUrl": "https://www.example.test/en/terms/",
+            "privacyUrl": "https://www.example.test/en/privacy/",
+            "termsUrlTemplate": "https://www.example.test/{lang}/terms/",
+            "privacyUrlTemplate": "https://www.example.test/{lang}/privacy/"
+          }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "hosted-service-without-legal-links",
+      "description": "The same service before the terms and the privacy policy are configured: the two links are absent, never empty.",
+      "given": { "authMode": "email-code" },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": {
+            "method": "email-code",
+            "spaceCreation": "open",
+            "codeLength": 6
+          }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "private-server-announces-closed-email-code",
+      "description": "A private server signing in by e-mail code: the application shows « Adresse e-mail » then « Saisissez votre code », with the words of a portal of one person (« votre portail »), never the creation of a space. Only its owner's address receives a code.",
+      "given": { "authMode": "email-code", "hostedSpaces": "off" },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": {
+            "method": "email-code",
+            "spaceCreation": "closed",
+            "codeLength": 6
+          }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "private-server-announces-pairing",
+      "description": "A private server signing in by password: the application shows the QR code scanner and the eight-character code field (« Connecter cet appareil »).",
+      "given": { "authMode": "password" },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": { "method": "pairing" }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "service-without-private-api",
+      "description": "A service whose private API is switched off: nothing can be attached; the public routes still answer.",
+      "given": { "authMode": "disabled" },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.1",
+          "signIn": { "method": "none" }
+        },
+        "schema": "service.schema.json"
+      }
+    },
+    {
+      "id": "older-private-server-announces-nothing",
+      "description": "A private server older than the field: no `signIn`. Clients read it as `pairing`.",
+      "given": { "authMode": "password", "olderThanSignIn": true },
+      "request": { "method": "GET", "path": "/api/v1/service", "headers": {} },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "service": "astro-portal",
+          "apiVersion": 1,
+          "version": "1.0.0"
+        },
+        "schema": "service.schema.json"
+      }
+    }
+  ]
+}

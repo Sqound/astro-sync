@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session-bulk.schema.json",
+  "title": "Astro Portal API v1 bulk creation of sessions",
+  "description": "`POST /v1/sessions/bulk`, « Créer … » of Astro Sync's « Détecter les sessions ». In one call: the places to create, per night its plan of one night (created from the frames, a planned plan of the same target **reused**, a planned plan of another target **replaced** by what is detected) and its session — `origin: \"astro-sync\"` (« Importée »), finished, debriefed `executed` (« Exécutée », debriefable again later), its targets' times and figures set by a rework —, the targets added to a session that already exists that night through the rework route, and the multi-night plans, born `finished` (« Terminé ») with the goal = the total acquired, their nights attached. **Idempotent**: every identifier the call creates is derived from the space, `importId` and the element's `ref`; the same body sent again answers the same result (`replayed: true`). **Partial**: an element refused for its own reason is answered `skipped` with its code (`one_plan_per_night` for a space without `planner.multiple` whose date already holds a plan, `plan_limit_reached`, `plan_not_pending`, `target_not_found`, `capability_required` for a multi-night plan without `planner.mosaic`, `nights_missing`), the others are written. A body that cannot be read is refused whole, `400 invalid_request`, nothing written. Either credential; a cookie session carries the CSRF token. See api/v1.md, « Creating sessions in bulk ».",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "ref": {
+      "description": "The client's own key of an element, stable for one import (the detection's id: `place-1`, `s-2026-08-17-1`, `mn-ic1396`).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,120}$"
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "target": {
+      "description": "A target of a night and what the frames say of it: the first start and the last end of its lights (UTC, the clock correction applied), the number of frames, the exposure of one frame and the filter when the headers give one.",
+      "type": "object",
+      "required": ["targetId", "designation", "startedAt", "finishedAt"],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "designation": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "name": { "type": ["string", "null"], "maxLength": 300 },
+        "startedAt": { "$ref": "#/$defs/timestamp" },
+        "finishedAt": { "$ref": "#/$defs/timestamp" },
+        "frameCount": { "type": ["integer", "null"], "minimum": 0 },
+        "exposureSeconds": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "filter": { "type": ["string", "null"], "maxLength": 40 }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "required": ["importId"],
+      "properties": {
+        "importId": {
+          "description": "The client's ULID for this « Créer », the key of the idempotency.",
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        },
+        "places": {
+          "description": "« Créer ce lieu »: the places to create, at most 20.",
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["ref", "name", "latitude", "longitude"],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              },
+              "timeZone": { "type": ["string", "null"], "maxLength": 100 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "sessions": {
+          "description": "The nights ticked, at most 200. Without `sessionId`: a new session and its plan (`plan` required, one target at least). With `sessionId`: a session of the space that night, which receives the `targets` it does not hold (none: the frames are only attached, nothing is written).",
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "required": ["ref", "eveningDate", "startedAt", "finishedAt"],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "sessionId": {
+                "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+              },
+              "eveningDate": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "startedAt": { "$ref": "#/$defs/timestamp" },
+              "finishedAt": { "$ref": "#/$defs/timestamp" },
+              "place": {
+                "description": "One of « Mes lieux » (`placeId`) or a place of `places` (`ref`).",
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "required": ["placeId"],
+                    "properties": { "placeId": { "type": "string" } },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": ["ref"],
+                    "properties": { "ref": { "$ref": "#/$defs/ref" } },
+                    "additionalProperties": false
+                  },
+                  { "type": "null" }
+                ]
+              },
+              "equipment": {
+                "description": "The plan's equipment object (`plan.schema.json`, payload `equipment`).",
+                "type": ["object", "null"]
+              },
+              "plan": {
+                "type": "object",
+                "required": ["action"],
+                "properties": {
+                  "action": { "enum": ["create", "reuse", "replace"] },
+                  "planId": {
+                    "description": "The planned plan reused or replaced.",
+                    "$ref": "#/$defs/uuid"
+                  },
+                  "name": { "type": ["string", "null"], "maxLength": 300 }
+                },
+                "additionalProperties": false
+              },
+              "targets": {
+                "type": "array",
+                "maxItems": 32,
+                "items": { "$ref": "#/$defs/target" }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "multiNight": {
+          "description": "The multi-night plans, at most 50: one target over two nights of `sessions` or more.",
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "targetId",
+              "designation",
+              "sessionRefs",
+              "goalSeconds"
+            ],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "targetId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "designation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "name": { "type": ["string", "null"], "maxLength": 300 },
+              "sessionRefs": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 50,
+                "items": { "$ref": "#/$defs/ref" }
+              },
+              "goalSeconds": { "type": "number", "exclusiveMinimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["importId", "replayed", "places", "sessions", "multiNight"],
+      "properties": {
+        "importId": { "type": "string" },
+        "replayed": {
+          "description": "True when everything written was already there (the same body sent again).",
+          "type": "boolean"
+        },
+        "places": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref", "placeId", "created"],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "placeId": { "type": ["string", "null"] },
+              "created": { "type": "boolean" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "sessionId",
+              "planId",
+              "action",
+              "planAction",
+              "addedTargets",
+              "replayed"
+            ],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "sessionId": {
+                "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+              },
+              "planId": {
+                "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+              },
+              "action": {
+                "description": "`created` (« Importée par Astro Sync »), `updated` (an existing session that received targets, « Mise à jour »), `attached` (an existing session, nothing written), `skipped` (`reason`).",
+                "enum": ["created", "updated", "attached", "skipped"]
+              },
+              "planAction": {
+                "enum": ["created", "reused", "replaced", "none"]
+              },
+              "addedTargets": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "replayed": { "type": "boolean" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "multiNight": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "projectId",
+              "sessionIds",
+              "action",
+              "replayed"
+            ],
+            "properties": {
+              "ref": { "$ref": "#/$defs/ref" },
+              "projectId": {
+                "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+              },
+              "sessionIds": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/uuid" }
+              },
+              "action": { "enum": ["created", "skipped"] },
+              "replayed": { "type": "boolean" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

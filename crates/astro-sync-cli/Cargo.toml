@@ -1,0 +1,26 @@
+[package]
+name = "astro-sync-cli"
+description = "Thin command-line interface over astro-sync-core. Every subcommand is a direct call into the core crate, printing the same JSON the Tauri GUI consumes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "astro-sync"
+path = "src/main.rs"
+
+[dependencies]
+astro-sync-core = { path = "../astro-sync-core" }
+clap = { version = "4", features = ["derive"] }
+serde = "1"
+serde_json = "1"
+
+[dev-dependencies]
+# Only for `tests/support/fake_service.rs` (shared by path with
+# `astro-sync-core`'s tests): its model of the resumable-upload contract
+# verifies a finalized file's SHA-256.
+sha2 = "0.10"
+
+[lints]
+workspace = true

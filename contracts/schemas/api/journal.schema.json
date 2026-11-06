@@ -1,0 +1,729 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/journal.schema.json",
+  "title": "Astro Portal API v1 Journal: the list of the sessions",
+  "description": "**A plan is a promise; a plan carried out becomes a session**: the plan enriched with what the night gave. The Journal is the list of all the sessions of a space, the most recent night first, with what the old « Journal des sessions » showed (targets, time, frames, quality, thumbnails). `GET /v1/journal` is a read, **never held by a right** (no capability, on every profile and on a private server, in the read-only window of an ended subscription too). It lists **finished** sessions only: a session still open or paused is « Nuit en cours », not yet a line of the Journal. It is not the sync read: `GET /v1/sessions` stays the ascending-by-`updatedAt` read of the devices. See api/v1.md, section « The Journal », and api/journal.md.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nullableUuid": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "eveningDate": {
+      "$ref": "session.schema.json#/$defs/eveningDate"
+    },
+    "season": {
+      "description": "One of the four astronomical seasons of the shared rule `astronomicalSeason` (`astro-core`, northern hemisphere, civil-date bounds: winter from 21 December to 19 March, spring to 20 June, summer to 21 September, autumn to 20 December), applied to the session's `eveningDate`.",
+      "type": "string",
+      "enum": ["winter", "spring", "summer", "autumn"]
+    },
+    "state": {
+      "description": "The state of a line of the Journal. `to_debrief`: the plan was carried out (a finished session exists, or its night is past and the plan was not carried out in the application) and its debriefing is still to be done; `executed`, `partial`, `abandoned`: the outcome of the debriefing (`abandoned` = a night not carried out, kept with its reason; the interfaces write it « Abandonné », which replaces « Non exécuté »: the value on the wire has not changed); `no_plan`: a session without a plan (an observation made freely, an import, a night rebuilt from captures), which has no promise to be debriefed against.",
+      "type": "string",
+      "enum": ["to_debrief", "executed", "partial", "abandoned", "no_plan"]
+    },
+    "skipReason": {
+      "$ref": "debrief.schema.json#/$defs/skipReason"
+    },
+    "quality": {
+      "description": "The night's quality figures as Astro Sync measured them: the **medians** over the measured frames of the night (`session.schema.json`, `qualitySummary.night`). `skyBackground` is in ADU, `fwhm` in arcseconds (`null` when the pixel scale is not known), `eccentricity` between 0 and 1; each is `null` when it was not measured. The whole `quality` is `null` when Astro Sync has not analysed the session.",
+      "type": "object",
+      "required": ["skyBackground", "fwhm", "eccentricity"],
+      "properties": {
+        "skyBackground": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "fwhm": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "eccentricity": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "acquisitionFigure": {
+      "description": "Additive: one line of what was shot, planned or measured, in the vocabulary of the captures' acquisition lines (`capture.schema.json`): `filter` (free text, 40 characters at most, never normalised; `null` for none), `exposureSeconds` (> 0; `null` when not said), `gain` (an integer; `null` for the device's own setting or not said) and `frameCount` (a whole number; `null` when not said). A screen writes it « 28 × 120 s · gain 100 · L ».",
+      "type": "object",
+      "required": ["filter", "exposureSeconds", "gain", "frameCount"],
+      "properties": {
+        "filter": { "type": ["string", "null"], "maxLength": 40 },
+        "exposureSeconds": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "gain": { "type": ["integer", "null"] },
+        "frameCount": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "description": "One target of a session, in the order of the night. `targetId` is the **target key** (a catalogue id, an id of the space's own targets, or the plan item's own id for a free target the plan names; `label` is what the screen writes). `planItemId` is the plan item the target comes from, `null` for a target that was added. `state`: `planned` (in the plan, kept), `added` (not in the plan: met in the field, added at the debriefing or by a rework), `removed` (in the plan, taken out: « Retirée au débriefing » or by a rework; **never erased**, the session keeps it). `outcome` is what the debriefing says (`done`, `partial`, `skipped`; `modified` reads `done`); `null` while the session is not debriefed or has no plan. Figures: the debriefing first, then the events, then Astro Sync's analysis when there is one; `null` when nothing says. `captureId` is the capture of that session and target (a capture of role `plan` or `progression` is never it), `thumbnailUrl` its thumbnail as a path of the service (`/v1/captures/{captureId}/media?variant=thumbnail`), both `null` when the target has none yet. Additive: `startedAt` / `finishedAt` (the times), `exposureSeconds` / `exposureFamilies` (the exposure) and, for a catalogue night, `imageUrl`.",
+      "type": "object",
+      "required": [
+        "targetId",
+        "label",
+        "planItemId",
+        "state",
+        "outcome",
+        "reason",
+        "plannedSeconds",
+        "acquiredSeconds",
+        "frameCount",
+        "filter",
+        "captureId",
+        "thumbnailUrl"
+      ],
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planItemId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "type": "string",
+          "enum": ["planned", "added", "removed"]
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["done", "partial", "skipped"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "description": "Why the target was not observed (the debriefing's or the rework's `reason`); `null` otherwise.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/skipReason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plannedSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "acquiredSeconds": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "frameCount": {
+          "description": "The frames of the target. What Astro Sync measured wins when it measured the target (the same number as `measured.lines` when `measured.source` is `astro-sync`); the frames declared (the rework's, else the debriefing's) stand only without a measurement; else the night's other steps. `null` when nothing says, and for a removed target.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "filter": {
+          "type": ["string", "null"],
+          "maxLength": 40
+        },
+        "startedAt": {
+          "description": "When the target was first observed: the rework's time, else the debriefing's, else the events' (the start of its first passage); `null` when nothing says, and for a removed target. Written by the service; optional so that a reader of an earlier answer still validates.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "finishedAt": {
+          "description": "When the target was last observed (the end of its last passage); same sources and rules as `startedAt`.",
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slot": {
+          "description": "Additive: the planned slot of a target of the plan on the clock, inside the session's window (`{ start, end }`, ISO); `null` for a target without a plan slot, a night whose start is unknown and a removed target. Astro Sync's « Détecter les sessions » reads it to know whether another target's time is free. Written by the service; optional in the schema.",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "plannedSlot": {
+          "description": "Additive: the planned slot of a target of the plan on the clock **as the plan made it** (`{ start, end }`, ISO), not cut to the session's window like `slot` -- the promise a reader writes (« Prévu 21:09 → 21:30 · 21 min »), the same on the phone and on the web. `null` for a target without a plan slot, a night whose start is unknown, a free execution and a removed target. Written by the service; optional in the schema.",
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["start", "end"],
+              "properties": {
+                "start": { "type": "string", "format": "date-time" },
+                "end": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "exposureSeconds": {
+          "description": "The exposure of one frame of the target, in seconds: Astro Sync's analysis when there is one (the family of exposures that gathered the most time of the target), else what the rework, else the debriefing, declared for it; `null` when nothing says. Written by the service; optional in the schema.",
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "exposureFamilies": {
+          "description": "How many distinct exposures the analysis found for the target (a family is one exposure value; the filters that share it make one); `1` for a declared exposure; `null` when `exposureSeconds` is. A screen that sees more than 1 knows `exposureSeconds` is the main one, not the only one.",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "planned": {
+          "description": "Additive: what the launch froze for this target's plan item (`launchedSchedule[].acquisition` of the plan, `plan.schema.json`) -- the EFFECTIVE lines at the launch, the suggestion resolved, read as they were written and never recomputed: « Prévu 28 × 120 s · gain 100 · L ». `ruleVersion` is the version of the suggestion rule that resolved them (`null` when the entry names none). ABSENT for a plan launched before the freezing, a free execution (« Lancement rapide »), a night at the eyepiece, a target that was added and a removed target. Written by the service from the plan; no new storage.",
+          "type": "object",
+          "required": ["ruleVersion", "lines"],
+          "properties": {
+            "ruleVersion": {
+              "type": ["string", "null"],
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "items": { "$ref": "#/$defs/acquisitionFigure" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "measured": {
+          "description": "Additive: what was shot, set against `planned`. `source: \"astro-sync\"` -- the lines Astro Sync's analysis measured for this target and this night (the frames that share a filter, an exposure and a gain add up): « Mesuré (Astro Sync) 27 × 120 s · gain 100 · L ». `source: \"declared\"` -- when Astro Sync has none, the figures the person declared at the debriefing or in a rework (one line: frames and exposure, the filter only when one was said, never a gain), else the night's hand-written or imported steps: « Déclaré 27 × 120 s ». ABSENT when nothing says, and for a removed target. The target's `frameCount` and `exposureSeconds` keep their own rule.",
+          "type": "object",
+          "required": ["source", "lines"],
+          "properties": {
+            "source": { "type": "string", "enum": ["astro-sync", "declared"] },
+            "lines": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/acquisitionFigure" }
+            }
+          },
+          "additionalProperties": false
+        },
+        "captureId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "thumbnailUrl": {
+          "type": ["string", "null"]
+        },
+        "imageUrl": {
+          "description": "A read-only night of a private server's catalogue has no capture of the space: this is the catalogue's picture of the target (a path or an address the operator's server serves). Absent for every other target.",
+          "type": "string"
+        },
+        "passages": {
+          "description": "Additive: the passages the person declared for this target, one at a time — those of the latest rework that set them, else those of the debriefing — `{ start, end }` in the order of the night; `null` when none was declared (the events' passages are then in the debriefing summary, `debriefSummary.perTarget[].passages`), and for a `removed` target. A reader that draws the night draws one segment per passage.",
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/declaredPassage"
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "item": {
+      "description": "One line of the Journal: a session, or a past plan carried out without the application and not debriefed (then `sessionId` is `null`, `state` is `to_debrief`, `origin` is `null`). `sessionId` is the id of the session; on a **private server** a night of the operator's catalogue that matches no session (by `eveningDate` and target) is listed as a session of `origin: \"import\"` with a **synthetic id** (an opaque string that is not a UUID) and `readOnly: true`: it can be read, never reworked, debriefed or attached (`404 session_not_found` on every route that takes the id). `eveningDate` is the night's date (`session.schema.json`). `startedAt` / `finishedAt`: the session's, or the derived night boundaries of a plan without a session, else `null`. `placeName` and `instrumentLabel` (the night's telescope and camera, as « Lunette 72 · Caméra couleur ») are `null` when unknown. `plannedSeconds` is what the plan held (`null` without a plan), `acquiredSeconds` and `frameCount` what the night gave (`null` while nothing says). `lostReason` is the reason of an `abandoned` night, else the most frequent reason among the skipped targets (ties by the order of `skipReason`), else `null`. `measured` is true when Astro Sync analysed the session, and `quality` then holds its medians. `captureCount` counts the session's captures. `targets` is the same list as `session.schema.json` `detail.targets`.",
+      "type": "object",
+      "required": [
+        "sessionId",
+        "planId",
+        "planName",
+        "projectId",
+        "projectName",
+        "eveningDate",
+        "startedAt",
+        "finishedAt",
+        "placeName",
+        "instrumentLabel",
+        "state",
+        "origin",
+        "plannedSeconds",
+        "acquiredSeconds",
+        "frameCount",
+        "lostReason",
+        "measured",
+        "quality",
+        "captureCount",
+        "targets",
+        "readOnly"
+      ],
+      "properties": {
+        "sessionId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "planId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "planName": {
+          "type": ["string", "null"]
+        },
+        "title": {
+          "description": "The name the person gave to the session itself (`PATCH /v1/sessions/{id}/night`, `night.title` with `source: night`), or `null` when none was given. Never the plan's name, which `planName` says. A reader calls the session by this name when it is set, else by its night. Optional and additive: an older server does not send it, which reads as `null`.",
+          "type": ["string", "null"]
+        },
+        "projectId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "projectIds": {
+          "description": "Every multi-night plan the night is linked to, `projectId` first. Sent only when the night serves **several** plans (a night of two targets, one for each plan: the plan items carry their own link); absent, the night's only plan is `projectId` (none when it is `null`). The night counts in each of those plans' groups (`sessionIds`, `lineKeys`, `lineCount`, `acquiredSeconds`), and in `frameCount` for the frames of that plan's target only. Optional and additive: an older server does not send it, an older client ignores it and draws the night under `projectId`.",
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        "projectName": {
+          "type": ["string", "null"]
+        },
+        "eveningDate": {
+          "$ref": "#/$defs/eveningDate"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "placeName": {
+          "type": ["string", "null"]
+        },
+        "placeTimeZone": {
+          "description": "The IANA time zone the session's hours are read in: the night's own place, the plan's copy of it, the places of the space, then the table by the position (`planner/place-time-zone`); `null` when none can be read -- the hours are then written in UTC, with « UTC ». Phone and web write the same hours from it. Optional and additive: an older server does not send it, which reads as `null`.",
+          "type": ["string", "null"]
+        },
+        "instrumentLabel": {
+          "type": ["string", "null"]
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "session.schema.json#/$defs/origin"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plannedSeconds": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "acquiredSeconds": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "frameCount": {
+          "description": "The frames of the night: the sum of its held targets' `frameCount`, so that a target Astro Sync measured counts its measured frames, never the count declared in a debriefing.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "lostReason": {
+          "$ref": "#/$defs/skipReasonOrNull"
+        },
+        "measured": {
+          "type": "boolean"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/quality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "readOnly": {
+          "description": "True for a session with a synthetic id (a night of a private server's catalogue): read only.",
+          "type": "boolean"
+        },
+        "guidedEvening": {
+          "description": "Additive: `true` only for the session of a guided evening, whose plan (`planId`, `planName`: the evening's title) is the phone's internal plan (`payload.guidedEvening`). Such a line is shown « Soirée guidée · {planName} », not as the line of a plan: it promised nothing (`plannedSeconds` is `null`, no planned target), it is never `to_debrief` (its `state` is `no_plan`) and never invites to a debriefing. Absent for every other line.",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "skipReasonOrNull": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/skipReason"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "group": {
+      "description": "A multi-night plan (`project.schema.json`) whose lines the Journal draws together, from its first night on and whatever its state (not only a **finished** plan makes a group). `name` is the plan's name as the plans page writes it (its target's `name`: a multi-night plan has no name of its own), `targetLabel` the target's `commonName` when it has one, else its `name`. `sessionIds` lists **every** session of the plan that matches the filters of the request, wherever it falls in the paging, and `lineKeys` every line (`sessionId`, else `planId`: a night to debrief without a session too); the lines themselves are in `sessions[]`. A client draws the group at the place of its most recent line and leaves the group's lines out of the flat list; a line of another month leaves a pointer in its own month. `status` is the plan's state (`active`, `finished`, `archived`), `targetId` the catalogue target it follows (`null` when unknown). `lineCount`, `frameCount`, `toDebriefCount`, `firstEveningDate` and `lastEveningDate` are the whole plan's, filters apart (the filters sort the nights, not the plan); `frameCount` counts, on each night, the frames of the plan's own target (a night that also holds another plan's target does not add that target's frames). A night linked to several plans (`projectIds`) belongs to each of their groups: `sessionIds` and `lineKeys` of each name it, and a client draws its card in every group that names it. `acquiredSeconds` is the progress of the plan (computed from the debriefings, as on the plan's page), `goalSeconds` its goal, `planCaptureId` the newest image of the plan (a capture of role `plan`), `null` before the first.",
+      "type": "object",
+      "required": [
+        "projectId",
+        "name",
+        "targetLabel",
+        "sessionIds",
+        "acquiredSeconds",
+        "goalSeconds",
+        "planCaptureId"
+      ],
+      "properties": {
+        "projectId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "targetLabel": {
+          "type": "string"
+        },
+        "sessionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "acquiredSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "goalSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planCaptureId": {
+          "$ref": "#/$defs/nullableUuid"
+        },
+        "status": {
+          "enum": ["active", "finished", "archived"]
+        },
+        "targetId": {
+          "type": ["string", "null"]
+        },
+        "lineKeys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "lineCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "toDebriefCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "firstEveningDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "lastEveningDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stats": {
+      "description": "The figures of the header (« 2026 · 24 sessions · 71 h 40 · 3 612 poses »), over **everything the filters select** (not only the page): the number of lines with a session (`sessionId` not `null`), their acquired seconds and frames.",
+      "type": "object",
+      "required": ["sessions", "acquiredSeconds", "frameCount"],
+      "properties": {
+        "sessions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "acquiredSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "query": {
+      "description": "The query of `GET /v1/journal`, every parameter optional. `year`: the calendar year of `eveningDate`. `instrument`: an `instrumentLabel` exactly as `instruments` lists it. `season`: the season of `eveningDate`. `outcome`: a `state` (the filter « Issue »: `to_debrief`, `executed`, `partial`, `abandoned`, `no_plan`), or several of them separated by commas (additive: the outcomes a screen ticks — `executed,partial` keeps the lines in either state). `multiNightOnly`: `true` keeps the sessions of a multi-night plan (`projectId` not `null`). The filters add up (all must match). `cursor`: the `nextCursor` of the previous page, sent back verbatim. `limit`: 1 to 100, 50 by default. A parameter outside its values, or a cursor that is not one, answers `400 invalid_request` and nothing else.",
+      "type": "object",
+      "properties": {
+        "year": {
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 9999
+        },
+        "instrument": {
+          "type": "string",
+          "minLength": 1
+        },
+        "season": {
+          "$ref": "#/$defs/season"
+        },
+        "outcome": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/state"
+            },
+            {
+              "type": "string",
+              "pattern": "^(to_debrief|executed|partial|abandoned|no_plan)(,(to_debrief|executed|partial|abandoned|no_plan))+$"
+            }
+          ]
+        },
+        "multiNightOnly": {
+          "type": "boolean"
+        },
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "description": "`GET /v1/journal`. `sessions` is the page, **the most recent night first**: `eveningDate` descending, then `startedAt` descending (a line without one last), then the line's id (`sessionId`, else `planId`) descending. `groups` are the finished multi-night plans having a session in this page (see `group`). `years` lists, newest first, the years that hold at least one session of the space (with no filter applied, so the year chips never disappear); `instruments` the distinct `instrumentLabel` of the space's sessions in code-point order (no filter applied either). `stats` follows the filters. `nextCursor` is `null` on the last page, an opaque string otherwise. `toDebriefCount` is the **one count of the sessions « À débriefer »** of the space, whatever the filters: the lines whose `state` is `to_debrief` (a plan carried out and not debriefed, with or without a session). It is the source of the badge of the Journal, on the phone (which adds the sessions it holds that the service has not received yet) and on the web (which reads this alone); the debrief queue (`GET /v1/plans/debrief-queue`) is not. A deleted session is not counted. Optional in the schema only so that a reader of an earlier service's answer still validates: a service of this version always writes it, and a client that does not find it counts the `to_debrief` lines it holds.",
+      "type": "object",
+      "required": [
+        "sessions",
+        "groups",
+        "years",
+        "instruments",
+        "stats",
+        "nextCursor"
+      ],
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/group"
+          }
+        },
+        "years": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "instruments": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "stats": {
+          "$ref": "#/$defs/stats"
+        },
+        "toDebriefCount": {
+          "description": "The lines in the state `to_debrief`, filters ignored.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "nextCursor": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "deletedEntry": {
+      "description": "One deleted session, as `GET /v1/journal/deleted` lists it: the Journal line it was (`session`: its targets, its place, its figures; `captureCount` is what the erasure would take, `sessionId` is never `null` and `readOnly` is `false`), when it was deleted (`deletedAt`), when the maintenance erases it (`purgeAt`: `deletedAt` plus `graceDays`) and the whole days left (`daysRemaining`, rounded up, never below 0).",
+      "type": "object",
+      "required": ["session", "deletedAt", "purgeAt", "daysRemaining"],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/item"
+        },
+        "deletedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "purgeAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "daysRemaining": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "deletedList": {
+      "description": "`GET /v1/journal/deleted`: the deleted sessions of the space, the most recently deleted first. `graceDays` is how long a session is kept (30). A read never held by a right.",
+      "type": "object",
+      "required": ["entries", "graceDays"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deletedEntry"
+          }
+        },
+        "graceDays": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "description": "`400 invalid_request` (a parameter outside its values, a malformed cursor); `401 authentication_required`. Nothing else: the read is never held by a capability.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": ["invalid_request", "authentication_required"]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "declaredPassage": {
+      "type": "object",
+      "description": "Additive: one passage the person declared.",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/deletedList"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

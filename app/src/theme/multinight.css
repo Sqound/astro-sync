@@ -1,0 +1,652 @@
+/* The multi-night plans in « Traitements » and « Nuits ».
+   Same rule as primitives.css: only var(--as-*)
+   references. */
+
+/* « Intégration de la nuit, par famille »: under the targets of the option. */
+.as-integration {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin-left: 1.875rem;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-integration__title,
+.as-plan-image__label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.as-integration__target {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-integration__head,
+.as-integration__outside {
+  margin: 0;
+}
+
+.as-integration__families {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-integration__row {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-integration__time {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.as-integration__outside {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  color: var(--as-color-warning);
+}
+
+/* « Image du plan multi-nuits »: the plan's integrations by filter. */
+.as-plan-image__groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin-left: 1.875rem;
+  font-size: 0.8125rem;
+}
+
+.as-plan-image__group .as-sub-choices {
+  margin-left: 0;
+}
+
+.as-plan-image__group label {
+  width: 100%;
+}
+
+/* An integration on another computer: listed, its box dashed, not
+   tickable; the text stays readable (no fading). */
+.as-plan-image__group li.is-elsewhere {
+  color: var(--as-color-muted-text);
+}
+
+.as-plan-image__group li.is-elsewhere input {
+  outline: 1px dashed var(--as-color-tertiary-border);
+  outline-offset: 1px;
+}
+
+.as-plan-image__total,
+.as-plan-image__indent {
+  margin: 0 0 0 1.875rem;
+  font-size: 0.8125rem;
+}
+
+.as-plan-image__total {
+  font-weight: 600;
+}
+
+.as-plan-image .as-renders {
+  margin-left: 1.875rem;
+}
+
+/* « Nuits »: the tag of a night of a multi-night plan, not a button. It sits in
+   its own cell (« Cibles ») and wraps there -- a badge is `nowrap` by default,
+   so « Plan multi-nuits IC 1805 · 3 nuits · 14 h 09 » ran past its 7.5 rem
+   column over the next one. The full text stays in the `title`. */
+.as-nights__plan-tag {
+  align-self: flex-start;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+  line-height: 1.35;
+}
+
+/* The line that says why the option is closed: the tag keeps its width. */
+.as-plan-image .as-option-note > .as-badge {
+  flex: none;
+}
+
+/* Attaching a night to a multi-night plan (the block of « Cibles » and its
+   window). */
+.as-plan-attach {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-plan-attach__line {
+  margin: 0;
+}
+
+.as-plan-attach__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.as-plan-attach__plans {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-plan-attach__plan {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-plan-attach__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+}
+
+.as-plan-dialog {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.as-plan-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A plan the night may join: a frame, one click attaches (a choice in a
+   list, outside the four levels of buttons). */
+.as-plan-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.8125rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-plan-choice:hover:not(:disabled) {
+  border-color: var(--as-color-tertiary-border);
+}
+
+.as-plan-choice:focus-visible {
+  outline: 2px solid var(--as-color-gold-accent);
+  outline-offset: 2px;
+}
+
+.as-plan-choice:disabled {
+  color: var(--as-color-inactive-text);
+  cursor: default;
+}
+
+.as-plan-choice__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-plan-choice__facts {
+  color: var(--as-color-muted-text);
+}
+
+.as-plan-choice__note {
+  color: var(--as-color-warning);
+}
+
+.as-plan-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-plan-create__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--as-space-xs);
+}
+
+.as-plan-create__row > span {
+  align-self: stretch;
+}
+
+/* « Cadrage de l'image »: in « Image du plan multi-nuits »,
+   a slider of notches from the cropped image to the whole one, the outline of
+   the frame on the picture of the plan, the numbers of the notch. A native range
+   input over a rail the notches sit on; the labels of the notches are placed on
+   the same fractions of the track. */
+.as-framing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin: var(--as-space-sm) 0 0 1.875rem;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  font-size: 0.8125rem;
+}
+
+.as-framing__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.as-framing__line,
+.as-framing__foot {
+  margin: 0;
+}
+
+.as-framing__line {
+  color: var(--as-color-muted-text);
+}
+
+.as-framing__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md) var(--as-space-lg);
+  align-items: flex-start;
+}
+
+.as-framing__picture {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  width: 11.25rem;
+  margin: 0;
+}
+
+.as-framing__frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--as-color-panel);
+}
+
+.as-framing__image,
+.as-framing__overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.as-framing__image {
+  object-fit: fill;
+}
+
+.as-framing__hatch {
+  fill: var(--as-color-gold-accent);
+  opacity: 0.55;
+}
+
+.as-framing__dim {
+  fill: color-mix(in srgb, var(--as-color-page-background) 62%, transparent);
+}
+
+.as-framing__kept,
+.as-framing__mark {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.as-framing__kept {
+  stroke: var(--as-color-gold-accent);
+  stroke-width: 2px;
+}
+
+.as-framing__mark {
+  stroke: var(--as-color-primary-text);
+  stroke-width: 1.5px;
+  stroke-dasharray: 4 3;
+}
+
+.as-framing__legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-framing__legend span {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-framing__key {
+  display: inline-block;
+  flex: none;
+  width: 1rem;
+  height: 0.625rem;
+  box-sizing: border-box;
+}
+
+.as-framing__key--kept {
+  border: 2px solid var(--as-color-gold-accent);
+}
+
+.as-framing__key--low {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--as-color-gold-accent) 0 2px,
+    transparent 2px 4px
+  );
+}
+
+.as-framing__key--mark {
+  border-top: 2px dashed var(--as-color-primary-text);
+  height: 0;
+}
+
+.as-framing__side {
+  display: flex;
+  flex: 1 1 15rem;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+}
+
+.as-framing__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.as-framing__size,
+.as-framing__exposure {
+  margin: 0;
+}
+
+.as-framing__slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin-top: var(--as-space-sm);
+}
+
+.as-framing__slider-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--as-space-xs) var(--as-space-md);
+}
+
+.as-framing__label {
+  font-weight: 700;
+}
+
+.as-framing__scale {
+  color: var(--as-color-muted-text);
+}
+
+.as-framing__track {
+  position: relative;
+  height: 1.5rem;
+  --as-thumb: 1.375rem;
+}
+
+.as-framing__rail {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--as-thumb) / 2);
+  left: calc(var(--as-thumb) / 2);
+  height: 2px;
+  background: var(--as-color-tertiary-border);
+  transform: translateY(-50%);
+}
+
+.as-framing__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--as-color-gold-accent);
+}
+
+.as-framing__dot {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--along) * 100%);
+  width: 0.625rem;
+  height: 0.625rem;
+  box-sizing: border-box;
+  border: 2px solid var(--as-color-tertiary-border);
+  border-radius: 50%;
+  background: var(--as-color-page-background);
+  transform: translate(-50%, -50%);
+}
+
+.as-framing__dot.is-reached {
+  border-color: var(--as-color-gold-accent);
+  background: var(--as-color-gold-accent);
+}
+
+.as-framing__range {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.as-framing__range::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+.as-framing__range::-moz-range-track {
+  height: 100%;
+  background: transparent;
+}
+
+.as-framing__range::-webkit-slider-thumb {
+  width: var(--as-thumb);
+  height: var(--as-thumb);
+  box-sizing: border-box;
+  margin-top: calc((1.5rem - var(--as-thumb)) / 2);
+  border: 3px solid var(--as-color-page-background);
+  border-radius: 50%;
+  background: var(--as-color-gold-accent);
+  box-shadow: 0 0 0 2px var(--as-color-gold-accent);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.as-framing__range::-moz-range-thumb {
+  width: var(--as-thumb);
+  height: var(--as-thumb);
+  box-sizing: border-box;
+  border: 3px solid var(--as-color-page-background);
+  border-radius: 50%;
+  background: var(--as-color-gold-accent);
+  box-shadow: 0 0 0 2px var(--as-color-gold-accent);
+}
+
+.as-framing__range:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 4px;
+}
+
+.as-framing__stops {
+  position: relative;
+  min-height: 3.25rem;
+}
+
+.as-framing__stop {
+  position: absolute;
+  top: 0;
+  left: calc(var(--along) * 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--as-space-xs);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* The first label starts at the left end of the track and the last ends at its right end. */
+.as-framing__stop.is-first {
+  align-items: flex-start;
+  transform: none;
+}
+
+.as-framing__stop.is-last {
+  align-items: flex-end;
+  transform: translateX(-100%);
+}
+
+.as-framing__percent {
+  font-variant-numeric: tabular-nums;
+}
+
+.as-framing__stopname {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  color: var(--as-color-muted-text);
+}
+
+.as-framing__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+}
+
+.as-framing__note > svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+}
+
+.as-framing__note--ok > svg {
+  color: var(--as-color-success);
+}
+
+.as-framing__note--warn > svg {
+  color: var(--as-color-warning);
+}
+
+.as-framing__note--muted {
+  color: var(--as-color-muted-text);
+}
+
+/* « Image du plan multi-nuits », the source of each night: the buttons of the choice
+   or the tag on the right of the line, the
+   note under it. */
+.as-plan-source {
+  display: flex;
+  flex: 0 1 21rem;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--as-space-xs);
+  min-width: 0;
+  text-align: right;
+}
+
+.as-plan-source .as-segments {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--as-space-xs);
+}
+
+.as-plan-source .as-segment {
+  padding: var(--as-space-xs) var(--as-space-sm);
+  font-size: 0.8125rem;
+}
+
+.as-plan-source__note {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+.as-plan-image__group .as-integration__row--sourced {
+  align-items: flex-start;
+}
+
+.as-plan-image__device-why {
+  margin: 0 0 0 1.875rem;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-plan-image__group li.as-plan-image__sourced {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-plan-image__group li.as-plan-image__sourced > label {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+/* The plan chosen in the window is a row of the
+   block with its case, and « Détacher de ce plan » is a case in the
+   destructive tint -- nothing is written before « Continuer ». */
+.as-plan-attach__detach {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--as-space-sm);
+  color: var(--as-color-destructive-text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.as-plan-attach__detach input,
+.as-plan-pick input {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-plan-pick {
+  cursor: default;
+}

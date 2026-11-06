@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/sky-solution.schema.json",
+  "title": "Astro Portal API v1 — the sky solution of an image of a capture, and the annotations the portal draws from it",
+  "description": "A typed object, never shown to a person: computed on the person's computer by Astro Sync (ASTAP by default, astrometry.net when chosen, or read without any computation from a header NINA or ASIAIR already solved), or carried over by an import. It belongs to **one image** of a capture — the main image or a variant — and to that image's bytes (its SHA-256): deleting the image deletes it. The portal draws the sky annotations alone from it, its target catalogue and the HYG stars. Conventions: pixels with `x` to the right and `y` downward, the image spanning `[0, width]` × `[0, height]`; the field centre is the image's centre; `rotationDeg` is the position angle of the image's up direction (towards row 0) from celestial north towards east, `0` being « north up »; `parity` is `normal` when east is to the left of north (as the sky is seen), `mirrored` when the image is flipped. Routes: `PUT /v1/captures/{id}/sky-solution` (a device token of the space; `put`), `GET` (a device token or the web session; `one`), `DELETE` (the owner's web session; `deleted`), `?imageId=` naming a variant (the main image otherwise); `GET /v1/captures?skySolution=missing` (the captures whose main image has none); `GET /v1/captures/{id}/original` (a device token of the space: the original to solve, `Range` honoured); `GET /v1/gallery/{id}/annotations[?imageId=][&magnitude=]` (`annotations`, open to anyone while the image is shown and the owner's switch on) `GET /v1/captures/{id}/sky-solution/annotations[?imageId=][&magnitude=]` (`annotations` again, for the owner's own capture: a device token or the web session, switch and visibility ignored) and, for a private gallery behind its gate, `GET /v1/portals/{token}/annotations/{id}[?imageId=][&magnitude=]` (the same answer); `POST|GET /v1/manage/captures/{id}/sky-solution/solve` (`solveState`, only where `sky.solve_on_server` is true, 404 otherwise). See api/v1.md, « Sky solutions ».",
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "source": {
+      "description": "`header`: the WCS of a header already solved (NINA, ASIAIR), no computation; `astap`; `astrometry-net` (Astro Sync's optional solver, or a private server's fallback); `import`: carried over from the old portal.",
+      "type": "string",
+      "enum": ["header", "astap", "astrometry-net", "import"]
+    },
+    "solution": {
+      "type": "object",
+      "description": "What a client sends (the `solution` of `put`). Every field but `solverVersion` is required; an unknown field is refused (`400 invalid_request`); `annotationsEnabled` is the owner's switch, never a device's field.",
+      "required": [
+        "schemaVersion",
+        "source",
+        "raDeg",
+        "decDeg",
+        "pixelScaleArcsec",
+        "rotationDeg",
+        "fieldWidthDeg",
+        "fieldHeightDeg",
+        "parity",
+        "width",
+        "height",
+        "solvedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "solverVersion": {
+          "description": "« ASTAP 2026.10 », « NINA 3.2 »; `null` when unknown.",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 80 },
+            { "type": "null" }
+          ]
+        },
+        "raDeg": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360,
+          "description": "Right ascension of the field centre, decimal degrees, J2000."
+        },
+        "decDeg": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Declination of the field centre, decimal degrees, J2000."
+        },
+        "pixelScaleArcsec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "description": "Arc seconds per pixel of the solved image."
+        },
+        "rotationDeg": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360,
+          "description": "Position angle of the image's up direction, from north towards east."
+        },
+        "fieldWidthDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "fieldHeightDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "parity": { "enum": ["normal", "mirrored"] },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000,
+          "description": "Pixels of the image solved. The service refuses a solution whose proportions differ from the stored image's by more than 1 % (`422 sky_solution_aspect_mismatch`): a reduced copy of the image is accepted, a cropped or turned one is not."
+        },
+        "height": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "solvedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "put": {
+      "type": "object",
+      "description": "`PUT /v1/captures/{id}/sky-solution`, a device token of the capture's space only (a web session or no token: `401 device_authentication_required`). `sha256` is the digest of the image the solution was computed on (the main image or a variant): no image of the capture holding it is `409 image_changed`. Idempotent by digest: `201` a new solution; `200` the same one again (`changed: false`) or a replacement (`changed: true`).",
+      "required": ["sha256", "solution"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "solution": { "$ref": "#/$defs/solution" }
+      },
+      "additionalProperties": false
+    },
+    "stored": {
+      "type": "object",
+      "description": "A solution as the owner and Astro Sync read it: its fields, the image it belongs to, and the owner's switch « Afficher le plate solving » (`annotationsEnabled`, one per capture, on by default; `PATCH /v1/manage/captures/{id}` `{ \"skyAnnotations\": boolean }`, refused `409 sky_solution_not_found` while no image of the capture has a solution).",
+      "required": [
+        "schemaVersion",
+        "source",
+        "solverVersion",
+        "raDeg",
+        "decDeg",
+        "pixelScaleArcsec",
+        "rotationDeg",
+        "fieldWidthDeg",
+        "fieldHeightDeg",
+        "parity",
+        "width",
+        "height",
+        "solvedAt",
+        "imageId",
+        "sha256",
+        "annotationsEnabled",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "source": { "$ref": "#/$defs/source" },
+        "solverVersion": {
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 80 },
+            { "type": "null" }
+          ]
+        },
+        "raDeg": { "type": "number", "minimum": 0, "exclusiveMaximum": 360 },
+        "decDeg": { "type": "number", "minimum": -90, "maximum": 90 },
+        "pixelScaleArcsec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600
+        },
+        "rotationDeg": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "fieldWidthDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "fieldHeightDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "parity": { "enum": ["normal", "mirrored"] },
+        "width": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "solvedAt": { "$ref": "#/$defs/timestamp" },
+        "imageId": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "annotationsEnabled": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "one": {
+      "type": "object",
+      "description": "The answer of `GET /v1/captures/{id}/sky-solution`.",
+      "required": ["skySolution"],
+      "properties": { "skySolution": { "$ref": "#/$defs/stored" } },
+      "additionalProperties": false
+    },
+    "written": {
+      "type": "object",
+      "description": "The answer of `PUT /v1/captures/{id}/sky-solution`.",
+      "required": ["skySolution", "created", "changed"],
+      "properties": {
+        "skySolution": { "$ref": "#/$defs/stored" },
+        "created": { "type": "boolean" },
+        "changed": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "deleted": {
+      "type": "object",
+      "description": "The answer of `DELETE /v1/captures/{id}/sky-solution` (the owner's web session with its CSRF token).",
+      "required": ["deleted", "imageId"],
+      "properties": {
+        "deleted": { "const": true },
+        "imageId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "public": {
+      "type": "object",
+      "description": "The solution of the image shown, as a visitor's gallery reads it (`gallery.schema.json`, `skySolution` of a capture and of a public variant): present only while the image has a solution and the owner's switch is on, absent otherwise (the page is then the one of before). The sky only — no digest, no solver, no date — and where the annotations are.",
+      "required": [
+        "raDeg",
+        "decDeg",
+        "pixelScaleArcsec",
+        "rotationDeg",
+        "fieldWidthDeg",
+        "fieldHeightDeg",
+        "parity",
+        "width",
+        "height",
+        "annotations"
+      ],
+      "properties": {
+        "raDeg": { "type": "number", "minimum": 0, "exclusiveMaximum": 360 },
+        "decDeg": { "type": "number", "minimum": -90, "maximum": 90 },
+        "pixelScaleArcsec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600
+        },
+        "rotationDeg": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        },
+        "fieldWidthDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "fieldHeightDeg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 180
+        },
+        "parity": { "enum": ["normal", "mirrored"] },
+        "width": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "annotations": {
+          "type": "string",
+          "pattern": "^/api/v1/gallery/[^/?]+/annotations(\\?imageId=[^&]+)?$",
+          "description": "`GET` it for the annotations of this image."
+        }
+      },
+      "additionalProperties": false
+    },
+    "annotation": {
+      "description": "One annotation, in pixels of the copy the gallery serves (the list `PlateOverlay` reads): a catalogue object (`ngc`; `target: true` for a target of the capture, listed first; then the two largest other objects of the field), or a star (`bright`, brightest first; `names: []` is a point without a label).",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "names", "name", "pixelx", "pixely", "radius"],
+          "properties": {
+            "type": { "const": "ngc" },
+            "names": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "name": { "type": "string", "minLength": 1 },
+            "pixelx": { "type": "number" },
+            "pixely": { "type": "number" },
+            "radius": { "type": "number", "minimum": 0 },
+            "target": { "const": true }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "names", "pixelx", "pixely", "radius", "vmag"],
+          "properties": {
+            "type": { "const": "bright" },
+            "names": {
+              "type": "array",
+              "description": "The label of the star; empty for a point of the image (a star fainter than magnitude 8.5 known by a catalogue number only, or by none).",
+              "minItems": 0,
+              "maxItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "pixelx": { "type": "number" },
+            "pixely": { "type": "number" },
+            "radius": { "const": 0 },
+            "vmag": { "type": "number" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "annotations": {
+      "type": "object",
+      "description": "`GET /v1/gallery/{id}/annotations[?imageId=][&magnitude=]`: the annotations of the image a visitor sees, drawn by the portal alone (no `solve-field`, no `wcsinfo`), in the pixels of the copy the gallery serves (`image`). `magnitude` is the faintest star listed (10 by default; `99` asks for every star of the catalogue in the field): the stars come in batches by threshold (3.5, 5.5, 8.5, 10, all — at most 400, 800, 2000, 4000 and 10000 stars, brightest first), the viewer asks for the batch of its selector. `starsAvailable` is `false` when this server has no star catalogue (HYG): the annotations then hold the catalogue's objects only, whatever the magnitude. The gallery's one `404 capture_not_found` whenever the capture is not public, the image not shown, the image without a solution, or the switch off.",
+      "required": ["image", "annotations"],
+      "properties": {
+        "image": {
+          "type": "object",
+          "required": ["width", "height"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "annotations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/annotation" }
+        },
+        "starsAvailable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "serverFeatures": {
+      "type": "object",
+      "description": "What this server does by itself, read from its environment and outside the capability map (whose readers are strict). `sky.solve_on_server`: a private server whose operator installed astrometry.net solves an image on demand (`ASTRO_PORTAL_SKY_SOLVE_ON_SERVER=1` with `ASTRO_PORTAL_SOLVE_FIELD` and `ASTRO_PORTAL_ASTROMETRY_INDEX_DIR`). Carried by `GET /v1/manage/captures` and `GET /v1/manage/captures/{id}`.",
+      "required": ["sky.solve_on_server"],
+      "properties": { "sky.solve_on_server": { "type": "boolean" } },
+      "additionalProperties": false
+    },
+    "solveState": {
+      "type": "object",
+      "description": "`POST /v1/manage/captures/{id}/sky-solution/solve` (`202`, « Résoudre sur ce serveur ») and `GET` on the same path: where the resolution of an image on this server stands. `failed` carries its `reason`: `not_solved` (too few stars, a field outside the installed indices), `unreadable_solution`, `not_started` (the binary cannot be run), `image_changed`, `sky_solution_aspect_mismatch`.",
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["idle", "running", "solved", "failed"] },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "400 `invalid_request` (not `{ sha256, solution }`, a field out of its range, an unknown field); 401 `device_authentication_required` (`PUT`, the original: no device token), `authentication_required` (`DELETE`, the solve route: no web session); 403 `csrf_invalid`, `web_session_required` (`DELETE` or the solve route with a device bearer); 404 `capture_not_found` (another space's capture, or none), `image_not_found` (`?imageId=` of no image of the capture), `sky_solution_not_found`, `original_not_found`, `not_found` (the solve route where `sky.solve_on_server` is false); 409 `image_changed` (no image of the capture holds the digest: the capture changed since the solution was computed); 413 `payload_too_large`; 422 `sky_solution_aspect_mismatch`; 503 `capture_storage_unavailable`.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "device_authentication_required",
+                "authentication_required",
+                "csrf_invalid",
+                "web_session_required",
+                "capture_not_found",
+                "image_not_found",
+                "sky_solution_not_found",
+                "original_not_found",
+                "not_found",
+                "image_changed",
+                "payload_too_large",
+                "sky_solution_aspect_mismatch",
+                "capture_storage_unavailable"
+              ]
+            },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/put" },
+    { "$ref": "#/$defs/one" },
+    { "$ref": "#/$defs/written" },
+    { "$ref": "#/$defs/deleted" },
+    { "$ref": "#/$defs/annotations" },
+    { "$ref": "#/$defs/solveState" },
+    { "$ref": "#/$defs/refusal" }
+  ]
+}

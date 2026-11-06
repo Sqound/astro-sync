@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/space-deletion.schema.json",
+  "title": "Astro Portal API v1 deletion of a space",
+  "description": "DELETE /v1/space, from inside the application or from the web. See v1.md, section « Deleting a space ».",
+  "$defs": {
+    "deletionRequest": {
+      "description": "The explicit confirmation of « Supprimer mon espace ».",
+      "type": "object",
+      "required": ["confirm"],
+      "properties": { "confirm": { "const": true } }
+    },
+    "deletionAccepted": {
+      "description": "202: the erasure has begun and cannot be cancelled. Every session and every device of the space is detached at once; the erasure of the data completes by `completesBy`.",
+      "type": "object",
+      "required": ["deletion"],
+      "properties": {
+        "deletion": {
+          "type": "object",
+          "required": ["requestedAt", "completesBy"],
+          "properties": {
+            "requestedAt": { "type": "string", "format": "date-time" },
+            "completesBy": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    },
+    "deleted": {
+      "description": "401 of any call made afterwards with a credential of the deleted space. The application erases its copy of the space.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": "space_deleted" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

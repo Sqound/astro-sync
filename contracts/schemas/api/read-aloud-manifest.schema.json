@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/read-aloud-manifest.schema.json",
+  "title": "Astro Portal spoken reading manifest",
+  "description": "`read-aloud/<voiceVersion>/<locale>/manifest.json` of the static-data package: one language of the optional `read-aloud` offline-pack component (« Lecture à voix haute »), written by the generator (READ-ALOUD-GEN-01) once every unit file of the language is deposited under `read-aloud/<voiceVersion>/<locale>/u/<id>.m4a`, and served by the portal at `/v1/offline-pack/read-aloud/{locale}/{voiceVersion}/manifest.json`. The three levels nest by construction: every fiche names the smallest level it belongs to; Essentiel is the fiches of level `essential`, Étendu those of `essential` and `extended`, Complet all of them, in the order of `fiches` (the reading order). A unit is one paragraph spoken once: its `id` is the first 16 bytes, in hexadecimal, of `sha256(normalisedText + \"\\n\" + locale + \"\\n\" + voice + \"\\n\" + voiceVersion)` (the app computes the same id from the text it would read); `bytes` and `sha256` are those of the `.m4a` file; `cues` are the start of each sentence in the file, in milliseconds (the first is 0, never decreasing). A paragraph that two fiches share is one unit, listed in both with the same `bytes` and `sha256`. The folder names are `voiceVersion` and `locale` themselves; a manifest that contradicts its folder is ignored.",
+  "type": "object",
+  "required": [
+    "v",
+    "kind",
+    "locale",
+    "voiceVersion",
+    "voice",
+    "source",
+    "attribution",
+    "license",
+    "fiches"
+  ],
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "const": "read-aloud-manifest" },
+    "locale": {
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"
+    },
+    "voiceVersion": {
+      "type": "string",
+      "description": "Names the voice and the generation (`azure-hd-2026-11`); a new one changes every id of the language, so versions never mix.",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "voice": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The provider's name of the voice (`fr-FR-Vivienne:DragonHDLatestNeural`)."
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shown to the person: « Voix de synthèse neuronale HD »."
+    },
+    "attribution": { "type": "string", "minLength": 1 },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the provider's terms allow for the redistribution of the generated audio."
+    },
+    "format": {
+      "type": "object",
+      "description": "How the units are encoded (HE-AAC 32 kbit/s mono in an `.m4a` per the study).",
+      "properties": {
+        "container": { "const": "m4a" },
+        "codec": { "type": "string" },
+        "bitrate": { "type": "integer", "minimum": 1 },
+        "channels": { "type": "integer", "minimum": 1 },
+        "sampleRate": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "fiches": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fiche" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "fiche": {
+      "type": "object",
+      "required": ["id", "level", "units"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "The page read: a target's slug (`m31`), or the name of a guide page (`guided-evening-intro`). Unique in the manifest."
+        },
+        "level": { "enum": ["essential", "extended", "complete"] },
+        "units": {
+          "type": "array",
+          "minItems": 1,
+          "description": "The paragraphs of the page, in reading order.",
+          "items": { "$ref": "#/$defs/unit" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "unit": {
+      "type": "object",
+      "required": ["id", "bytes", "sha256", "cues"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "cues": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

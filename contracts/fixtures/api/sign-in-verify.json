@@ -1,0 +1,735 @@
+{
+  "contract": "sign-in.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "verify-code-app-creates-space",
+      "description": "The first successful verification of an address without a space: the space is created (organisation, person, owner), the phone is registered under its name and receives its device token. The application shows « Votre espace est prêt ».",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "addressHasSpace": false,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios",
+            "model": "iPhone17,1"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": true,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          },
+          "deviceToken": "wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "verify-code-app-existing-space",
+      "description": "An address that already has a space: the same answer with `created: false`; a second device is registered in it.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "addressHasSpace": true,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "Yq0Zc2RkT1v8mN4pXw7sLb3aHe9fUg6J",
+            "name": "iPad Air",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "a0cba022-8caf-4cff-b9f7-d97506b07cdf",
+            "name": "iPad Air"
+          },
+          "deviceToken": "_TnPFO2hDeJ2METfMFu3N-zkfHiiMgEukkuU91Q6g10"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "verify-code-astro-sync",
+      "description": "Astro Sync signs in the same way (`application: sync`). It is a helper that sends, not a device under the one-device-one-space rule.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "addressHasSpace": true,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "730418",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "730418",
+          "client": "app",
+          "device": {
+            "application": "sync",
+            "installationId": "astrosync-mac-7f3a9c2e1b4d",
+            "name": "Astro Sync — MacBook Pro",
+            "platform": "macos"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "98dc0200-d02c-44a3-899b-129fa99f3e0c",
+            "name": "Astro Sync — MacBook Pro"
+          },
+          "deviceToken": "QJR3D-0HcwGBdSXJ8IpOIuINTTIPAl2OHFyn1hIeyUQ"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "verify-code-web",
+      "description": "The web page « Saisissez votre code »: the answer opens a web session with its two cookies; no device is registered.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:30.000Z",
+        "addressHasSpace": true,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store",
+          "set-cookie": [
+            "__Host-astro_portal_session=<opaque>; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax; Secure",
+            "__Host-astro_portal_csrf=<opaque>; Path=/; Max-Age=2592000; SameSite=Lax; Secure"
+          ]
+        },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForWeb"
+      }
+    },
+    {
+      "id": "verify-link-app",
+      "description": "The link of the message touched on the phone, while the application has a request in progress on this device for the address the person typed: it reads `token` from the fragment and sends it with that address. The code of the same message is used up with it. Without a request in progress the application ignores the link and opens the sign-in screen.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:16:00.000Z",
+        "addressHasSpace": true,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "email": "vous@exemple.fr",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          },
+          "deviceToken": "wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "verify-code-incorrect",
+      "description": "A wrong code, first failure: « Ce code ne correspond pas. Il vous reste 4 essais. » The code stays valid.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:15:00.000Z",
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "failedAttempts": 0
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481270",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_code_incorrect",
+            "message": "This code does not match."
+          },
+          "attemptsRemaining": 4
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-code-fifth-failure-locks",
+      "description": "The fifth wrong code for this address from this network origin: codes cannot be typed for it from this origin for 15 minutes (1 hour, then 24 hours, when the wait comes back within 24 hours of the previous one), and no new message is sent to it from this origin meanwhile. The code, compared five times, is used up; the link of its message still opens.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:20:00.000Z",
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "failedAttemptsFromThisOrigin": 4,
+        "earlierWaitsWithin24Hours": 0
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "000000",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "900" },
+        "body": {
+          "error": {
+            "code": "sign_in_locked",
+            "message": "Too many attempts. Codes cannot be typed for this address until the wait ends."
+          },
+          "retryAt": "2026-09-29T21:35:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-while-locked",
+      "description": "During the wait, even the right code is refused, with the same answer. The same when twenty failures for this address, from every origin together, locked it everywhere.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:25:00.000Z",
+        "lockedUntil": "2026-09-29T21:35:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "600" },
+        "body": {
+          "error": {
+            "code": "sign_in_locked",
+            "message": "Too many attempts. Codes cannot be typed for this address until the wait ends."
+          },
+          "retryAt": "2026-09-29T21:35:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-code-expired",
+      "description": "More than 10 minutes after the message: « Ce code a expiré. » The same answer when the code was already used, when a newer code replaced it, or when no code was ever asked for this address.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:24:01.000Z",
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_code_expired",
+            "message": "This code is no longer valid. Ask for a new one."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-code-already-used",
+      "description": "A code serves once: the second use answers as an expired code.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:16:00.000Z",
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z",
+          "usedAt": "2026-09-29T21:15:30.000Z"
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_code_expired",
+            "message": "This code is no longer valid. Ask for a new one."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-link-invalid",
+      "description": "A link already used, replaced by a newer message, or never issued. The application falls back to the code screen.",
+      "given": { "authMode": "email-code", "now": "2026-09-29T21:16:00.000Z" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "linkToken": "h344OawrYXPkmdF3eptvJXYHfK7sKJCB4MBfHGiqPfE",
+          "email": "vous@exemple.fr",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_link_invalid",
+            "message": "This link is no longer valid."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-link-other-address",
+      "description": "A link forwarded from the message of another address (someone asked a code for their own address and sent the link on): the token does not belong to the address the application sends. Refused as a wrong code and counted as a failed attempt for the address sent, from this network origin; nothing is used up and no space is opened.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:16:00.000Z",
+        "codeSent": {
+          "email": "autre@exemple.fr",
+          "code": "552019",
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "sentAt": "2026-09-29T21:14:00.000Z"
+        },
+        "failedAttemptsFromThisOrigin": 0
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "email": "vous@exemple.fr",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_code_incorrect",
+            "message": "This link was not sent to this address."
+          },
+          "attemptsRemaining": 4
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-link-without-address",
+      "description": "A link token sent alone: the address the person typed on this device must go with it. Nothing is counted.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "message": "Send an address with its code, or with the token of the link."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-link-while-locked",
+      "description": "The link of the message opens even while codes cannot be typed for its address: its token cannot be guessed, and whoever holds the message may use it.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:25:00.000Z",
+        "addressHasSpace": true,
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "sentAt": "2026-09-29T21:20:00.000Z"
+        },
+        "lockedUntil": "2026-09-29T21:35:00.000Z",
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "linkToken": "L6-hEKAbdZ63mYLsAi7VuGXcWm0-5FMU-QRAuYxF39s",
+          "email": "vous@exemple.fr",
+          "client": "app",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "created": false,
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          },
+          "deviceToken": "wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        },
+        "schema": "sign-in.schema.json#/$defs/verifiedForApp"
+      }
+    },
+    {
+      "id": "verify-code-compared-five-times",
+      "description": "A code already compared five times (from several network origins, so that none of them waits) can no longer be used, even when it is the right one: « Ce code a expiré. » A new message gives a new code.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:18:00.000Z",
+        "codeSent": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "sentAt": "2026-09-29T21:14:00.000Z",
+          "comparisons": 5
+        }
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_code_expired",
+            "message": "This code is no longer valid. Ask for a new one."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-invalid-address",
+      "description": "Not an address: nothing is counted.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "email_invalid",
+            "message": "Enter a valid e-mail address."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-app-without-device",
+      "description": "`client: app` without its `device`, a code that is not six digits, both a code and a link token, or a link token without its address: nothing is counted.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "app"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "message": "The device signing in must be described."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-too-many-failures-from-origin",
+      "description": "Thirty failed verifications within the hour from the same network origin, whatever the addresses.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:40:00.000Z",
+        "failuresFromOriginThisHour": 30,
+        "firstOfThemAt": "2026-09-29T21:05:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "autre@exemple.fr",
+          "code": "123456",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "1500" },
+        "body": {
+          "error": {
+            "code": "sign_in_rate_limited",
+            "message": "Too many attempts from this network. Try again later."
+          },
+          "retryAt": "2026-09-29T22:05:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-service-starting",
+      "description": "« Le service démarre. » Nothing was checked and nothing was used: the code stays valid and the client sends it again after `Retry-After`.",
+      "given": { "authMode": "email-code", "database": "unreachable" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 503,
+        "headers": { "cache-control": "no-store", "retry-after": "10" },
+        "body": {
+          "error": {
+            "code": "service_starting",
+            "message": "The service is starting. Try again in a moment."
+          },
+          "retryAt": "2026-09-29T21:15:40.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "verify-on-private-server",
+      "description": "A private server signing in by password has no sign-in by e-mail.",
+      "given": { "authMode": "password" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/verify",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "code": "481207",
+          "client": "web"
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": { "code": "not_found", "message": "Not found." }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    }
+  ]
+}

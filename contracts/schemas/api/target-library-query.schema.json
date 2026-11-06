@@ -1,0 +1,640 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/target-library-query.schema.json",
+  "title": "Astro Portal target library query and result",
+  "description": "GET /api/target-library and GET /v1/targets query parameters and response. Guest browsing never requires a credential; only `favorites=1` does — a web session for the web route, a device bearer for the v1 route. A query with no match still returns the full paginated envelope with an empty `targets` array, never a null or missing field. GET /v1/targets/{targetId} returns one `target` rather than the paginated envelope. Results are ordered by designation unless `sort=planner` asks for the planner's relevance ranking; the response echoes the ordering it applied in `sort`, which a portal predating the parameter omits. The two kinds of entry the application writes itself, the bright stars and the constellations, are ordinary entries of the catalogue (`type=stellar`, `type=constellation`); see `stellar`, `constellationInfo`, `planVisualOnly` and `planExcluded` of the target.",
+  "$defs": {
+    "target": {
+      "type": "object",
+      "required": ["id"],
+      "description": "One catalogue entry. Its presentation fields are the portal's and are deliberately not constrained here; `photoFavorite` and `visualFavorite` are present only when the reader is authenticated.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "photoFavorite": {
+          "type": "boolean"
+        },
+        "visualFavorite": {
+          "type": "boolean"
+        },
+        "distance": {
+          "description": "The target's distance, \"when known, otherwise absent\": `null` when no layer has one. Written at import (`packages/astro-core/src/target-distance.ts`), in this order: `published` (a value from the literature in the curated table, cited with its `reference`), `parallax` (OpenNGC's Gaia parallax, 1/Pax, for a cluster or a nebula with at least 0.5 mas, never for a galaxy), `redshift` (a galaxy at 1 000 km/s or more, Hubble's law at 70 km/s/Mpc: an estimate, which a client writes as such). Additive; a portal predating the field omits it.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": ["lightYears", "source", "reference"],
+              "properties": {
+                "lightYears": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Light-years, rounded to the significant digits of the layer (two for `redshift`, three for `parallax`, the published digits for `published`)."
+                },
+                "source": {
+                  "enum": ["published", "parallax", "redshift"]
+                },
+                "reference": {
+                  "type": "string",
+                  "description": "`published`: author, year, journal, bibliographic identifier. `parallax` and `redshift`: the OpenNGC column and the rule."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": {
+          "type": ["string", "null"],
+          "description": "Only in `GET /v1/targets/{id}` of a bright star or a constellation: its short text (two to four sentences) in the requested `locale`, else in English (`storyFallbackLocale` then says `en`), `null` when none is written. The same text is the target's knowledge text: `story`, `storyParagraphs` (one paragraph) and `storySections` (one opening, no intertitle) carry it, no `spokenParagraphs` is served, and a client shows it, keeps it for offline use and reads it aloud as it does a published page. Absent for any other target."
+        },
+        "storyFallbackLocale": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(?:-[A-Z][a-z]{3})?(?:-[A-Z]{2})?$",
+          "description": "Present only when the target's knowledge text (`story`, `storyParagraphs`) has no curated text in the requested `locale`: the locale it is shown in instead, the registry's default (`en`). Never a blank text; absent when the text is in the requested locale."
+        },
+        "storySections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["heading", "paragraphs"],
+            "properties": {
+              "heading": {
+                "type": ["string", "null"],
+                "description": "The section's intertitle; `null` for the opening, which has none."
+              },
+              "paragraphs": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Optional. The knowledge text of a published page (the long catalogue texts) cut into its sections, in the language of `story`; the paragraphs of every section, in order, are `storyParagraphs`. Absent for a target whose text is a short generated one: a client then shows `storyParagraphs` as before."
+        },
+        "researchSources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "url"],
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "The links the text stands on, each with the words that name it (for a published page, in the language of the text, with the date it was consulted)."
+        },
+        "researchNote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional. The note that closes the sources of a published page (the licences of the sources), in the language of `story`; shown under the sources."
+        },
+        "spokenParagraphs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional. The knowledge text written to be heard, in the requested `locale`, for the read-aloud voice: short sentences, no parenthesis, no catalogue shorthand, numbers and names written as they are said. Present only for a locale with spoken templates and a text in that locale (never beside `storyFallbackLocale`); absent, the reader speaks the written text through its pronunciation lexicon."
+        },
+        "childrenSpokenParagraphs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Optional. The children's spoken variant, read when the device's children's switch is on: the object's name and its kind, concrete comparisons, no figure that needs a unit lesson. Present only beside `spokenParagraphs`; absent, the reader speaks `spokenParagraphs`."
+        },
+        "constellationKey": {
+          "type": ["string", "null"],
+          "description": "The IAU abbreviation of the constellation that holds the target (`Lyr`, `UMa`, `CrB`), the key of the `constellation` filter; `Système solaire` for the Solar System's bodies. Placed by the IAU boundaries (`constellationAt`) when the source gives none. Additive: a portal predating migration 109 keyed a constellation by its French name."
+        },
+        "planVisualOnly": {
+          "type": "boolean",
+          "description": "True for a bright star (type `Étoile brillante`): never offered by the suggestions nor ranked by `sort=planner`, but may be added to a plan by hand, in visual mode only. Additive; absent from a portal predating the bright stars."
+        },
+        "planExcluded": {
+          "type": "boolean",
+          "description": "True for a constellation (type `Constellation`): never put in a plan, never suggested. Additive; absent from a portal predating the constellations."
+        },
+        "isBest": {
+          "type": "boolean",
+          "description": "In « Essentielles ». Disjoint from `isExtended` since TARGET-SELECTIONS-TAGS-01: a target is in one selection at most."
+        },
+        "isExtended": {
+          "type": "boolean",
+          "description": "In « Étendues », the targets beyond the Essentials (no longer the Essentials too)."
+        },
+        "modes": {
+          "type": "array",
+          "items": {
+            "enum": ["visual", "photo"]
+          },
+          "uniqueItems": true,
+          "description": "The modes a target of a selection is proposed in, in this order: `visual` (within reach of a 200 mm telescope under a good sky), `photo`, or both; both for a target of a selection that carries none; empty for a target of no selection. Additive; absent from a portal predating TARGET-SELECTIONS-TAGS-01."
+        },
+        "stellar": {
+          "type": "object",
+          "description": "Present for a bright star (type `Étoile brillante`, catalogue `BrightStars`, identifier `star-hip-<Hipparcos number>`; the 92 stars of visual magnitude 2.5 or brighter). The distance is the entry's `distance` (source `parallax`).",
+          "required": [
+            "hip",
+            "bayer",
+            "bayerGenitive",
+            "names",
+            "spectralType",
+            "distanceIsEstimate",
+            "epoch"
+          ],
+          "properties": {
+            "hip": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "hr": {
+              "type": ["integer", "null"],
+              "description": "Bright Star Catalogue number."
+            },
+            "hd": {
+              "type": ["integer", "null"],
+              "description": "Henry Draper number."
+            },
+            "properName": {
+              "type": ["string", "null"],
+              "description": "The proper name; null for a star that has none in common use."
+            },
+            "nameKind": {
+              "enum": ["iau", "traditional", null],
+              "description": "`iau`: a name of the IAU Catalog of Star Names; `traditional`: a name in common use that the catalogue does not list; null: no proper name."
+            },
+            "bayer": {
+              "type": "string",
+              "description": "`α Lyr`."
+            },
+            "bayerGenitive": {
+              "type": "string",
+              "description": "`α Lyrae`."
+            },
+            "names": {
+              "$ref": "#/$defs/skyNames",
+              "description": "The name in each of the ten languages of the application."
+            },
+            "colorIndexBV": {
+              "type": ["number", "null"]
+            },
+            "spectralType": {
+              "type": "string"
+            },
+            "distanceIsEstimate": {
+              "type": "boolean",
+              "description": "True when the parallax is beyond 150 parsecs: the distance's `reference` then begins « Estimation : » and a client writes « estimation » beside it."
+            },
+            "epoch": {
+              "const": "J2000.0",
+              "description": "The position carries no proper motion."
+            }
+          },
+          "additionalProperties": true
+        },
+        "constellationInfo": {
+          "type": "object",
+          "description": "Present for a constellation (type `Constellation`, catalogue `Constellations`, identifier `constellation-<abbreviation>`). The entry's own `coordinate` is the centre of the smallest circle that holds the stars of its lines. `GET /v1/targets/{id}` adds the two lists `brightStars` and `targets`.",
+          "required": [
+            "abbreviation",
+            "latinName",
+            "genitive",
+            "names",
+            "linesRadiusDegrees",
+            "brightStarCount",
+            "hasDrawing"
+          ],
+          "properties": {
+            "abbreviation": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z]{2}$"
+            },
+            "latinName": {
+              "type": "string"
+            },
+            "genitive": {
+              "type": "string"
+            },
+            "names": {
+              "$ref": "#/$defs/skyNames",
+              "description": "The name in each of the ten languages of the application."
+            },
+            "linesRadiusDegrees": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "brightStarCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "How many of the 92 bright stars it holds."
+            },
+            "targetCount": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "How many of the catalogue's other objects it holds (its bright stars and its own entry left out). In the answers of the catalogue's search."
+            },
+            "hasDrawing": {
+              "type": "boolean",
+              "description": "Whether the western sky culture draws an illustration of it."
+            },
+            "brightStars": {
+              "$ref": "#/$defs/skyList",
+              "description": "Its bright stars, the brightest first. Only in `GET /v1/targets/{id}`."
+            },
+            "targets": {
+              "$ref": "#/$defs/skyList",
+              "description": "The catalogue's objects in it, the editorial selection first, then by brightness. Only in `GET /v1/targets/{id}`."
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "query": {
+      "type": "object",
+      "properties": {
+        "locale": {
+          "enum": [
+            "en",
+            "fr",
+            "ja",
+            "de",
+            "es",
+            "it",
+            "pt-BR",
+            "zh-Hans",
+            "zh-Hant",
+            "ru"
+          ]
+        },
+        "q": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "description": "A type of the catalogue (`Galaxie`…), or `stellar` (the 92 bright stars) or `constellation` (the 88 constellations)."
+        },
+        "constellation": {
+          "type": "string",
+          "description": "The IAU abbreviation of a constellation (`Lyr`), or any name that names it (`Lyre`, `Lyra`): it filters every type, the bright stars and the constellations included."
+        },
+        "catalogue": {
+          "type": "string"
+        },
+        "selection": {
+          "enum": ["", "best", "extended"],
+          "description": "`best` the Essentials, `extended` the Extended: two disjoint lists."
+        },
+        "mode": {
+          "enum": ["", "visual", "photo"],
+          "description": "Keeps, of the `selection` asked, the targets proposed in that mode, and counts `counts.best`/`counts.extended` (and `countsUnfiltered`) in it. Without a `selection` the page is not filtered by it: a catalogue is whole. Absent or empty: every target of the selection."
+        },
+        "hemisphere": {
+          "enum": ["", "north", "south"]
+        },
+        "season": {
+          "enum": ["", "winter", "spring", "summer", "autumn"]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 96
+        },
+        "featured": {
+          "type": "boolean"
+        },
+        "favorites": {
+          "type": "boolean"
+        },
+        "favoriteMode": {
+          "enum": ["", "photo", "visual"]
+        },
+        "sort": {
+          "enum": ["", "designation", "planner", "notoriety"],
+          "description": "Result ordering. Absent or empty means `designation`, the alphabetical catalogue index every client has always received. `notoriety` is the order of the planner's catalogue screens: the editorial selection first (Essentielles, then Étendues, then the rest), then the catalogue's rank (Système solaire, Messier, Caldwell, NGC, IC, Sharpless, Barnard, LBN, Abell, LDN), then the designation; it does not depend on the observer and drops nothing. `planner` applies the web planner's own relevance score (editorial tier, type, brightness, apparent size, and culmination height at `latitude`) and drops targets it cannot rank, so `total` and `counts` describe the ranked set."
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Observer latitude for `sort=planner`, in degrees. Only the ranking reads it. Clients send it coarsely — the mobile planner rounds to the whole degree — because the score needs no better and the value travels in the query string."
+        },
+        "minimumAltitude": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 89,
+          "description": "Culmination height, in degrees, below which `sort=planner` treats a target as unobservable from `latitude`. Defaults to 30."
+        },
+        "listLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24,
+          "description": "`GET /v1/targets/{targetId}` of a constellation only: how many items each of its two lists holds."
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["total", "offset", "limit", "targets", "counts"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 96
+        },
+        "sort": {
+          "enum": ["designation", "planner", "notoriety"],
+          "description": "The ordering the portal actually applied. Absent from a portal that predates the `sort` parameter, which always orders by designation."
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/target"
+          }
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "imageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "curatedPhotoImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visualImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visualPreviewImageAttribution": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "counts": {
+          "type": "object",
+          "required": ["total", "best", "extended"],
+          "description": "The editorial selection dropdown's own faceted counts. Each of `best`/`extended` is computed over targets matching every *other* active filter (`q`, `type`, `constellation`, `catalogue`, `hemisphere`, `season`, a favorites restriction) with the `selection` filter itself ignored, so choosing `selection=best` never changes `extended`'s own count (and vice versa) — the regression this fixes had every one of `total`/`best`/`extended` collapse onto the page's own `selection`-filtered size. `total` is the same facet with no editorial predicate: the count the \"All\" option represents. The two selections are disjoint, and each count is in the `mode` asked, when one is.",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "best": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "extended": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "countsUnfiltered": {
+          "type": "object",
+          "description": "Additive (absent from a portal predating this field, which a client then treats as `counts` alone — R7's single-number display). The same three counts as `counts`, with *no* filter applied at all, not even the other dimensions: a fixed `n` for `R7`'s `x/n` display once at least one filter is active (`counts.best` is `x`, `countsUnfiltered.best` is `n`). Constant for a given catalogue revision, independent of `q`/`type`/`constellation`/`catalogue`/`hemisphere`/`season`/`selection`/favorites.",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "best": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "extended": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "catalogueOptions": {
+          "type": "array",
+          "description": "The catalogue dropdown's own options, always the full set (never shrinking as filters narrow the page) with two counters per entry.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "description", "count"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Faceted: how many targets carry this catalogue among those matching every *other* active filter, the `catalogue` filter itself ignored. A portal predating the fix instead counted this catalogue across the whole, unfiltered library regardless of any other active filter — a different but likewise non-contaminating bug this corrects at the same time."
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Additive (absent from a portal predating this field). This catalogue's count with no filter applied at all — R7's `n`."
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "typeOptions": {
+          "type": "array",
+          "description": "The type dropdown's own options, following the same `count`/`total` rule as `catalogueOptions` above.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "count"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Faceted: matches among targets satisfying every *other* active filter, the `type` filter itself ignored."
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Additive (absent from a portal predating this field). This type's count with no filter applied at all — R7's `n`."
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "skyNames": {
+      "type": "object",
+      "required": [
+        "en",
+        "fr",
+        "ja",
+        "de",
+        "es",
+        "it",
+        "pt-BR",
+        "ru",
+        "zh-Hans",
+        "zh-Hant"
+      ],
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "skyList": {
+      "type": "object",
+      "required": ["total", "items"],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "designation",
+              "title",
+              "typeKey",
+              "constellationKey"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "designation": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "name": {
+                "type": ["string", "null"]
+              },
+              "type": {
+                "type": ["string", "null"]
+              },
+              "typeKey": {
+                "type": ["string", "null"]
+              },
+              "catalogue": {
+                "type": ["string", "null"]
+              },
+              "constellationKey": {
+                "type": ["string", "null"]
+              },
+              "magnitude": {
+                "type": ["number", "null"]
+              },
+              "coordinate": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              },
+              "isBest": {
+                "type": "boolean"
+              },
+              "isExtended": {
+                "type": "boolean"
+              },
+              "bayer": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "At most `listLimit` items (default 12, at most 24) and the total."
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/target"
+    }
+  ]
+}

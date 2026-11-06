@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/target-favorites.schema.json",
+  "title": "Astro Portal target favorites",
+  "description": "Per-user photo and visual favorite target ids (packages/portal/src/persistence/target-favorite-repository.js). Reads and writes both require an authenticated caller — a web session for the web route, a device bearer for the v1 route; there is no guest favorites state on the service (a phone without a space keeps its own and sends them with `importRequest` once the device is attached). The two modes are independent: a target may be a photo favorite, a visual favorite, both, or neither. Both routes answer with `targetIdsByMode`. The web route takes `setFavoriteRequest`; PUT /v1/favorites/{targetId} carries the target id in the path and takes `setFavoriteBody`; POST /v1/favorites takes `importRequest` (additive, idempotent: nothing is removed, an item already a favorite is kept) and answers `importResponse`.",
+  "$defs": {
+    "targetIdsByMode": {
+      "type": "object",
+      "required": ["photoTargetIds", "visualTargetIds"],
+      "properties": {
+        "photoTargetIds": { "type": "array", "items": { "type": "string" } },
+        "visualTargetIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "setFavoriteRequest": {
+      "type": "object",
+      "required": ["targetId", "mode", "favorite"],
+      "properties": {
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "mode": { "enum": ["photo", "visual"] },
+        "favorite": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "importRequest": {
+      "type": "object",
+      "required": ["action", "items"],
+      "properties": {
+        "action": { "const": "import" },
+        "items": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "required": ["targetId", "mode"],
+            "properties": {
+              "targetId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "mode": { "enum": ["photo", "visual"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "importResponse": {
+      "type": "object",
+      "required": ["photoTargetIds", "visualTargetIds", "imported"],
+      "properties": {
+        "photoTargetIds": { "type": "array", "items": { "type": "string" } },
+        "visualTargetIds": { "type": "array", "items": { "type": "string" } },
+        "imported": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["targetId", "mode", "status"],
+            "properties": {
+              "targetId": { "type": "string" },
+              "mode": { "enum": ["photo", "visual"] },
+              "status": { "enum": ["added", "kept", "unknown_target"] }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "setFavoriteBody": {
+      "type": "object",
+      "required": ["mode", "favorite"],
+      "properties": {
+        "mode": { "enum": ["photo", "visual"] },
+        "favorite": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/targetIdsByMode" },
+    { "$ref": "#/$defs/setFavoriteRequest" },
+    { "$ref": "#/$defs/setFavoriteBody" },
+    { "$ref": "#/$defs/importRequest" },
+    { "$ref": "#/$defs/importResponse" }
+  ]
+}

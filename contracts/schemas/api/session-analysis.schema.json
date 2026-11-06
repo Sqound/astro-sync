@@ -1,0 +1,974 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/session-analysis.schema.json",
+  "title": "Astro Portal API v1 session analyses",
+  "description": "The night's analysis: the report Astro Sync builds (v3 since w61; the v2 already stored are served as they are) on the person's computer from the night's logs (PHD2, ASIAIR, NINA) and the headers of its frames, or the import of the old nights builds from their measures, and POST /v1/sessions/{id}/analyses stores (api/v1.md, \"Session analyses\"). One analysis per night: the next sending REPLACES it, never an empty one, and there are no versions. On a sending the night's acquisition steps proposed by the previous analysis and never corrected by hand are replaced by the report's `acquisitionSteps`; a step corrected by hand stays, marked edited (session.schema.json `step`). The summaries the screens show (quality by night and by step, guiding) are computed by the service at read time (GET /v1/sessions/{id}), never stored here. `additionalProperties: false` on every object here is deliberate and load-bearing, not stylistic: it is what keeps a stray `score`/`rating`/`grade` field (or any other field this contract never named) from ever being accepted, restating the evidence rule (`packages/astro-contracts/schemas/session-package/metrics.md`, \"No column or JSON field named (or containing) score, rating, or grade may ever be added\") at the wire boundary, for a report body from any producer.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "timelineBoundary": {
+      "description": "One session-chronology boundary (`timeline.startedAt`/`timeline.endedAt`), always paired with a human-readable pointer to exactly which parsed value produced it — a PHD2 guiding-session boundary, a guiding sample's own source+frame, or a quality row's own source FITS file — never a bare timestamp with no evidence.",
+      "type": "object",
+      "required": ["timestampUtc", "evidence"],
+      "properties": {
+        "timestampUtc": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "evidence": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionEvent": {
+      "description": "One entry of `timeline.events` — the shape `events/session.jsonl` (session-package/metrics.md) defines: `type`/`timestampUtc`/`source`/`data`. The types the service counts for the guiding summary: `dither`, `settle-timeout`, `autofocus` (a focus run launched), `autofocus-result` (its result; `data.succeeded: true` for a successful run), `meridian-flip`. `data`'s own shape is per-`type`, documented there.",
+      "type": "object",
+      "required": ["type", "timestampUtc", "source", "data"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timestampUtc": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["phd2", "asiair", "nina"]
+        },
+        "data": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "acquisitionStep": {
+      "description": "One acquisition step the report proposes: the frames sharing a filter, an exposure and a gain (binning and sensor temperature kept, never shown). `key` names it within the report, and each quality row says its step by `stepKey`. `targetHint` is the target as the frames name it (the FITS `OBJECT` header, or the window between `target_started` and `target_finished`); the service resolves it to a target of the space when it can. `filter` is the person's own free text, never normalized; null reads « Sans filtre ».",
+      "type": "object",
+      "required": ["key", "filter", "frameCount", "exposureSeconds", "gain"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "targetHint": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 200
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 40
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "minimum": 0.001
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "binning": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 20
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sensorTempC": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "qualityRow": {
+      "description": "One measured frame: its step (`stepKey`, one of the report's `acquisitionSteps[].key`, null when the frame belongs to none), its exposure and, when the header or the measure gives them, FWHM in pixels, eccentricity, sky background and its noise in ADU and the number of stars detected (the old portal's two extra measures, carried over). The guiding root-mean-square over its exposure window comes from the guiding log. `sourcePath` points back to the frame it was read from, relative to the night's folder; the import never carries one. Version 3 adds, when Astro Sync knows them, whether the stacking left the frame out (`rejected`) and why (`rejectReason`: `unregistered` — the stacking could not align it —, or the reason « Mesure des poses » gave a pose the person left out: `dawn`, `sky`, `clouds`, `trailed`, `wide`; `manual` when the person left out a pose the measure did not flag); FWHM, eccentricity, sky background and star count are the measure's when the header has none.",
+      "type": "object",
+      "required": [
+        "timestampUtc",
+        "stepKey",
+        "filter",
+        "exposureSeconds",
+        "fwhmPixels",
+        "eccentricity",
+        "skyBackgroundAdu"
+      ],
+      "properties": {
+        "timestampUtc": {
+          "type": "string"
+        },
+        "stepKey": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filter": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exposureSeconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gain": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "iso": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "binning": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sensorTempC": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsTotalArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsRaArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsDecArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidingSampleCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "skyBackgroundAdu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fwhmPixels": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eccentricity": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourcePath": {
+          "type": "string"
+        },
+        "skyBackgroundNoiseAdu": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejected": {
+          "type": "boolean"
+        },
+        "rejectReason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "unregistered",
+                "dawn",
+                "sky",
+                "clouds",
+                "trailed",
+                "wide",
+                "manual"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidingRow": {
+      "description": "One raw guiding sample, never aggregated (`metrics/guiding.csv`, session-package/metrics.md). `source`+`frame` is its traceability back to the log and line it was read from.",
+      "type": "object",
+      "required": [
+        "timestampUtc",
+        "source",
+        "frame",
+        "elapsedSeconds",
+        "raOffsetArcsec",
+        "decOffsetArcsec",
+        "raDurationMs",
+        "decDurationMs",
+        "starMass",
+        "snr",
+        "errorCode"
+      ],
+      "properties": {
+        "timestampUtc": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["phd2", "asiair", "nina"]
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "elapsedSeconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raOffsetArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decOffsetArcsec": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "raDurationMs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decDurationMs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "starMass": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "snr": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errorCode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidingSlice": {
+      "description": "One slice of the night's guiding (about 2 minutes): the root-mean-square in right ascension, declination and total over the slice, in arcseconds, and the number of samples it holds. Produced by Astro Sync from the samples, or carried as is by the import (`sessionTelemetry.sessions[].guideSeries[]`).",
+      "type": "object",
+      "required": ["start", "end", "rmsRa", "rmsDec", "rmsTotal", "samples"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "rmsRa": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsDec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rmsTotal": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "tracePoint": {
+      "description": "One window of `guidingTrace` (report v3): the guide samples whose instant falls in [startUtc + t, startUtc + t + intervalSeconds). `ra`/`dec`: mean offsets in arcseconds; `raPeak`/`decPeak`: the offset farthest from zero, signed; `raPulseMs`/`decPulseMs`: the corrections PHD2 sent over the window, durations summed with their direction (east and north positive, west and south negative), null when the log did not write a direction (and for the traces the service rebuilds from a v2 report's raw samples); `n`: samples; `out`: samples left out of the statistics (settle after a dither, walk back, star found again, error code, meridian flip) — a window with `out == n` is a settle, to be drawn as such, never as a guiding spike. The sign of the offsets follows PHD2's raw columns, which differ between versions: the sizes and the pulses' directions are the safe data.",
+      "type": "object",
+      "required": [
+        "t",
+        "n",
+        "out",
+        "ra",
+        "dec",
+        "raPeak",
+        "decPeak",
+        "raPulseMs",
+        "decPulseMs"
+      ],
+      "properties": {
+        "t": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "n": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "out": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ra": {
+          "type": "number"
+        },
+        "dec": {
+          "type": "number"
+        },
+        "raPeak": {
+          "type": "number"
+        },
+        "decPeak": {
+          "type": "number"
+        },
+        "raPulseMs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decPulseMs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "traceMarker": {
+      "description": "A moment drawn on the trace: `dither` (one per dither: PHD2's, else the ASIAIR's), `settle` (from the dither to PHD2's « Settling complete » or « failed »; out of the statistics), `star-lost`, `pause` (to its resume), `meridian-flip` (begin to end), `autofocus` (run to result). `end` null for an instant.",
+      "type": "object",
+      "required": ["type", "at", "end"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "dither",
+            "settle",
+            "star-lost",
+            "pause",
+            "meridian-flip",
+            "autofocus"
+          ]
+        },
+        "at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidingTrace": {
+      "description": "The night's guiding reduced by Astro Sync (report v3), in place of the v2's raw `guiding[]`: at most one point per `intervalSeconds` (10, never less), aligned on UTC from `startUtc`; a window without a sample is not written. `scaleArcsecPerPx` is the guide camera's scale (`Pixel scale = …` of PHD2, median of its sections): pixels = arcseconds ÷ scale. `rms`: the night's root-mean-square over the samples that count, while the sensor was imaging (the samples of `guidingSeries`). `guidedSeconds`: windows written × interval. The service refuses more than 20 000 points (`analysis_too_large`).",
+      "type": "object",
+      "required": [
+        "intervalSeconds",
+        "startUtc",
+        "scaleArcsecPerPx",
+        "guidedSeconds",
+        "samples",
+        "rms",
+        "points",
+        "markers"
+      ],
+      "properties": {
+        "intervalSeconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 600
+        },
+        "startUtc": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "scaleArcsecPerPx": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0.001
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "guidedSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "samples": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rms": {
+          "type": "object",
+          "required": ["raArcsec", "decArcsec", "totalArcsec", "samples"],
+          "properties": {
+            "raArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "decArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "totalArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "samples": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "points": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {
+            "$ref": "#/$defs/tracePoint"
+          }
+        },
+        "markers": {
+          "type": "array",
+          "maxItems": 20000,
+          "items": {
+            "$ref": "#/$defs/traceMarker"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "logClock": {
+      "description": "The wall clocks the night's logs were read with (`+HH:MM` east of UTC; PHD2, ASIAIR and NINA write the computer's local time without a zone), null for a kind of log the night has not; `detected`: at least one was found from the frames' `DATE-OBS` rather than given; `phd2From`: how the PHD2 clock was known — `given`, `asiair` (the ASIAIR's own clock, anchored on its exposure lines: its PHD2 runs on the same computer), `frames` (from the frames alone).",
+      "type": "object",
+      "required": ["phd2", "asiair", "nina", "detected"],
+      "properties": {
+        "phd2": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 6,
+              "maxLength": 6
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "asiair": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 6,
+              "maxLength": 6
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nina": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 6,
+              "maxLength": 6
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detected": {
+          "type": "boolean"
+        },
+        "phd2From": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["given", "asiair", "frames"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "timeline": {
+      "type": "object",
+      "required": ["startedAt", "endedAt", "events"],
+      "properties": {
+        "startedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timelineBoundary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "endedAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timelineBoundary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sessionEvent"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceCounts": {
+      "type": "object",
+      "required": ["phd2FilesParsed", "asiairFilesParsed", "fitsFilesParsed"],
+      "properties": {
+        "phd2FilesParsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "asiairFilesParsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fitsFilesParsed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ninaFilesParsed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "How many files of each kind the producer read. `ninaFilesParsed` is optional (zero when absent); the import writes zeros."
+    },
+    "report": {
+      "description": "The report, version 2 or 3 (both accepted; Astro Sync sends 3 since w61, the reports already stored stay as they were sent). Version 2 replaced the v1 (`acquisitionFamilies` became `acquisitionSteps`, each quality row says its step, `guiding` became optional — the import has no samples —, `guidingSeries` and `pixelScaleArcsec` were added). Version 3 no longer sends the raw samples (`guiding`, 1.8 to 3.8 MB a night) but `guidingTrace` (at most one point per 10 s, with the corrections' directions, the samples out of the statistics and the markers), says the clocks of the logs (`logClock`), counts one dither per dither in `timeline.events`, and gives each quality row `rejected`/`rejectReason` and the frame measure's figures. `producer` says who built it: `astro-sync` (the night's steps it proposes take the origin `analysis`) or `import` (the old nights: origin `import`). `pixelScaleArcsec` is the scale of the frames in arcseconds per pixel when the headers or the equipment give it (the FWHM is then also given in arcseconds), null otherwise. A report holding nothing (no step, no quality row, no guiding sample nor trace point nor slice, no event) is refused (422 `analysis_empty`).",
+      "type": "object",
+      "required": [
+        "reportVersion",
+        "producer",
+        "generatedAtUtc",
+        "source",
+        "timeline",
+        "acquisitionSteps",
+        "quality"
+      ],
+      "properties": {
+        "reportVersion": {
+          "type": "integer",
+          "enum": [2, 3]
+        },
+        "producer": {
+          "type": "string",
+          "enum": ["astro-sync", "import"]
+        },
+        "generatedAtUtc": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceCounts"
+        },
+        "pixelScaleArcsec": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0.001
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeline": {
+          "$ref": "#/$defs/timeline"
+        },
+        "acquisitionSteps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/acquisitionStep"
+          }
+        },
+        "quality": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/qualityRow"
+          }
+        },
+        "guiding": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/guidingRow"
+          }
+        },
+        "guidingTrace": {
+          "$ref": "#/$defs/guidingTrace"
+        },
+        "guidingSeries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/guidingSlice"
+          }
+        },
+        "logClock": {
+          "$ref": "#/$defs/logClock"
+        }
+      },
+      "additionalProperties": false
+    },
+    "createRequest": {
+      "description": "POST /v1/sessions/{id}/analyses's body: the report on its own, no envelope.",
+      "$ref": "#/$defs/report"
+    },
+    "resource": {
+      "description": "GET /v1/sessions/{id}/analyses: the night's analysis, report included. `createdAt` is when it was sent; `originDeviceId` and `deviceName` name the device that sent it (null when it no longer exists).",
+      "type": "object",
+      "required": [
+        "id",
+        "sessionId",
+        "reportVersion",
+        "createdAt",
+        "originDeviceId",
+        "deviceName",
+        "report"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "sessionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "reportVersion": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "originDeviceId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deviceName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "report": {
+          "$ref": "#/$defs/report"
+        }
+      },
+      "additionalProperties": false
+    },
+    "createResponse": {
+      "description": "The 201 response of POST /v1/sessions/{id}/analyses. `replaced` is true when the night already had an analysis, now gone. `steps` counts the night's steps after the sending: `proposed`, written from the report's `acquisitionSteps`; `keptEdited`, steps corrected by hand and kept (a report's step whose key matches one of them is not added again).",
+      "type": "object",
+      "required": ["analysis", "replaced", "steps"],
+      "properties": {
+        "analysis": {
+          "$ref": "#/$defs/resource"
+        },
+        "replaced": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "object",
+          "required": ["proposed", "keptEdited"],
+          "properties": {
+            "proposed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "keptEdited": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "id": "polished",
+  "version": "1",
+  "name": {
+    "fr": "Rendu soigné",
+    "en": "Polished render",
+    "ja": "丁寧な仕上がり",
+    "de": "Sorgfältige Darstellung",
+    "es": "Render cuidado",
+    "it": "Resa curata",
+    "pt-BR": "Renderização caprichada",
+    "ru": "Тщательный рендер",
+    "zh-Hans": "精修渲染",
+    "zh-Hant": "精修渲染"
+  },
+  "description": {
+    "fr": "Le rendu naturel poussé plus loin, sans changer les couleurs : fond et bruit traités par GraXpert, hautes lumières adoucies, nébuleuse mieux détachée. Plus long à calculer.",
+    "en": "The natural render taken further, without changing the colours: background and noise handled by GraXpert, softened highlights, a nebula that stands out more. Takes longer to compute.",
+    "ja": "ナチュラルな仕上がりを、色を変えずにもう一歩進めます。背景とノイズは GraXpert で処理し、明るい部分をやわらげ、星雲をより引き立てます。計算には時間がかかります。",
+    "de": "Die natürliche Darstellung weitergeführt, ohne die Farben zu ändern: Hintergrund und Rauschen von GraXpert behandelt, weichere Lichter, ein Nebel, der sich besser abhebt. Dauert länger.",
+    "es": "El render natural llevado más lejos, sin cambiar los colores: fondo y ruido tratados por GraXpert, luces altas suavizadas, una nebulosa que destaca más. Tarda más en calcularse.",
+    "it": "La resa naturale spinta più in là, senza cambiare i colori: fondo e rumore trattati da GraXpert, luci alte addolcite, una nebulosa che risalta di più. Richiede più tempo.",
+    "pt-BR": "A renderização natural levada adiante, sem mudar as cores: fundo e ruído tratados pelo GraXpert, altas luzes suavizadas, uma nebulosa que se destaca mais. Leva mais tempo para calcular.",
+    "ru": "Естественный рендер, доведённый дальше без изменения цветов: фон и шум обрабатывает GraXpert, света смягчены, туманность выделяется сильнее. Считается дольше.",
+    "zh-Hans": "在不改变色彩的前提下，把自然渲染再推进一步：背景与噪点由 GraXpert 处理，高光更柔和，星云更突出。计算时间更长。",
+    "zh-Hant": "在不改變色彩的前提下，把自然渲染再推進一步：背景與雜訊由 GraXpert 處理，高光更柔和，星雲更突出。計算時間更長。"
+  },
+  "filter": "none",
+  "author": "Astro Sync",
+  "licence": "MIT",
+  "entry": "renders:polished_deep",
+  "requires": ["siril", "starnet2?", "graxpert?"],
+  "outputs": ["tif", "png"],
+  "preview": "preview.jpg",
+  "dependencies": [
+    {
+      "id": "siril",
+      "required": true,
+      "reason": {
+        "fr": "Siril calibre, aligne et additionne vos poses : tous les rendus partent de cet empilement.",
+        "en": "Siril calibrates, aligns and stacks your exposures: every render starts from that stack.",
+        "ja": "Siril が撮影画像を較正・位置合わせ・積算します。すべての仕上がりは、この積算画像から作られます。",
+        "de": "Siril kalibriert, richtet aus und addiert deine Aufnahmen: Jede Darstellung geht von diesem Stapel aus.",
+        "es": "Siril calibra, alinea y apila sus tomas: todos los renders parten de ese apilado.",
+        "it": "Siril calibra, allinea e somma le vostre pose: ogni resa parte da questa somma.",
+        "pt-BR": "O Siril calibra, alinha e empilha as suas capturas: todas as renderizações partem desse empilhamento.",
+        "ru": "Siril калибрует, выравнивает и складывает ваши кадры: все рендеры строятся на основе этого стека.",
+        "zh-Hans": "Siril 会对你的曝光帧进行校准、对齐和叠加；所有渲染都以这份叠加结果为起点。",
+        "zh-Hant": "Siril 會對你的曝光影格進行校正、對齊與疊加；所有渲染都以這份疊加結果為起點。"
+      }
+    },
+    {
+      "id": "starnet2",
+      "required": false,
+      "reason": {
+        "fr": "StarNet2 sépare les étoiles de la nébuleuse afin de les réduire ; sans lui, elles restent plus nombreuses et plus vives sur votre image.",
+        "en": "StarNet2 separates the stars from the nebula so they can be reduced; without it, they stay more numerous and brighter in your image.",
+        "ja": "StarNet2 は星と星雲を分離して、星を小さくします。なくても処理はできますが、画像の星は多く、明るいままになります。",
+        "de": "StarNet2 trennt die Sterne vom Nebel, damit sie verkleinert werden können; ohne StarNet2 bleiben sie in deinem Bild zahlreicher und heller.",
+        "es": "StarNet2 separa las estrellas de la nebulosa para poder reducirlas; sin él, siguen siendo más numerosas y brillantes en su imagen.",
+        "it": "StarNet2 separa le stelle dalla nebulosa per poterle ridurre; senza, restano più numerose e più luminose nella vostra immagine.",
+        "pt-BR": "O StarNet2 separa as estrelas da nebulosa para poder reduzi-las; sem ele, elas ficam mais numerosas e mais brilhantes na sua imagem.",
+        "ru": "StarNet2 отделяет звёзды от туманности, чтобы их можно было уменьшить; без него звёзд на вашем снимке остаётся больше, и они ярче.",
+        "zh-Hans": "StarNet2 会把恒星从星云中分离出来，以便缩小恒星；没有它时，你的图像中的恒星会更多、更亮。",
+        "zh-Hant": "StarNet2 會把恆星從星雲中分離出來，以便縮小恆星；沒有它時，你的影像中的恆星會更多、更亮。"
+      }
+    },
+    {
+      "id": "graxpert",
+      "required": false,
+      "reason": {
+        "fr": "GraXpert retire le fond de ciel et une partie du bruit de votre image avec ses modèles d’IA ; sans lui, Siril traite le fond et le bruit avec ses propres commandes, sans modèle d’IA.",
+        "en": "GraXpert removes the sky background and part of the noise from your image with its AI models; without it, Siril handles the background and the noise with its own commands, with no AI model.",
+        "ja": "GraXpert が AI モデルで画像の背景とノイズの一部を取り除きます。ない場合は、Siril が AI モデルを使わない自前のコマンドで背景とノイズを処理します。",
+        "de": "GraXpert entfernt mit seinen KI-Modellen den Himmelshintergrund und einen Teil des Rauschens aus deinem Bild; ohne GraXpert behandelt Siril Hintergrund und Rauschen mit eigenen Befehlen, ohne KI-Modell.",
+        "es": "GraXpert elimina el fondo del cielo y parte del ruido de su imagen con sus modelos de IA; sin él, Siril trata el fondo y el ruido con sus propios comandos, sin modelo de IA.",
+        "it": "GraXpert rimuove il fondo cielo e parte del rumore dalla vostra immagine con i suoi modelli di IA; senza, Siril tratta fondo e rumore con i propri comandi, senza modello di IA.",
+        "pt-BR": "O GraXpert remove o fundo do céu e parte do ruído da sua imagem com seus modelos de IA; sem ele, o Siril trata o fundo e o ruído com seus próprios comandos, sem modelo de IA.",
+        "ru": "GraXpert убирает фон неба и часть шума с вашего снимка с помощью своих ИИ-моделей; без него Siril обрабатывает фон и шум собственными командами, без ИИ-модели.",
+        "zh-Hans": "GraXpert 用其 AI 模型去除你图像中的天空背景和部分噪点；没有它时，由 Siril 用自带命令处理背景和噪点，不使用 AI 模型。",
+        "zh-Hant": "GraXpert 用其 AI 模型去除你影像中的天空背景和部分雜訊；沒有它時，由 Siril 用自帶指令處理背景和雜訊，不使用 AI 模型。"
+      }
+    },
+    {
+      "id": "python-env",
+      "required": true,
+      "reason": {
+        "fr": "L’environnement Python exécute le script d’empilement et les calculs de rendu sur vos images.",
+        "en": "The Python environment runs the stacking script and the render calculations on your images.",
+        "ja": "Python 環境が、積算スクリプトと、画像の仕上がりを計算する処理を実行します。",
+        "de": "Die Python-Umgebung führt das Stacking-Skript und die Berechnungen der Darstellung auf deinen Bildern aus.",
+        "es": "El entorno de Python ejecuta el script de apilado y los cálculos del render sobre sus imágenes.",
+        "it": "L’ambiente Python esegue lo script di somma e i calcoli della resa sulle vostre immagini.",
+        "pt-BR": "O ambiente Python executa o script de empilhamento e os cálculos da renderização nas suas imagens.",
+        "ru": "Среда Python запускает скрипт стекинга и расчёты рендера для ваших изображений.",
+        "zh-Hans": "Python 环境用于运行叠加脚本，并对你的图像进行渲染计算。",
+        "zh-Hant": "Python 環境用於執行疊加指令碼，並對你的影像進行渲染計算。"
+      }
+    }
+  ],
+  "details": [
+    {
+      "title": {
+        "fr": "Fond de ciel",
+        "en": "Sky background",
+        "ja": "背景補正",
+        "de": "Himmelshintergrund",
+        "es": "Fondo del cielo",
+        "it": "Fondo cielo",
+        "pt-BR": "Fundo do céu",
+        "ru": "Фон неба",
+        "zh-Hans": "天空背景",
+        "zh-Hant": "天空背景"
+      },
+      "text": {
+        "fr": "Le modèle d’IA de GraXpert estime le fond de ciel sur l’image encore linéaire et le soustrait : il suit mieux qu’un plan un dégradé irrégulier. Sans GraXpert, ou si la tâche choisit le moteur de Siril, Siril le remplace par une interpolation lisse (RBF), sans modèle d’IA ; sans Siril, c’est le plan du rendu naturel.",
+        "en": "GraXpert’s AI model estimates the sky background on the still-linear image and subtracts it: it follows an uneven gradient better than a plane. Without GraXpert, or when the task picks Siril’s engine, Siril takes over with a smooth interpolation (RBF) and no AI model; without Siril, the natural render’s plane is used.",
+        "ja": "GraXpert の AI モデルが、まだリニアな画像で背景を推定して差し引きます。平面モデルより、不規則なグラデーションによく追従します。GraXpert がない場合や、タスクで Siril のエンジンを選んだ場合は、Siril が AI モデルを使わない滑らかな補間（RBF）で代わりに処理します。Siril もないときは、ナチュラルな仕上がりの平面モデルを使います。",
+        "de": "Das KI-Modell von GraXpert schätzt den Himmelshintergrund am noch linearen Bild und zieht ihn ab: Es folgt einem unregelmäßigen Verlauf besser als eine Ebene. Ohne GraXpert, oder wenn die Aufgabe den Siril-Motor wählt, übernimmt Siril mit einer glatten Interpolation (RBF) ohne KI-Modell; ohne Siril wird die Ebene der natürlichen Darstellung verwendet.",
+        "es": "El modelo de IA de GraXpert estima el fondo del cielo en la imagen aún lineal y lo resta: sigue mejor que un plano un degradado irregular. Sin GraXpert, o si la tarea elige el motor de Siril, Siril lo sustituye con una interpolación suave (RBF), sin modelo de IA; sin Siril, se usa el plano del render natural.",
+        "it": "Il modello di IA di GraXpert stima il fondo cielo sull’immagine ancora lineare e lo sottrae: segue un gradiente irregolare meglio di un piano. Senza GraXpert, o se l’attività sceglie il motore di Siril, subentra Siril con un’interpolazione morbida (RBF), senza modello di IA; senza Siril si usa il piano della resa naturale.",
+        "pt-BR": "O modelo de IA do GraXpert estima o fundo do céu na imagem ainda linear e o subtrai: ele acompanha um gradiente irregular melhor que um plano. Sem o GraXpert, ou se a tarefa escolher o motor do Siril, o Siril assume com uma interpolação suave (RBF), sem modelo de IA; sem o Siril, usa-se o plano da renderização natural.",
+        "ru": "ИИ-модель GraXpert оценивает фон неба на ещё линейном снимке и вычитает его: неровный градиент она повторяет лучше плоскости. Без GraXpert или если задача выбирает движок Siril, его заменяет Siril: плавная интерполяция (RBF) без ИИ-модели; без Siril используется плоскость естественного рендера.",
+        "zh-Hans": "GraXpert 的 AI 模型在仍为线性的图像上估计天空背景并减去：比平面更能贴合不规则的渐变。没有 GraXpert，或任务选择 Siril 引擎时，由 Siril 用平滑插值（RBF）代劳，不使用 AI 模型；连 Siril 也没有时，改用自然渲染的平面模型。",
+        "zh-Hant": "GraXpert 的 AI 模型在仍為線性的影像上估計天空背景並減去：比平面更能貼合不規則的漸層。沒有 GraXpert，或任務選擇 Siril 引擎時，由 Siril 用平滑插值（RBF）代勞，不使用 AI 模型；連 Siril 也沒有時，改用自然渲染的平面模型。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Débruitage léger",
+        "en": "Light denoising",
+        "ja": "軽いノイズ除去",
+        "de": "Leichte Entrauschung",
+        "es": "Reducción de ruido ligera",
+        "it": "Riduzione del rumore leggera",
+        "pt-BR": "Redução de ruído leve",
+        "ru": "Лёгкое шумоподавление",
+        "zh-Hans": "轻度降噪",
+        "zh-Hant": "輕度降噪"
+      },
+      "text": {
+        "fr": "GraXpert retire une partie du bruit (force 0,3 sur 1) avant tout étirement, là où il se distingue le mieux du signal. Avec le moteur de Siril, c’est le débruitage de Siril (modulation 0,5) ; sans l’un ni l’autre, cette étape est sautée.",
+        "en": "GraXpert removes part of the noise (strength 0.3 out of 1) before any stretch, where it is easiest to tell from the signal. With Siril’s engine, Siril’s own denoising does it (modulation 0.5); with neither, this step is skipped.",
+        "ja": "ストレッチの前に、信号と見分けやすい段階で GraXpert がノイズの一部を取り除きます（強さ 1 のうち 0.3）。Siril のエンジンでは、Siril 自身のノイズ除去を使います（モジュレーション 0.5）。どちらもない場合、この処理は行いません。",
+        "de": "GraXpert entfernt einen Teil des Rauschens (Stärke 0,3 von 1) vor jeder Streckung, wo es sich am besten vom Signal unterscheidet. Mit dem Siril-Motor übernimmt das Entrauschen von Siril (Modulation 0,5); ohne beide entfällt dieser Schritt.",
+        "es": "GraXpert elimina parte del ruido (intensidad 0,3 sobre 1) antes de cualquier estirado, cuando mejor se distingue de la señal. Con el motor de Siril lo hace la reducción de ruido de Siril (modulación 0,5); sin ninguno de los dos, este paso se omite.",
+        "it": "GraXpert rimuove parte del rumore (intensità 0,3 su 1) prima di ogni stiramento, quando si distingue meglio dal segnale. Con il motore di Siril lo fa la riduzione del rumore di Siril (modulazione 0,5); senza nessuno dei due questo passaggio viene saltato.",
+        "pt-BR": "O GraXpert remove parte do ruído (força 0,3 de 1) antes de qualquer esticamento, quando ele se distingue melhor do sinal. Com o motor do Siril, a redução de ruído do Siril faz isso (modulação 0,5); sem nenhum dos dois, esta etapa é pulada.",
+        "ru": "GraXpert убирает часть шума (сила 0,3 из 1) до любого растяжения, когда его легче всего отличить от сигнала. С движком Siril это делает шумоподавление самого Siril (модуляция 0,5); без обоих шаг пропускается.",
+        "zh-Hans": "在任何拉伸之前，由 GraXpert 去除部分噪点（强度 0.3，满分 1），此时噪点最容易与信号区分。使用 Siril 引擎时，由 Siril 自带的降噪完成（调制 0.5）；两者都没有时跳过此步。",
+        "zh-Hant": "在任何拉伸之前，由 GraXpert 去除部分雜訊（強度 0.3，滿分 1），此時雜訊最容易與訊號區分。使用 Siril 引擎時，由 Siril 自帶的降噪完成（調變 0.5）；兩者都沒有時跳過此步。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Ciel neutre et retrait du vert",
+        "en": "Neutral sky and green removal",
+        "ja": "背景の中立化と緑かぶりの除去",
+        "de": "Neutraler Himmel und Grünentfernung",
+        "es": "Cielo neutro y retirada del verde",
+        "it": "Cielo neutro e rimozione del verde",
+        "pt-BR": "Céu neutro e remoção do verde",
+        "ru": "Нейтральное небо и удаление зелёного",
+        "zh-Hans": "中性天空与去绿",
+        "zh-Hant": "中性天空與去綠"
+      },
+      "text": {
+        "fr": "Le fond est rendu gris neutre comme dans le rendu naturel, puis l’excès de vert au-dessus de la moyenne du rouge et du bleu est retiré de moitié (SCNR) : une dominante verte disparaît, les autres couleurs ne bougent pas. Avec un filtre bibande, le retrait du vert est sauté : le vert est de l’OIII, du signal.",
+        "en": "The background is made neutral grey as in the natural render, then half of the green above the mean of red and blue is taken back (SCNR): a green cast goes, the other colours do not move. With a dual-band filter the green removal is skipped: the green is OIII, signal.",
+        "ja": "ナチュラルな仕上がりと同じく背景をニュートラルなグレーにし、赤と青の平均を上回る緑の半分を取り除きます（SCNR）。緑かぶりは消え、ほかの色は変わりません。デュアルバンドフィルターの場合、緑の除去は行いません。緑は OIII、つまり信号だからです。",
+        "de": "Der Hintergrund wird wie in der natürlichen Darstellung neutralgrau, dann wird die Hälfte des Grüns über dem Mittel von Rot und Blau zurückgenommen (SCNR): Ein Grünstich verschwindet, die anderen Farben bleiben. Bei einem Dualband-Filter entfällt die Grünentfernung: Das Grün ist OIII, also Signal.",
+        "es": "El fondo queda gris neutro como en el render natural y luego se retira la mitad del verde que supera la media del rojo y el azul (SCNR): desaparece una dominante verde y los demás colores no cambian. Con un filtro de doble banda se omite la retirada del verde: el verde es OIII, es decir, señal.",
+        "it": "Il fondo diventa grigio neutro come nella resa naturale, poi metà del verde oltre la media di rosso e blu viene tolta (SCNR): una dominante verde sparisce, gli altri colori non cambiano. Con un filtro dual-band la rimozione del verde viene saltata: il verde è OIII, cioè segnale.",
+        "pt-BR": "O fundo fica cinza neutro como na renderização natural e, depois, metade do verde acima da média do vermelho e do azul é retirada (SCNR): uma dominante verde some e as outras cores não mudam. Com um filtro de banda dupla, a remoção do verde é pulada: o verde é OIII, ou seja, sinal.",
+        "ru": "Фон делается нейтрально-серым, как в естественном рендере, затем убирается половина зелёного сверх среднего красного и синего (SCNR): зелёный оттенок уходит, остальные цвета не меняются. С двухполосным фильтром удаление зелёного пропускается: зелёный — это OIII, то есть сигнал.",
+        "zh-Hans": "与自然渲染一样把背景调为中性灰，再去掉高于红、蓝平均值的绿色的一半（SCNR）：偏绿消失，其他颜色不变。使用双带通滤镜时跳过去绿：绿色就是 OIII，属于信号。",
+        "zh-Hant": "與自然渲染一樣把背景調為中性灰，再去掉高於紅、藍平均值的綠色的一半（SCNR）：偏綠消失，其他顏色不變。使用雙頻帶濾鏡時跳過去綠：綠色就是 OIII，屬於訊號。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Déconvolution",
+        "en": "Deconvolution",
+        "ja": "デコンボリューション",
+        "de": "Dekonvolution",
+        "es": "Deconvolución",
+        "it": "Deconvoluzione",
+        "pt-BR": "Deconvolução",
+        "ru": "Деконволюция",
+        "zh-Hans": "反卷积",
+        "zh-Hant": "反卷積"
+      },
+      "text": {
+        "fr": "La forme réelle des étoiles (PSF) est mesurée sur l’image, puis une déconvolution de Richardson-Lucy, limitée aux zones où le signal est fort, affine les détails d’environ 15 % quand les étoiles sont assez larges (2,4 pixels ou plus) ; le fond garde ses pixels d’origine.",
+        "en": "The real shape of the stars (PSF) is measured on the image, then a Richardson-Lucy deconvolution, limited to where the signal is strong, sharpens the details by about 15% when the stars are wide enough (2.4 pixels or more); the background keeps its original pixels.",
+        "ja": "画像上で星の実際の形（PSF）を測り、信号の強い部分に限って Richardson-Lucy デコンボリューションをかけ、星の幅が十分なとき（2.4 ピクセル以上）細部を約 15 % 引き締めます。背景の画素は元のままです。",
+        "de": "Die tatsächliche Form der Sterne (PSF) wird am Bild gemessen, dann schärft eine Richardson-Lucy-Dekonvolution, beschränkt auf Bereiche mit starkem Signal, die Details um etwa 15 %, wenn die Sterne breit genug sind (2,4 Pixel oder mehr); der Hintergrund behält seine ursprünglichen Pixel.",
+        "es": "Se mide en la imagen la forma real de las estrellas (PSF) y una deconvolución de Richardson-Lucy, limitada a las zonas de señal fuerte, afina los detalles en torno a un 15 % cuando las estrellas son lo bastante anchas (2,4 píxeles o más); el fondo conserva sus píxeles originales.",
+        "it": "La forma reale delle stelle (PSF) viene misurata sull’immagine, poi una deconvoluzione di Richardson-Lucy, limitata alle zone di segnale forte, affina i dettagli di circa il 15 % quando le stelle sono abbastanza larghe (2,4 pixel o più); il fondo conserva i suoi pixel originali.",
+        "pt-BR": "A forma real das estrelas (PSF) é medida na imagem e uma deconvolução de Richardson-Lucy, limitada às áreas de sinal forte, afina os detalhes em cerca de 15 % quando as estrelas são largas o bastante (2,4 pixels ou mais); o fundo mantém seus pixels originais.",
+        "ru": "Реальная форма звёзд (PSF) измеряется на снимке, затем деконволюция Ричардсона — Люси, ограниченная областями сильного сигнала, повышает резкость деталей примерно на 15 %, если звёзды достаточно широкие (2,4 пикселя и более); фон сохраняет исходные пиксели.",
+        "zh-Hans": "先在图像上测量恒星的真实形状（PSF），再只在信号强的区域做 Richardson-Lucy 反卷积，在恒星足够宽（2.4 像素以上）时使细节锐利约 15%；背景保留原始像素。",
+        "zh-Hant": "先在影像上測量恆星的真實形狀（PSF），再只在訊號強的區域做 Richardson-Lucy 反卷積，在恆星足夠寬（2.4 像素以上）時使細節銳利約 15%；背景保留原始像素。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Étirement et hautes lumières",
+        "en": "Stretch and highlights",
+        "ja": "ストレッチと明部",
+        "de": "Streckung und Lichter",
+        "es": "Estirado y luces altas",
+        "it": "Stiramento e luci alte",
+        "pt-BR": "Esticamento e altas luzes",
+        "ru": "Растяжение и света",
+        "zh-Hans": "拉伸与高光",
+        "zh-Hant": "拉伸與高光"
+      },
+      "text": {
+        "fr": "L’étirement du rendu naturel, puis une compression douce au-dessus des tons clairs : les cœurs brillants gardent leur modelé au lieu de brûler.",
+        "en": "The natural render’s stretch, then a soft compression above the light tones: bright cores keep their shape instead of burning out.",
+        "ja": "ナチュラルな仕上がりと同じストレッチのあと、明るいトーンをやわらかく圧縮します。明るい中心部が白飛びせず、立体感が残ります。",
+        "de": "Die Streckung der natürlichen Darstellung, dann eine weiche Kompression oberhalb der hellen Töne: Helle Kerne behalten ihre Zeichnung, statt auszubrennen.",
+        "es": "El estirado del render natural y luego una compresión suave por encima de los tonos claros: los núcleos brillantes conservan su relieve en lugar de quemarse.",
+        "it": "Lo stiramento della resa naturale, poi una compressione morbida sopra i toni chiari: i nuclei luminosi conservano il loro modellato invece di bruciarsi.",
+        "pt-BR": "O esticamento da renderização natural e, depois, uma compressão suave acima dos tons claros: os núcleos brilhantes mantêm o relevo em vez de estourar.",
+        "ru": "Растяжение естественного рендера, затем мягкое сжатие выше светлых тонов: яркие ядра сохраняют объём и не выгорают.",
+        "zh-Hans": "先做自然渲染的拉伸，再对亮部以上做柔和压缩：明亮的核心保留层次，不会过曝。",
+        "zh-Hant": "先做自然渲染的拉伸，再對亮部以上做柔和壓縮：明亮的核心保留層次，不會過曝。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Séparation des étoiles",
+        "en": "Star separation",
+        "ja": "星の分離",
+        "de": "Sterntrennung",
+        "es": "Separación de estrellas",
+        "it": "Separazione delle stelle",
+        "pt-BR": "Separação das estrelas",
+        "ru": "Отделение звёзд",
+        "zh-Hans": "星点分离",
+        "zh-Hant": "星點分離"
+      },
+      "text": {
+        "fr": "StarNet2, s’il est installé, sépare les étoiles de la nébuleuse pour traiter chacune à part ; sans lui, les étoiles restent dans l’image et ne sont pas réduites.",
+        "en": "StarNet2, when installed, separates the stars from the nebula so each can be treated on its own; without it, the stars stay in the image and are not reduced.",
+        "ja": "StarNet2 がインストールされていれば、星と星雲を分けてそれぞれ処理します。ない場合、星は画像に残り、小さくはなりません。",
+        "de": "StarNet2 trennt, wenn installiert, die Sterne vom Nebel, damit beide getrennt bearbeitet werden; ohne StarNet2 bleiben die Sterne im Bild und werden nicht verkleinert.",
+        "es": "StarNet2, si está instalado, separa las estrellas de la nebulosa para tratar cada parte por separado; sin él, las estrellas quedan en la imagen y no se reducen.",
+        "it": "StarNet2, se installato, separa le stelle dalla nebulosa per trattarle a parte; senza, le stelle restano nell’immagine e non vengono ridotte.",
+        "pt-BR": "O StarNet2, se estiver instalado, separa as estrelas da nebulosa para tratar cada parte à parte; sem ele, as estrelas ficam na imagem e não são reduzidas.",
+        "ru": "StarNet2, если он установлен, отделяет звёзды от туманности, чтобы обработать их отдельно; без него звёзды остаются на снимке и не уменьшаются.",
+        "zh-Hans": "若已安装 StarNet2，会把恒星与星云分开，分别处理；没有它时，恒星留在图像中，不会被缩小。",
+        "zh-Hant": "若已安裝 StarNet2，會把恆星與星雲分開，分別處理；沒有它時，恆星留在影像中，不會被縮小。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Contraste local",
+        "en": "Local contrast",
+        "ja": "ローカルコントラスト",
+        "de": "Lokaler Kontrast",
+        "es": "Contraste local",
+        "it": "Contrasto locale",
+        "pt-BR": "Contraste local",
+        "ru": "Локальный контраст",
+        "zh-Hans": "局部对比",
+        "zh-Hant": "局部對比"
+      },
+      "text": {
+        "fr": "Un contraste local modéré, appliqué à la nébuleuse seule, détache ses structures ; il épargne le fond, dont le bruit n’est pas relevé, et les zones les plus claires.",
+        "en": "A moderate local contrast, applied to the nebula alone, brings out its structures; it spares the background, whose noise is not lifted, and the brightest areas.",
+        "ja": "星雲だけに中程度のローカルコントラストをかけて構造を引き立てます。背景（ノイズを持ち上げないため）と最も明るい部分は避けます。",
+        "de": "Ein maßvoller lokaler Kontrast, nur auf den Nebel angewandt, hebt seine Strukturen hervor; er schont den Hintergrund, dessen Rauschen nicht angehoben wird, und die hellsten Bereiche.",
+        "es": "Un contraste local moderado, aplicado solo a la nebulosa, destaca sus estructuras; respeta el fondo, cuyo ruido no se realza, y las zonas más claras.",
+        "it": "Un contrasto locale moderato, applicato alla sola nebulosa, ne fa risaltare le strutture; risparmia il fondo, il cui rumore non viene sollevato, e le zone più chiare.",
+        "pt-BR": "Um contraste local moderado, aplicado só à nebulosa, destaca suas estruturas; ele poupa o fundo, cujo ruído não é realçado, e as áreas mais claras.",
+        "ru": "Умеренный локальный контраст, применённый только к туманности, выделяет её структуры; он не затрагивает фон, чтобы не поднимать шум, и самые светлые области.",
+        "zh-Hans": "只对星云施加适度的局部对比，突出其结构；避开背景（不抬高噪点）和最亮的区域。",
+        "zh-Hant": "只對星雲施加適度的局部對比，突出其結構；避開背景（不抬高雜訊）和最亮的區域。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Étoiles remises",
+        "en": "Stars put back",
+        "ja": "星を戻す",
+        "de": "Sterne zurück",
+        "es": "Estrellas devueltas",
+        "it": "Stelle rimesse",
+        "pt-BR": "Estrelas devolvidas",
+        "ru": "Звёзды возвращаются",
+        "zh-Hans": "放回恒星",
+        "zh-Hant": "放回恆星"
+      },
+      "text": {
+        "fr": "Les étoiles sont remises par-dessus, atténuées (× 0,48) et légèrement désaturées, pour que la nébuleuse reste le sujet.",
+        "en": "The stars are put back on top, dimmed (× 0.48) and slightly desaturated, so the nebula stays the subject.",
+        "ja": "星を上に重ねて戻します。明るさを抑え（× 0.48）、彩度を少し下げて、星雲を主役のままにします。",
+        "de": "Die Sterne werden darübergelegt, abgeschwächt (× 0,48) und leicht entsättigt, damit der Nebel das Motiv bleibt.",
+        "es": "Las estrellas se superponen de nuevo, atenuadas (× 0,48) y algo menos saturadas, para que la nebulosa siga siendo el tema.",
+        "it": "Le stelle vengono rimesse sopra, attenuate (× 0,48) e leggermente desaturate, perché la nebulosa resti il soggetto.",
+        "pt-BR": "As estrelas são recolocadas por cima, atenuadas (× 0,48) e levemente dessaturadas, para que a nebulosa continue sendo o tema.",
+        "ru": "Звёзды накладываются обратно, приглушённые (× 0,48) и слегка обесцвеченные, чтобы главной оставалась туманность.",
+        "zh-Hans": "把恒星叠加回去，亮度降低（× 0.48）并略降饱和度，让星云仍是主体。",
+        "zh-Hant": "把恆星疊加回去，亮度降低（× 0.48）並略降飽和度，讓星雲仍是主體。"
+      }
+    },
+    {
+      "title": {
+        "fr": "Niveau du ciel conservé",
+        "en": "Sky level kept",
+        "ja": "空の明るさを維持",
+        "de": "Himmelshelligkeit bleibt",
+        "es": "Nivel del cielo conservado",
+        "it": "Livello del cielo conservato",
+        "pt-BR": "Nível do céu mantido",
+        "ru": "Уровень неба сохранён",
+        "zh-Hans": "保持天空亮度",
+        "zh-Hant": "保持天空亮度"
+      },
+      "text": {
+        "fr": "Le retrait du fond et le débruitage emportent un peu du niveau du ciel : il est remis à celui du rendu naturel avant l’étirement, puis ajusté de nouveau après le contraste local. Le rendu soigné n’est pas plus sombre que le naturel.",
+        "en": "Removing the background and the denoising take a little of the sky level with them: it is brought back to the natural render’s before the stretch, then adjusted again after the local contrast. The polished render is not darker than the natural one.",
+        "ja": "背景除去とノイズ除去で空の明るさが少し下がるため、ストレッチの前にナチュラルな仕上がりの明るさへ戻し、ローカルコントラストの後にもう一度合わせます。丁寧な仕上がりが、ナチュラルより暗くなることはありません。",
+        "de": "Hintergrundentfernung und Entrauschung nehmen etwas Himmelshelligkeit mit: Sie wird vor der Streckung auf die der natürlichen Darstellung zurückgesetzt und nach dem lokalen Kontrast nachgestellt. Die sorgfältige Darstellung ist nicht dunkler als die natürliche.",
+        "es": "La retirada del fondo y la reducción de ruido se llevan un poco del nivel del cielo: se devuelve al del render natural antes del estirado y se ajusta de nuevo tras el contraste local. El render cuidado no es más oscuro que el natural.",
+        "it": "La rimozione del fondo e la riduzione del rumore si portano via un po’ del livello del cielo: viene riportato a quello della resa naturale prima dello stiramento e riaggiustato dopo il contrasto locale. La resa curata non è più scura di quella naturale.",
+        "pt-BR": "A remoção do fundo e a redução de ruído levam um pouco do nível do céu: ele volta ao da renderização natural antes do esticamento e é reajustado depois do contraste local. A renderização caprichada não fica mais escura que a natural.",
+        "ru": "Удаление фона и шумоподавление уносят немного уровня неба: перед растяжением он возвращается к уровню естественного рендера, а после локального контраста подстраивается ещё раз. Тщательный рендер не темнее естественного.",
+        "zh-Hans": "去除背景和降噪会带走一点天空亮度：拉伸前把它调回自然渲染的水平，局部对比度之后再微调一次。精修渲染不会比自然渲染更暗。",
+        "zh-Hant": "去除背景與降噪會帶走一點天空亮度：拉伸前把它調回自然渲染的水準，局部對比度之後再微調一次。精修渲染不會比自然渲染更暗。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+[package]
+name = "astro-sync-core"
+description = "Astro Sync's behavior library: local-folder association, read-only scanning, dry-run reporting, the open session-package producer, and resumable uploads. Every mutating action in astro-sync-cli and the Tauri app calls into this crate; neither reimplements behavior."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "astro_sync_core"
+path = "src/lib.rs"
+
+[dependencies]
+# `apple-native`/`windows-native`/`sync-secret-service` cover exactly the
+# three OS-native stores the credential vault targets (macOS Keychain, Windows
+# Credential Manager, Linux Secret Service). `keyring`'s own `mock` module
+# is always compiled in (it needs none of these features), which is what
+# `gui_bridge`'s tests use so `cargo test` never touches a real platform
+# store -- see that module's doc comment.
+# The installation identifier of the hosted sign-in (`space::state`): random
+# bytes from the operating system, and nothing else. Already in the lock file
+# (a dependency of `ring`), so it adds no download.
+getrandom = "0.2"
+# Reads the Deflate strips of a TIFF and the data of a PNG to write the image
+# the sky solver is given (`sky_solution::input`). Already in the lock file
+# (a dependency of `zip`), pure Rust (miniz_oxide).
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+keyring = { version = "3.6", features = [
+  "apple-native",
+  "windows-native",
+  "sync-secret-service",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+  "blocking",
+  "json",
+  "rustls-tls",
+] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+walkdir = "2"
+# Reads the ZIP of ASTAP's program and star database (`tools::install_download`):
+# deflate only (pure Rust: flate2's miniz_oxide), no encryption, no other codec.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[lints]
+workspace = true

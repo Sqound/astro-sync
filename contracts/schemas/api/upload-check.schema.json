@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/upload-check.schema.json",
+  "title": "Astro Portal API v1 — the check before an upload",
+  "description": "`POST /v1/uploads/check` (a device token or the web session with its CSRF token) takes an upload's declared metadata (`uploadMetadata` of capture.schema.json: `sha256`, `byteSize`, `originalName`, the optional `captureId`, `targetId`/`targetIds`, `sessionId`, `planId`, `source`) and answers before a single byte is sent: `present` (the space already holds these bytes, as the image `imageId` of the capture `captureId` (`main`: its main image); an upload would store nothing), `accepted` (as a new capture, `adds: capture`, or as an image of `captureId`, `adds: variant`, or as a progression image of `captureId`, `adds: progression`), or `refused` with the code and the numbers the upload itself would answer. Nothing is written. A malformed body, an unknown or foreign capture, plan, session or target are errors, as for the upload (`400`, `404`). See api/uploads.md, « Checking before sending ».",
+  "$defs": {
+    "storage": {
+      "type": "object",
+      "description": "The storage of capture.schema.json, plus `variantLimit` (`capture.variant_limit`) and, for a variant added to `captureId`, `variantCount` (its variants besides the main image).",
+      "required": [
+        "usedBytes",
+        "quotaBytes",
+        "maxFileBytes",
+        "captureCount",
+        "captureCountLimit",
+        "variantLimit"
+      ],
+      "properties": {
+        "usedBytes": { "type": "integer", "minimum": 0 },
+        "quotaBytes": { "type": "integer", "minimum": 0 },
+        "maxFileBytes": { "type": "integer", "minimum": 0 },
+        "captureCount": { "type": "integer", "minimum": 0 },
+        "captureCountLimit": { "type": "integer", "minimum": 0 },
+        "variantLimit": { "type": "integer", "minimum": 0 },
+        "variantCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "present": {
+      "type": "object",
+      "required": ["result", "captureId", "imageId", "main", "storage"],
+      "properties": {
+        "result": { "const": "present" },
+        "captureId": { "$ref": "capture.schema.json#/$defs/uuid" },
+        "imageId": { "type": "string", "minLength": 1 },
+        "main": { "type": "boolean" },
+        "storage": { "$ref": "#/$defs/storage" }
+      },
+      "additionalProperties": false
+    },
+    "accepted": {
+      "type": "object",
+      "required": ["result", "adds", "storage"],
+      "properties": {
+        "result": { "const": "accepted" },
+        "adds": { "enum": ["capture", "variant", "progression"] },
+        "storage": { "$ref": "#/$defs/storage" }
+      },
+      "additionalProperties": false
+    },
+    "refused": {
+      "type": "object",
+      "required": ["result", "code", "message", "storage"],
+      "properties": {
+        "result": { "const": "refused" },
+        "code": {
+          "enum": [
+            "entitlement_read_only",
+            "capture_limit_reached",
+            "capture_variant_limit_reached",
+            "storage_quota_reached",
+            "file_too_large"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "storage": { "$ref": "#/$defs/storage" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/present" },
+    { "$ref": "#/$defs/accepted" },
+    { "$ref": "#/$defs/refused" }
+  ]
+}

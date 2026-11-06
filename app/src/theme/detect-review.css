@@ -1,0 +1,510 @@
+/* detect-review: « Détecter les sessions », the review page before the
+   creation. Only `var(--as-*)` tokens. */
+
+.as-review {
+  gap: var(--as-space-sm);
+  padding-bottom: var(--as-space-xl);
+}
+
+.as-review > .as-info-line {
+  margin-top: var(--as-space-xs);
+}
+
+.as-review__muted {
+  color: var(--as-color-muted-text);
+}
+
+.as-review__sub {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.as-review__block {
+  display: block;
+}
+
+.as-review__end {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--as-space-sm);
+}
+
+/* A card of the review: places, equipment, nights, multi-night plans. */
+.as-review__card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin-top: var(--as-space-sm);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md) var(--as-space-lg);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.as-review__title {
+  margin: 0 0 var(--as-space-xs);
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+
+/* A row of « Lieux » and « Matériel ». */
+.as-review__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-md);
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-md) 0;
+}
+
+.as-review__row:first-of-type {
+  margin-top: var(--as-space-xs);
+}
+
+.as-review__row-text {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.as-review__pill {
+  flex: none;
+  gap: var(--as-space-xs);
+}
+
+/* Under a row of « Matériel »: why its telescope is only said close. */
+.as-review__near {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
+.as-review__tick {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.as-review__radios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-review__radio,
+.as-review__check,
+.as-review__add {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-review__radio input,
+.as-review__check input,
+.as-review__add input,
+.as-review__c0 input {
+  flex: none;
+  margin: 0.15rem 0 0;
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-review__answer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-review__name {
+  width: 14rem;
+}
+
+/* A place to create: the pill and « Choisir un autre lieu » on one line, then
+   the labelled field, then (name emptied) what is missing. */
+.as-review__answer--create {
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.as-review__answer-line,
+.as-review__name-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--as-space-sm);
+}
+
+.as-review__name-why {
+  margin: 0;
+  text-align: right;
+}
+
+/* A menu that looks like a tertiary button: the native list sits invisibly
+   on top of it, so the system draws the choices. */
+.as-review__select {
+  position: relative;
+  cursor: pointer;
+}
+
+.as-review__select:focus-within {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 2px;
+}
+
+.as-review__select select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.as-review__select select:disabled {
+  cursor: default;
+}
+
+.as-review__chevron {
+  transform: rotate(90deg);
+}
+
+.as-review__select--small {
+  min-height: 0;
+}
+
+/* « Nuits »: the three columns, then the case under them. */
+.as-review__free {
+  margin: var(--as-space-xs) 0 var(--as-space-sm);
+}
+
+.as-review__free p {
+  margin: 0 0 var(--as-space-xs);
+}
+
+.as-review__nights {
+  display: flex;
+  flex-direction: column;
+}
+
+.as-review__nights-head,
+.as-review__night,
+.as-review__group {
+  display: grid;
+  grid-template-columns: 1.875rem 8rem 15.625rem minmax(0, 1fr);
+  column-gap: 0;
+}
+
+.as-review__nights-head {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  padding: var(--as-space-sm) 0;
+}
+
+.as-review__night {
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-md) 0;
+}
+
+.as-review__night.is-off .as-review__c1,
+.as-review__night.is-off .as-review__c2 {
+  color: var(--as-color-muted-text);
+}
+
+.as-review__c2 {
+  box-sizing: border-box;
+  padding-right: var(--as-space-md);
+}
+
+.as-review__attached {
+  margin-top: 0.125rem;
+}
+
+.as-review__attached strong {
+  color: var(--as-color-primary-text);
+  font-weight: 600;
+}
+
+.as-review__c2 .as-review__attached + .as-review__attached {
+  margin-top: 0;
+}
+
+.as-review__case {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-review__case > .as-review__pill {
+  margin-top: 0.1rem;
+}
+
+.as-review__below {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  padding-left: 1.875rem;
+}
+
+.as-review__below:empty {
+  display: none;
+}
+
+.as-review__below > :first-child {
+  margin-top: var(--as-space-sm);
+}
+
+/* A question or a warning under a night: the clock, an overlap. */
+.as-review__ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  border: 1px solid color-mix(in srgb, var(--as-color-warning) 45%, transparent);
+  border-radius: var(--as-radius-md);
+  background-color: color-mix(in srgb, var(--as-color-warning) 7%, transparent);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+/* The band still to say: the card keeps the attention outline until answered;
+   « is-called » (the link of the foot) makes it a solid one. */
+.as-review__ask.is-unanswered {
+  outline: 1px solid var(--as-color-warning);
+  outline-offset: 1px;
+}
+
+.as-review__ask.is-unanswered.is-called {
+  outline: 2px solid var(--as-color-gold-accent);
+  outline-offset: 2px;
+}
+
+.as-review__ask-text {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-review__ask-note {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.as-review__ask-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--as-color-warning);
+}
+
+.as-review__clock-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-review__answer-button.is-chosen {
+  border-color: var(--as-color-primary-edge);
+  background-color: var(--as-color-active-surface);
+  box-shadow: inset 0 0 0 1px var(--as-color-primary-edge);
+  color: var(--as-color-active-gold-text);
+  font-weight: 700;
+}
+
+.as-review__answer-button.is-chosen .as-review__tick {
+  margin-right: var(--as-space-xs);
+}
+
+/* Once one band is chosen the other is the quieter one. */
+.as-review__ask.is-answered .as-review__answer-button:not(.is-chosen) {
+  opacity: 0.75;
+}
+
+/* Answered: a statement, no longer a warning -- the edge is a neutral one and
+   the mark a green tick. */
+.as-review__ask.is-answered {
+  border-color: var(--as-color-border);
+  background-color: transparent;
+}
+
+.as-review__ask-icon.is-answered {
+  color: var(--as-color-success);
+}
+
+/* The calibration and the logs of a night that borrows another day's. */
+.as-review__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-size: 0.75rem;
+}
+
+.as-review__detail-line {
+  color: var(--as-color-primary-text);
+}
+
+.as-review__aside > span:first-child {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.as-review__aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-md);
+}
+
+.as-review__files {
+  margin: var(--as-space-sm) 0 0;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  list-style: none;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.7188rem;
+  color: var(--as-color-primary-text);
+  overflow-wrap: anywhere;
+}
+
+/* « Plans multi-nuits ». */
+.as-review__group {
+  align-items: center;
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-md) 0;
+}
+
+.as-review__group > .as-review__row-text {
+  grid-column: 2 / 4;
+  padding-right: var(--as-space-md);
+}
+
+.as-review__group.is-off .as-review__row-text strong {
+  color: var(--as-color-muted-text);
+}
+
+.as-review__group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-review__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  border-radius: var(--as-radius-sm);
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-gold-accent) 16%,
+    transparent
+  );
+  color: var(--as-color-gold-accent);
+  padding: 0.125rem 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.as-review__tag .as-icon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.as-review__lock {
+  width: 1rem;
+  height: 1rem;
+  color: var(--as-color-muted-text);
+}
+
+.as-review__card--locked .as-review__group {
+  opacity: 0.72;
+}
+
+/* The message of the foot: what will be created, what is unanswered, why
+   the primary waits (above « Précédent » and the primary). */
+.as-review__foot-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-review__summary {
+  display: block;
+  line-height: 1.5;
+}
+
+.as-review__why {
+  flex: 1;
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 50rem) {
+  .as-review__nights-head,
+  .as-review__night,
+  .as-review__group {
+    grid-template-columns: 1.875rem minmax(0, 1fr);
+  }
+
+  .as-review__nights-head span:nth-child(n + 3),
+  .as-review__c2,
+  .as-review__c3,
+  .as-review__group > .as-review__group-text {
+    grid-column: 2;
+  }
+
+  .as-review__group > .as-review__row-text {
+    grid-column: 2;
+  }
+}
+
+/* What the tool does not read or does not know: a
+   grey line, nothing is damaged. The warning of the same family is the
+   amber `as-review__ask` block. */
+.as-review__info {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.as-review__info-icon {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 0.0625rem;
+}
+
+/* The reason a solver gave nothing, under the line of the group. */
+.as-review__why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+/* The folder where nothing is readable. */
+.as-review__nothing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  margin-bottom: var(--as-space-md);
+}

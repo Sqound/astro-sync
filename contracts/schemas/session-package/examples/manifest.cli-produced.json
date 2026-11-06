@@ -1,0 +1,54 @@
+{
+  "packageVersion": 1,
+  "generatedAt": "2026-09-25T16:19:49Z",
+  "producer": {
+    "name": "astro-sync-cli",
+    "version": "0.1.0"
+  },
+  "session": {
+    "label": "2026-09-20 - demo target",
+    "startedAt": "2026-09-20T18:30:00Z",
+    "finishedAt": "2026-09-21T02:10:00Z"
+  },
+  "assets": [
+    {
+      "path": "images/frame-0001.fits",
+      "kind": "image",
+      "bytes": 20,
+      "capturedAt": null,
+      "addedAt": "2026-09-25T16:19:49Z",
+      "mimeType": "image/fits"
+    },
+    {
+      "path": "metrics/quality.csv",
+      "kind": "metric-log",
+      "bytes": 25,
+      "capturedAt": null,
+      "addedAt": "2026-09-25T16:19:49Z",
+      "mimeType": "text/csv"
+    },
+    {
+      "path": "other/readme.pdf",
+      "kind": "other",
+      "bytes": 14,
+      "capturedAt": null,
+      "addedAt": "2026-09-25T16:19:49Z"
+    },
+    {
+      "path": "metrics/session.log",
+      "kind": "metric-log",
+      "bytes": 46,
+      "capturedAt": null,
+      "addedAt": "2026-09-25T16:19:49Z",
+      "mimeType": "text/plain"
+    },
+    {
+      "path": "images/sub-target/frame-0002.fits",
+      "kind": "image",
+      "bytes": 20,
+      "capturedAt": null,
+      "addedAt": "2026-09-25T16:19:49Z",
+      "mimeType": "image/fits"
+    }
+  ]
+}

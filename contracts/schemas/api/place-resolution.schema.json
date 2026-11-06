@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place-resolution.schema.json",
+  "title": "Astro Portal API v1 place resolution",
+  "description": "GET /v1/places/resolve query and response (packages/portal/src/planner/location.server.js). Public read: a thin wrapper over the same time zone, elevation and optional reverse-geocode lookup the web planner's location route performs for the 'resolve' operation — never the free-text 'search' operation. A present Authorization header must still be a valid device bearer. An elevation or reverse-geocode provider outage degrades the result rather than failing the request.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "string" },
+        "longitude": { "type": "string" },
+        "elevation": { "type": "string" },
+        "locale": { "type": "string" },
+        "reverse": { "enum": ["0", "1"] }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "latitude",
+        "longitude",
+        "timeZone",
+        "timeZones",
+        "elevation",
+        "elevationSource"
+      ],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "timeZone": { "type": "string", "minLength": 1 },
+        "timeZones": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "elevation": { "type": "string" },
+        "elevationSource": {
+          "enum": ["provided", "open-meteo", "unavailable"]
+        },
+        "name": { "type": "string" },
+        "locality": { "type": "string" },
+        "shortName": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/query" }, { "$ref": "#/$defs/result" }]
+}

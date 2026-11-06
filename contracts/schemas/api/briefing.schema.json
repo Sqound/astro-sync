@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/briefing.schema.json",
+  "title": "Astro Portal API v1 briefing",
+  "type": "object",
+  "required": ["generatedAt", "currentPlan", "nextPlan"],
+  "properties": {
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "currentPlan": { "$ref": "#/$defs/planOrNull" },
+    "nextPlan": { "$ref": "#/$defs/planOrNull" }
+  },
+  "$defs": {
+    "planOrNull": {
+      "anyOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["id", "name", "status"],
+          "properties": {
+            "id": { "type": "string", "format": "uuid" },
+            "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "status": {
+              "type": "string",
+              "enum": ["active", "executed", "partial", "abandoned", "archived"]
+            },
+            "nightEndAt": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ]
+            },
+            "countdownAt": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ]
+            },
+            "nextTarget": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 300 },
+                { "type": "null" }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

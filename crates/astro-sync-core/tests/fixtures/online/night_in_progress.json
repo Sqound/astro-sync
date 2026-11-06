@@ -1,0 +1,99 @@
+{
+  "sessionId": "7f3a2c91-0000-4000-8000-00000000000a",
+  "targets": [
+    {
+      "targetId": "ngc7000",
+      "name": "NGC 7000",
+      "planned": true,
+      "captures": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "targetIds": ["ngc7000"],
+          "source": "astro-sync",
+          "stage": "draft",
+          "visibility": "private",
+          "uploaded": true,
+          "createdAt": "2026-10-08T09:10:00.000Z",
+          "mainImage": {
+            "id": "21111111-1111-4111-8111-111111111111",
+            "main": true,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "byteSize": 48000000,
+            "originalName": "ngc7000-final.tif",
+            "source": "astro-sync",
+            "createdAt": "2026-10-08T09:10:00.000Z",
+            "skySolution": "present"
+          },
+          "imageCount": 1,
+          "images": [
+            {
+              "id": "21111111-1111-4111-8111-111111111111",
+              "main": true,
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "byteSize": 48000000,
+              "originalName": "ngc7000-final.tif",
+              "source": "astro-sync",
+              "createdAt": "2026-10-08T09:10:00.000Z",
+              "skySolution": "present"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "targetId": "m31",
+      "name": "M31",
+      "planned": true,
+      "captures": [
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "targetIds": ["m31"],
+          "source": "phone",
+          "stage": "finalized",
+          "visibility": "public",
+          "uploaded": true,
+          "createdAt": "2026-10-08T07:00:00.000Z",
+          "mainImage": {
+            "id": "43333333-3333-4333-8333-333333333333",
+            "main": true,
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "byteSize": 9000000,
+            "originalName": "IMG_0412.jpg",
+            "source": "phone",
+            "createdAt": "2026-10-08T07:00:00.000Z",
+            "skySolution": "missing"
+          },
+          "imageCount": 1,
+          "images": [
+            {
+              "id": "43333333-3333-4333-8333-333333333333",
+              "main": true,
+              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "byteSize": 9000000,
+              "originalName": "IMG_0412.jpg",
+              "source": "phone",
+              "createdAt": "2026-10-08T07:00:00.000Z",
+              "skySolution": "missing"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "targetId": "ic1396",
+      "name": "IC 1396",
+      "planned": true,
+      "captures": []
+    }
+  ],
+  "analysis": {
+    "present": true,
+    "sentAt": "2026-10-05T08:00:00.000Z",
+    "originDeviceId": "55555555-5555-4555-8555-555555555555",
+    "deviceName": "Mac de Camille",
+    "reportVersion": 2,
+    "producer": "astro-sync",
+    "stepCount": 3,
+    "editedStepCount": 1
+  }
+}

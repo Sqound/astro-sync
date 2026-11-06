@@ -1,0 +1,12 @@
+Step 1. Tell the person you are going to look for this night's light frames (raw FITS), darks, flats and dark-flats, offsets (biases), logs and final image. Ask: "Are all your files from this night together in one folder where I can search, or are they in separate places?"
+  - If the answer is "In one folder": step 2.
+  - If the answer is "In separate places": step 8.
+> In one folder
+Step 2. Ask: "Please give me the full path of the folder that holds this night's files." Then step 3.
+Step 3. Ask: "Did you take raw frames (FITS) this night, or do you only have an image already processed?"
+  - If the answer is "Raw frames (FITS)": step 4.
+  - If the answer is "Only a processed image": step 6.
+> Raw frames (FITS)
+Step 4. Search for the light frames (raw FITS), the darks, the flats, the dark-flats, the offsets (biases), the logs of the night (NINA, PHD2, ASIAIR) and the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 5.
+Step 5. Propose placing the light frames (raw FITS) in `<target>/lights/` (the target its `OBJECT` header names); the darks in `calibration/darks/`; the flats in `calibration/flats/`; the dark-flats in `calibration/dark-flats/`; the offsets (biases) in `calibration/biases/`; the logs of the night (NINA, PHD2, ASIAIR) in `logs/`; the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+Step 38. Sum up: what was placed, where, by link, copy or move, and what is still missing. Then tell the person to go back to Astro Sync and open the night again.

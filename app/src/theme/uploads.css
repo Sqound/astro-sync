@@ -1,0 +1,129 @@
+/*
+ * The uploads: the page « Envois », the badge on its menu entry and the
+ * notifications. Same rule as `shell.css`: every value is a `var(--as-*)`
+ * reference, never a colour literal.
+ */
+
+/* The count of the uploads on their way, on the menu entry. */
+.as-tab__badge {
+  flex: 0 0 auto;
+  /* Taller than a line of text: it must not make the entry taller than the
+     others, so it overhangs the padding by the difference. */
+  margin-block: -0.25rem;
+  min-width: 1.25rem;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background-color: var(--as-color-gold-accent);
+  color: var(--as-color-primary-ink);
+  padding: 0 var(--as-space-xs);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+  text-align: center;
+}
+
+/* The page. */
+.as-uploads {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-lg);
+}
+
+.as-uploads__section,
+.as-uploads__storage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-uploads__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-uploads__head > h2 {
+  margin: 0;
+}
+
+.as-uploads__actions {
+  display: flex;
+  gap: var(--as-space-sm);
+}
+
+.as-uploads__figure {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.as-uploads__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-uploads__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--as-space-md);
+  row-gap: var(--as-space-xs);
+  padding: var(--as-space-sm) 0;
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-uploads__item:first-child {
+  border-top: 0;
+}
+
+.as-uploads__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.as-uploads__state {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+/* The sky annotations of a file sent: a line of their own. */
+.as-uploads__sky {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-uploads__sky[data-tone="warning"] {
+  color: var(--as-color-warning);
+}
+
+.as-uploads__item > [role="progressbar"] {
+  grid-column: 1 / -1;
+}
+
+.as-uploads__action {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  white-space: nowrap;
+}
+
+/* The line under the banner of the result: the link to the page. */
+.as-result__uploads {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+}

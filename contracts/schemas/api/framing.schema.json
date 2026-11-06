@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/framing.schema.json",
+  "title": "Astro Portal API v1 framing resources",
+  "description": "A framing is an account-wide entity, independent of the plans that reference it. `state` is computed by `framingUsage` (`packages/astro-core/src/framing-usage.ts`) and never written directly except `archived`, a stored gesture (`POST /v1/framings/{id}/restore` clears it). `usage` names the plans behind `shared`/`locked` so a client can render the exact warning sheet without a second request.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "planRef": {
+      "type": "object",
+      "required": ["planId", "name", "planDate", "status"],
+      "properties": {
+        "planId": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string" },
+        "planDate": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "status": {
+          "type": "string",
+          "enum": ["active", "executed", "partial", "abandoned", "archived"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "required": ["executedPlans", "pendingPlans"],
+      "properties": {
+        "executedPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        },
+        "pendingPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "payload": {
+      "type": "object",
+      "description": "`target` is exactly the current `savedFramingTarget` shape, described by `../planner/framing.schema.json`'s `framing` envelope at `target.framing` (a mosaic definition inside it carries `widthDegrees`/`heightDegrees`/`overlapPercent`, never columns/rows — the grid is always recomputed by `mosaicGrid`, `packages/astro-core/src/mosaic-grid.ts`). `catalogueTargetId` is the id of the first catalogue object the creation modal recognized under the frame, or `null` for a framing centered on no known object. `angleDegrees` is the framing's angle: N.I.N.A.'s position angle of the top of the frame, counted from north towards east, in `[0, 360)` (`0` for every rig unless the person turned the frame, never a parallactic angle). A non-zero angle is mirrored at `target.framing.angleDegrees`, which the preview, the targets under the frame and the exports read.",
+      "required": ["target", "catalogueTargetId", "angleDegrees"],
+      "properties": {
+        "target": { "type": "object" },
+        "catalogueTargetId": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "angleDegrees": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 360
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "revision",
+        "state",
+        "usage",
+        "payload",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "state": {
+          "type": "string",
+          "enum": ["free", "shared", "locked", "archived"]
+        },
+        "usage": { "$ref": "#/$defs/usage" },
+        "payload": { "$ref": "#/$defs/payload" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "archivedAt": {
+          "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/resource" },
+    {
+      "type": "object",
+      "required": ["framings"],
+      "properties": {
+        "framings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resource" }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "`DELETE` on a `locked` framing archives it instead of deleting it.",
+      "required": ["archived", "framing"],
+      "properties": {
+        "archived": { "const": true },
+        "framing": { "$ref": "#/$defs/resource" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "The refused framing write: `409 framing_conflict`/`framing_locked`/`framing_archived` carry the server's current resource so nothing the client holds is ever silently discarded (it becomes a copy client-side). `409 framing_in_use` (on `DELETE`) names only the pending plans still referencing it, for the client to retire before replaying the deletion.",
+      "required": ["error"],
+      "properties": {
+        "error": { "$ref": "#/$defs/error/properties/error" },
+        "framing": { "$ref": "#/$defs/resource" },
+        "pendingPlans": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planRef" }
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

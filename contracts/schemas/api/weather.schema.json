@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/weather.schema.json",
+  "title": "Astro Portal API v1 weather",
+  "description": "GET /v1/weather query and response (packages/portal/src/astronomy-weather.server.js). Public read: a thin wrapper over the same process-shared, fallback-aware forecast cache (Open-Meteo, MET Norway on failure) the web planner reads. The hourly series run from two days before today to fifteen days after it (sixteen days of forecast: the first eleven, 0-10 days out, reliable, the last five only a trend); MET Norway answers what it can and the days it cannot are beyond range. A present Authorization header must still be a valid device bearer.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "string" },
+        "longitude": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "hourly",
+        "daily",
+        "missingFields",
+        "source",
+        "fallback",
+        "fetchedAt",
+        "stale"
+      ],
+      "properties": {
+        "hourly": { "type": "object" },
+        "daily": { "type": "object" },
+        "missingFields": { "type": "array", "items": { "type": "string" } },
+        "source": { "enum": ["Open-Meteo", "MET Norway"] },
+        "fallback": { "type": "boolean" },
+        "fetchedAt": { "type": "string", "format": "date-time" },
+        "stale": { "type": "boolean" },
+        "retryAfterSeconds": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/query" }, { "$ref": "#/$defs/result" }]
+}

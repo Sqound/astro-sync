@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/places-suggested.schema.json",
+  "title": "Astro Portal API v1 suggested places",
+  "description": "GET /v1/places/suggested query and response (packages/portal/src/places/suggested.js; packages/portal-app/src/routes/api/v1/places/suggested/route.js). Public read: a present Authorization header must still be a valid device bearer. Named viewpoints, campsites, parks (national parks and nature reserves) and picnic sites from OpenStreetMap, queried by the service at search time so the source never sees the observer. The client sends the centre rounded to 0.05° and the service rounds it again before any query; neither the centre nor any distance is returned: the client computes the straight-line distance from its own unrounded reference. At most 50 places, darkest first; `truncated` says more were found. `skyQuality` is the estimate of the installed raster (the function of GET /v1/sky-quality), null without one. Every screen showing these places shows the attribution with its link (ODbL). 400 invalid_request for bad coordinates, a radius other than 10, 30, 60 or 100 km, or an unknown type; 503 places_unavailable with reason `disabled` (ASTRO_PORTAL_PLACES=off) or `source` (the source failed).",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude", "radiusKm"],
+      "properties": {
+        "latitude": {
+          "type": "string"
+        },
+        "longitude": {
+          "type": "string"
+        },
+        "radiusKm": {
+          "enum": ["10", "30", "60", "100"]
+        },
+        "types": {
+          "type": "string",
+          "pattern": "^(viewpoint|campsite|park|picnic)(,(viewpoint|campsite|park|picnic))*$"
+        },
+        "locale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "attribution": {
+      "type": "object",
+      "required": ["text", "url", "licence"],
+      "properties": {
+        "text": {
+          "const": "© OpenStreetMap contributors"
+        },
+        "url": {
+          "const": "https://www.openstreetmap.org/copyright"
+        },
+        "licence": {
+          "const": "ODbL-1.0"
+        }
+      },
+      "additionalProperties": false
+    },
+    "place": {
+      "type": "object",
+      "required": ["id", "name", "type", "latitude", "longitude", "skyQuality"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^osm:(node|way|relation)/[1-9][0-9]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "type": {
+          "enum": ["viewpoint", "campsite", "park", "picnic"]
+        },
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "website": {
+          "type": "string",
+          "pattern": "^https?://",
+          "maxLength": 500
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "openingHours": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "access": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "fee": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "elevation": {
+          "type": "integer",
+          "minimum": -500,
+          "maximum": 9000
+        },
+        "skyQuality": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["bortle", "sqm", "estimate"],
+              "properties": {
+                "bortle": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9
+                },
+                "sqm": {
+                  "type": "number",
+                  "minimum": 10,
+                  "maximum": 22.1
+                },
+                "estimate": {
+                  "const": true
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "results",
+        "truncated",
+        "attribution",
+        "source",
+        "fetchedAt"
+      ],
+      "properties": {
+        "results": {
+          "type": "array",
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/place"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "attribution": {
+          "$ref": "#/$defs/attribution"
+        },
+        "source": {
+          "const": "osm"
+        },
+        "fetchedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "unavailable": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message", "reason"],
+          "properties": {
+            "code": {
+              "const": "places_unavailable"
+            },
+            "message": {
+              "type": "string"
+            },
+            "reason": {
+              "enum": ["disabled", "source"]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/result"
+    },
+    {
+      "$ref": "#/$defs/unavailable"
+    }
+  ]
+}

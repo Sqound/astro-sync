@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/weather-history.schema.json",
+  "title": "Astro Portal API v1 weather history",
+  "description": "GET /v1/weather/history query and response (packages/portal/src/astronomy-weather.server.js createWeatherHistoryCache). Public read: the measured weather of one civil month plus one day on each side, from the Open-Meteo archive, never past today; the hours the archive does not hold yet are read from the forecast's recent days. The archive has neither a rain probability nor a visibility: hourly `precipitation` is the amount that fell (mm), which the night's score maps (>= 0.1 mm: certain rain), and the visibility stays neutral. Same cache, stale and cooldown rules as GET /v1/weather; a present Authorization header must still be a valid device bearer.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude", "month"],
+      "properties": {
+        "latitude": {
+          "type": "string"
+        },
+        "longitude": {
+          "type": "string"
+        },
+        "month": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "month",
+        "startDate",
+        "endDate",
+        "hourly",
+        "daily",
+        "source",
+        "measured",
+        "fetchedAt",
+        "stale"
+      ],
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}$"
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "hourly": {
+          "type": "object",
+          "required": ["time"],
+          "properties": {
+            "time": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "daily": {
+          "type": "object"
+        },
+        "source": {
+          "const": "Open-Meteo"
+        },
+        "measured": {
+          "const": true
+        },
+        "fetchedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "stale": {
+          "type": "boolean"
+        },
+        "retryAfterSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/result"
+    }
+  ]
+}

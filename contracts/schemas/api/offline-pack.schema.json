@@ -1,0 +1,548 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/offline-pack.schema.json",
+  "title": "Astro Portal offline pack manifest",
+  "description": "GET /v1/offline-pack response. Self-hosted, so every instance is different: the manifest states what THIS portal can serve for an offline pack — components, revisions, sizes and URL templates — in one round trip, rather than a client guessing from a fixed list baked into an app version. Each `components[]` entry is an independent, superset-free unit a client can fetch on its own; a component the portal cannot currently serve (no light-pollution pack raster installed, the HiPS tile mirror disabled) is simply absent from the array rather than present with an unavailable flag. `component.kind` is open-ended: a reader resolves behaviour by `id`/`kind` it recognizes and ignores one it does not, which is what lets a new component ship without a client version bump — every component schema below therefore keeps `additionalProperties: true`, and an entirely unrecognized `kind` still validates against `$defs/component`. A portal predating this route answers 404, the same negotiation `GET /v1/target-index` uses.",
+  "$defs": {
+    "component": {
+      "type": "object",
+      "description": "The minimum any component, known or not, must carry: an id a client can log or key a local record by, and a kind it dispatches on. A reader that does not recognize `kind` stops here and otherwise ignores the entry.",
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "targetIndexComponent": {
+      "type": "object",
+      "description": "The compact catalogue index (GET /v1/target-index), walked page by page in designation order. `pages`, `estimatedBytes` and `estimatedEncodedBytes` are measured against the real, current document — never hand-typed — so they track the installed catalogue's actual size.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "pageSize",
+        "pages",
+        "estimatedBytes",
+        "estimatedEncodedBytes",
+        "urlTemplate"
+      ],
+      "properties": {
+        "id": { "const": "target-index" },
+        "kind": { "const": "index-pages" },
+        "required": { "const": true },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identical to the catalogue's own `revision` (`catalogue.revision` in this same document, and GET /v1/target-index's `revision`)."
+        },
+        "pageSize": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "pages": { "type": "integer", "minimum": 0 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "estimatedEncodedBytes": { "type": "integer", "minimum": 0 },
+        "urlTemplate": { "type": "string", "minLength": 1 },
+        "knowledge": {
+          "type": "object",
+          "description": "Optional. The published pages (the long catalogue texts) of the targets that have them, which ride with the catalogue index: one JSON file per locale at `urlTemplate` (`{locale}`), `{ v, locale, count, targets: { [targetId]: knowledge } }`, each knowledge being what GET /v1/targets/{targetId} answers for that target in that locale. Absent when no target has a page. A device that wants offline sheets with sections and sources downloads its language's file with the index pages.",
+          "required": [
+            "urlTemplate",
+            "count",
+            "estimatedBytes",
+            "estimatedEncodedBytes"
+          ],
+          "properties": {
+            "urlTemplate": { "type": "string", "minLength": 1 },
+            "count": { "type": "integer", "minimum": 1 },
+            "estimatedBytes": { "type": "integer", "minimum": 0 },
+            "estimatedEncodedBytes": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "sizesByLocale": {
+          "type": "object",
+          "description": "Optional (a self-built pack writes it; the live manifest, which measures one locale, does not): the size of each locale's own catalogue index, keyed by locale tag (`catalogue.locales`). `estimatedBytes` and `estimatedEncodedBytes` above are the first locale's.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["estimatedBytes", "estimatedEncodedBytes"],
+            "properties": {
+              "estimatedBytes": { "type": "integer", "minimum": 0 },
+              "estimatedEncodedBytes": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "skyQualityFile": {
+      "type": "object",
+      "required": ["name", "url"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "checksum": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "skyQualityComponent": {
+      "type": "object",
+      "description": "The downloadable light-pollution raster (the 6' variant), present only when a portal has one prepared. `revision` and each file's `checksum` are digests of the actual bytes, computed lazily — there is no fixed checksum list, since the archive can be built on first request.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "files"
+      ],
+      "properties": {
+        "id": { "const": "sky-quality" },
+        "kind": { "const": "file-set" },
+        "required": { "const": true },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/skyQualityFile" }
+        },
+        "attribution": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "license": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "year": { "anyOf": [{ "type": "integer" }, { "type": "null" }] }
+      },
+      "additionalProperties": true
+    },
+    "solveCatalogueComponent": {
+      "type": "object",
+      "description": "Additive: the deep star catalogue the phone's telephoto plate solving builds its narrow index from — HYG v4.1 stars to `magnitudeLimit`, the whole sky, in the `PSTR` layout. Optional (`required: false`): without it the telephoto stays disabled on the phone, with its reason. `revision` and the file's `checksum` are digests of the actual bytes; `attribution` and `license` name the catalogue (CC BY-SA 4.0).",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "files",
+        "attribution",
+        "license"
+      ],
+      "properties": {
+        "id": { "const": "solve-catalogue" },
+        "kind": { "const": "file-set" },
+        "required": { "const": false },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "magnitudeLimit": { "type": "number" },
+        "stars": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/skyQualityFile" }
+        },
+        "attribution": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "cameraCatalogueComponent": {
+      "type": "object",
+      "description": "Additive (CAM-3): the camera star catalogue a telescope camera's narrow plate solving reads the cone around the mount's position from — Tycho-2 (VizieR I/259) and its first supplement to `magnitudeLimit` (11.5), the whole sky, in the zoned `PSTZ` layout (`packages/portal/src/offline-pack/camera-catalogue.js`), about 18 MB. Optional (`required: false`) and never part of the base: the person asks for it from Settings › Offline data; without it a telescope camera cannot plate solve, with its reason. `revision` and the file's `checksum` are digests of the actual bytes; `attribution` and `license` name the catalogue (CC BY-NC 3.0 IGO, commercial authorisation asked of the ESA); `source` is the provenance of the build (catalogue, download URL and date, SHA-256 of each source file).",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "files",
+        "attribution",
+        "license"
+      ],
+      "properties": {
+        "id": { "const": "camera-catalogue" },
+        "kind": { "const": "file-set" },
+        "required": { "const": false },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "magnitudeLimit": { "type": "number" },
+        "stars": { "type": "integer", "minimum": 0 },
+        "layout": { "const": "PSTZ" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/skyQualityFile" }
+        },
+        "attribution": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 },
+        "source": {
+          "type": "object",
+          "properties": {
+            "catalogue": { "type": "string" },
+            "url": { "type": "string" },
+            "retrievedAt": { "type": "string" },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "sha256"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "bytes": { "type": "integer", "minimum": 0 },
+                  "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "baseMapComponent": {
+      "type": "object",
+      "description": "Additive: the offline background of the light-pollution map — Natural Earth 1:10m land, lakes, coastlines, country borders and populated places, public domain, in the `PNEB` layout (`packages/portal/src/offline-pack/base-map.js`). Optional (`required: false`): without it the phone's map stays on its plain dark background offline, with the way to download it. OpenStreetMap is never part of a pack. `revision` and the file's `checksum` are digests of the actual bytes; `attribution` and `license` name the source.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "files",
+        "attribution",
+        "license"
+      ],
+      "properties": {
+        "id": { "const": "base-map" },
+        "kind": { "const": "file-set" },
+        "required": { "const": false },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/skyQualityFile" }
+        },
+        "attribution": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "textShard": {
+      "type": "object",
+      "description": "One shard of one language of the catalogue texts: the entry of `target-texts-index.schema.json` for that file (`bytes` and `sha256` are those of the file as served; `revision` is a digest of its entries' revisions, so an unchanged shard keeps it; `count` is the number of targets it holds).",
+      "required": ["shard", "bytes", "sha256", "revision", "count"],
+      "properties": {
+        "shard": { "type": "string", "pattern": "^[0-9]{3}$" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "revision": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "readAloudComponent": {
+      "type": "object",
+      "description": "Additive (READ-ALOUD-SERVICE-01): « Lecture à voix haute », the optional component that puts the paragraphs of the pages, spoken once by a neural voice at generation time, on the phone as one `.m4a` file each (a « unit »). Absent while nothing is deposited in the static data (`read-aloud/<voiceVersion>/<locale>/manifest.json`, `docs/STATIC_DATA.md`). `locales` has, per language, the voice (`voice`, `voiceVersion`), its `source`, `attribution` and `license`, the totals of the three nested levels (Essentiel ⊂ Étendu ⊂ Complet: fiches, distinct units, bytes) and the address and digest of the language manifest (`read-aloud-manifest.schema.json`: the fiches of each level and their units `{ id, bytes, sha256, cues }`) a device fetches when the person asks for a level. A unit is `urlTemplate` with `{locale}`, `{voice}` (the `voiceVersion`) and `{unit}` (its id) substituted; its address holds the hash of its content, so it never changes. A device compares the ids of its units with the manifest's and downloads the missing ones. `estimatedBytes` is the Complet level of every language.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "urlTemplate",
+        "locales"
+      ],
+      "properties": {
+        "id": { "const": "read-aloud" },
+        "kind": { "const": "audio-units" },
+        "required": { "const": false },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "urlTemplate": { "type": "string", "minLength": 1 },
+        "locales": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Language tag to what that language offers.",
+          "additionalProperties": { "$ref": "#/$defs/readAloudLocale" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "readAloudLevelTotals": {
+      "type": "object",
+      "required": ["fiches", "units", "bytes"],
+      "properties": {
+        "fiches": { "type": "integer", "minimum": 0 },
+        "units": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "readAloudLocale": {
+      "type": "object",
+      "required": [
+        "voiceVersion",
+        "voice",
+        "source",
+        "attribution",
+        "license",
+        "manifest",
+        "levels"
+      ],
+      "properties": {
+        "voiceVersion": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+        },
+        "voice": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "attribution": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 },
+        "format": { "type": "object" },
+        "generatedAt": { "type": "string" },
+        "manifest": {
+          "type": "object",
+          "required": ["url", "bytes", "checksum"],
+          "properties": {
+            "url": { "type": "string", "minLength": 1 },
+            "bytes": { "type": "integer", "minimum": 1 },
+            "checksum": {
+              "type": "string",
+              "pattern": "^sha256:[0-9a-f]{64}$"
+            }
+          },
+          "additionalProperties": true
+        },
+        "levels": {
+          "type": "object",
+          "required": ["essential", "extended", "complete"],
+          "properties": {
+            "essential": { "$ref": "#/$defs/readAloudLevelTotals" },
+            "extended": { "$ref": "#/$defs/readAloudLevelTotals" },
+            "complete": { "$ref": "#/$defs/readAloudLevelTotals" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "textShardsComponent": {
+      "type": "object",
+      "description": "Additive: « Textes complets du catalogue », the optional component that puts the full pages of the targets, their sources and their children's text on the phone. A language's texts are about forty megabytes (tiers B and C, `docs/STATIC_DATA.md`), so the base data never includes them: the person asks for them, in the language of the app, from Settings › Offline data. `locales` is the shard index of the service (`target-texts-index.schema.json`) per language; a device downloads the shards of its own language, `urlTemplate` with `{locale}` and `{shard}` substituted, checks each against `sha256`, reads it into its database (`target-texts-shard.schema.json`: `{ v, locale, shard, revision, entries }`), and skips a shard whose `revision` it already holds. The base `target-index` component's `knowledge` carries the lede of each target, so a sheet shows something before the texts are downloaded.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "urlTemplate",
+        "locales"
+      ],
+      "properties": {
+        "id": { "const": "target-texts" },
+        "kind": { "const": "text-shards" },
+        "required": { "const": false },
+        "revision": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A digest of every language's shard revisions; the phone compares the revisions of its own language's shards instead."
+        },
+        "urlTemplate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "`{locale}` and `{shard}` placeholders; live portal `/v1/offline-pack/target-texts/{locale}/{shard}.json`, self-built pack `target-texts/{locale}/{shard}.json`."
+        },
+        "locales": {
+          "type": "object",
+          "description": "Language tag (`locales/locales.json`) to its shards, in shard order.",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/textShard" }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropSurvey": {
+      "type": "object",
+      "description": "Enough about the sky-backdrop survey for a client to render it and credit it correctly without hard-coding a URL or a license string of its own; swapping the survey (or its license) is then a manifest change, not an app release. `upstreamRoots` (additive) is the ordered list of upstream roots the portal's own mirror falls back across when one does not connect; `upstreamRoot` always equals its first entry and is kept for a client or a schema version that predates `upstreamRoots`.",
+      "required": [
+        "id",
+        "hipsId",
+        "format",
+        "tileWidth",
+        "maxOrder",
+        "frame",
+        "attribution",
+        "license",
+        "upstreamRoot"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "hipsId": { "type": "string", "minLength": 1 },
+        "format": { "type": "string", "minLength": 1 },
+        "tileWidth": { "type": "integer", "minimum": 1 },
+        "maxOrder": { "type": "integer", "minimum": 0 },
+        "frame": { "type": "string", "minLength": 1 },
+        "attribution": { "type": "string", "minLength": 1 },
+        "license": { "type": "string", "minLength": 1 },
+        "licenseUrl": { "type": "string" },
+        "imageryCopyright": { "type": "string" },
+        "upstreamRoot": { "type": "string", "minLength": 1 },
+        "upstreamRoots": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropTier": {
+      "type": "object",
+      "description": "One cumulative sky-backdrop download level. `tiles` is the exact HEALPix cumulative count for `maxOrder` (Σ 12·4^k, k = 0..maxOrder) — 1,020/4,092/16,380/65,532 for essential/standard/comfort/quality — never a rounded estimate. `id` is deliberately an open string, not a fixed enum: the set of tiers is a portal-side decision (`standard`, additive, sits between `essential` and `comfort`) that must be free to grow without a client version bump — a client ignores a tier `id` it does not recognize, exactly like an unrecognized `component.kind`. `state` is the extension point: until the mirror can report a tier's archives as already built, a tier answers `on-demand`, with `estimatedBytes` computed from `meanTileBytesByOrder`/`meanTileBytes` and the real tar-archive overhead; once every archive it needs actually exists, it answers `ready` and `estimatedBytes` becomes the EXACT combined size of those archive files, flagged additively by `exactBytes: true`.",
+      "required": ["id", "maxOrder", "tiles", "estimatedBytes", "state"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "maxOrder": { "type": "integer", "minimum": 0 },
+        "tiles": { "type": "integer", "minimum": 1 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 },
+        "state": { "enum": ["ready", "on-demand"] },
+        "exactBytes": {
+          "type": "boolean",
+          "description": "Additive. `true` when `state` is `ready` and `estimatedBytes` is therefore the exact on-disk size of this tier's archives, not an estimate. Absent (never `false`) otherwise."
+        },
+        "unavailable": {
+          "const": true,
+          "description": "Additive. Present, and `true`, only when this service cannot provide the tier: it is not built yet (`archives.ready` is below `archives.total`) and would not fit in the service's sky-tile mirror, so `POST` on `sky-backdrop.prepareUrlTemplate` for it is refused with `409` `sky_backdrop_tier_exceeds_mirror_limit` — decided by the very same rule (the tier's archives plus the tiles of the archive being built, against the mirror's byte limit). A client shows such a tier as not offered from the start, instead of finding out on the refusal. Never `false`: absent means nothing is announced, and the client learns at the request as it always did. Never present on a tier that is `ready`, nor in a static pack."
+        },
+        "archives": { "$ref": "#/$defs/skyBackdropTierArchives" }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropTierArchives": {
+      "type": "object",
+      "description": "Additive. How many of the archives a tier is made of the portal's sky-tile mirror already has (`ready`), out of how many it needs (`total`: 1 / 13 / 61 / 253 for `essential` / `standard` / `comfort` / `quality`). Counted from the mirror's archive index — one small file, no walk of the disk — so it is exact and cheap on every request; a tier is `ready` exactly when `ready` equals `total`. The manifest is cached for a minute: to follow a preparation, read its own state document (`GET` on `sky-backdrop.prepareUrlTemplate`), not the manifest. Absent from a static pack.",
+      "required": ["ready", "total"],
+      "properties": {
+        "ready": { "type": "integer", "minimum": 0 },
+        "total": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropTopUp": {
+      "type": "object",
+      "properties": {
+        "maxOrderWide": { "type": "integer", "minimum": 0 },
+        "maxOrderFocus": { "type": "integer", "minimum": 0 },
+        "estimatedBytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropLowOrderArchive": {
+      "type": "object",
+      "description": "Additive: the fixed archive covering every order from 0 through archiveChunkDelta - 1 cumulatively (1,020 tiles for the default archiveChunkDelta of 4) — a single unit rather than the general per-order aggregation, addressed through archiveUrlTemplate's own {order}/{chunkOrder}/{chunkPix} placeholders (order == chunkOrder == archiveChunkDelta - 1, chunkPix == 0) so older clients that only understand the general rule still resolve a valid, working URL for it without reading this field at all.",
+      "required": ["order", "chunkOrder", "chunkPix", "tiles"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 0 },
+        "chunkOrder": { "type": "integer", "minimum": 0 },
+        "chunkPix": { "type": "integer", "minimum": 0 },
+        "tiles": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "skyBackdropComponent": {
+      "type": "object",
+      "description": "The whole-sky HiPS tile backdrop, present unless ASTRO_PORTAL_SKY_TILE_MIRROR=off (the lever for an instance that has not settled the DSS licensing question for public distribution). Serving the tiles and archives themselves is the mirror's job; this manifest only describes what could be fetched and at what estimated cost.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "survey",
+        "meanTileBytes",
+        "archiveChunkDelta",
+        "archiveUrlTemplate",
+        "tileUrlTemplate",
+        "tiers"
+      ],
+      "properties": {
+        "id": { "const": "sky-backdrop" },
+        "kind": { "const": "hips-tiles" },
+        "required": { "const": false },
+        "survey": { "$ref": "#/$defs/skyBackdropSurvey" },
+        "meanTileBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Kept for a reader that predates `meanTileBytesByOrder`: the tile-count-weighted mean over the LOWEST tier's own orders only (`essential`, orders 0..3) — a documented per-order constant until the mirror observes a real mean from tiles it has actually served at that order."
+        },
+        "meanTileBytesByOrder": {
+          "type": "object",
+          "description": "Additive. Mean bytes/tile actually observed or documented for EACH HEALPix order the offered tiers reach — tile size GROWS with order, so the single `meanTileBytes` average badly understates a deep tier; every `tiers[].estimatedBytes` still not `exactBytes` is computed from this table, order by order, plus the real tar-archive overhead, never from `tiles * meanTileBytes`. Keys are the order as a base-10 string (JSON object keys are always strings) — e.g. `{\"0\": 48467, \"1\": 43093, ...}`.",
+          "patternProperties": {
+            "^[0-9]+$": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
+        "archiveChunkDelta": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "One archive aggregates every tile of order N under one ancestor cell N - archiveChunkDelta orders up."
+        },
+        "archiveUrlTemplate": { "type": "string", "minLength": 1 },
+        "tileUrlTemplate": { "type": "string", "minLength": 1 },
+        "tiers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/skyBackdropTier" }
+        },
+        "topUp": { "$ref": "#/$defs/skyBackdropTopUp" },
+        "lowOrderArchive": { "$ref": "#/$defs/skyBackdropLowOrderArchive" },
+        "prepareUrlTemplate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Additive. The route by which a client asks the portal to build a tier's missing archives itself — `/v1/offline-pack/sky-backdrop/tiers/{tier}/prepare`, with `{tier}` a `tiers[].id`: `POST` starts (or joins) the preparation, `GET` reads its state (`idle`, `queued`, `running`, `waiting`, `failed`, `complete`, with `archives`, an approximate `remainingSeconds` and the `retryAfterSeconds` to read again after). Absent from a static pack and from a portal predating the route: the client then goes on requesting the archives one by one. See `v1.md`, \"Sky-backdrop preparation\"."
+        }
+      },
+      "additionalProperties": true
+    },
+    "catalogue": {
+      "type": "object",
+      "required": ["revision", "targets", "locales"],
+      "properties": {
+        "revision": { "type": "string", "minLength": 1 },
+        "targets": { "type": "integer", "minimum": 0 },
+        "locales": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2 }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "type": "object",
+  "required": ["v", "catalogue", "components"],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "The manifest's own notation version, independent of the target-index notation's `v`."
+    },
+    "catalogue": { "$ref": "#/$defs/catalogue" },
+    "components": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          { "$ref": "#/$defs/targetIndexComponent" },
+          { "$ref": "#/$defs/skyQualityComponent" },
+          { "$ref": "#/$defs/skyBackdropComponent" },
+          { "$ref": "#/$defs/solveCatalogueComponent" },
+          { "$ref": "#/$defs/cameraCatalogueComponent" },
+          { "$ref": "#/$defs/baseMapComponent" },
+          { "$ref": "#/$defs/textShardsComponent" },
+          { "$ref": "#/$defs/readAloudComponent" },
+          { "$ref": "#/$defs/component" }
+        ]
+      }
+    }
+  },
+  "additionalProperties": true
+}

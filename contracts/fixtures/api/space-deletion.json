@@ -1,0 +1,79 @@
+{
+  "contract": "space-deletion.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "delete-space",
+      "description": "« Supprimer mon espace », confirmed. From the application (bearer) or from the web (session and CSRF header). Every device and session of the space is detached at once; the erasure completes by `completesBy`.",
+      "given": { "authMode": "email-code", "now": "2026-09-29T21:30:00.000Z" },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": { "confirm": true }
+      },
+      "response": {
+        "status": 202,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "deletion": {
+            "requestedAt": "2026-09-29T21:30:00.000Z",
+            "completesBy": "2026-10-29T21:30:00.000Z"
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionAccepted"
+      }
+    },
+    {
+      "id": "delete-space-without-confirmation",
+      "description": "Without the explicit confirmation nothing is erased.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "message": "The deletion must be confirmed."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "call-after-deletion",
+      "description": "Any call made afterwards with a credential of the deleted space. The application erases its copy.",
+      "given": { "authMode": "email-code", "spaceDeleted": true },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 401,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "space_deleted",
+            "message": "This space was deleted."
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deleted"
+      }
+    }
+  ]
+}

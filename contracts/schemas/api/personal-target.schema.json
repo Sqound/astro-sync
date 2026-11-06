@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/personal-target.schema.json",
+  "title": "Astro Portal API v1 — the personal targets of a space",
+  "description": "A « cible personnelle » of a space lives in the target library, in the same identifier space as the catalogue: a capture names it among its `targetIds` (`POST /v1/uploads`) like a catalogue target, and another space's personal target answers `404 target_not_found`, like one that does not exist. `POST /v1/targets/personal` creates one (a device token or the web session, `201 { target }`); `GET /v1/targets/personal` lists the space's, newest first. Its place, date and note are its owner's: a visitor reads its name and its label only. Erased with the space.",
+  "$defs": {
+    "label": {
+      "description": "One of the public gallery's generic tags (`PUBLIC_GALLERY_TAGS`, the catalogue's French keys, translated by the pages).",
+      "type": "string",
+      "enum": [
+        "Galaxie",
+        "Nébuleuse",
+        "Amas",
+        "Lune",
+        "Planète",
+        "Soleil",
+        "Étoile",
+        "Comète",
+        "Grand champ"
+      ]
+    },
+    "create": {
+      "type": "object",
+      "description": "The body of `POST /v1/targets/personal`: text trimmed, kept as typed. `raHours` and `decDegrees` are given together or not at all.",
+      "required": ["name", "label"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "label": { "$ref": "#/$defs/label" },
+        "raHours": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "exclusiveMaximum": 24
+        },
+        "decDegrees": {
+          "type": ["number", "null"],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "placeName": { "type": ["string", "null"], "maxLength": 120 },
+        "date": {
+          "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }]
+        },
+        "note": { "type": ["string", "null"], "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    },
+    "target": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "name",
+        "label",
+        "raHours",
+        "decDegrees",
+        "placeName",
+        "date",
+        "note",
+        "createdAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "source": { "const": "personal" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "label": { "anyOf": [{ "$ref": "#/$defs/label" }, { "type": "null" }] },
+        "raHours": { "type": ["number", "null"] },
+        "decDegrees": { "type": ["number", "null"] },
+        "placeName": { "type": ["string", "null"] },
+        "date": {
+          "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }]
+        },
+        "note": { "type": ["string", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "created": {
+      "type": "object",
+      "required": ["target"],
+      "properties": { "target": { "$ref": "#/$defs/target" } },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "required": ["targets"],
+      "properties": {
+        "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/create" },
+    { "$ref": "#/$defs/created" },
+    { "$ref": "#/$defs/list" }
+  ]
+}

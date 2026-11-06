@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/device-pairing.schema.json",
+  "title": "Astro Portal API v1 device pairing",
+  "$defs": {
+    "pairing": {
+      "type": "object",
+      "required": ["code", "expiresAt"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{8}$" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "claimRequest": {
+      "type": "object",
+      "required": ["code", "label"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{8}$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 }
+      },
+      "additionalProperties": false
+    },
+    "claimResponse": {
+      "type": "object",
+      "required": ["deviceToken"],
+      "properties": {
+        "deviceToken": { "type": "string", "minLength": 40, "maxLength": 128 }
+      },
+      "additionalProperties": false
+    },
+    "device": {
+      "type": "object",
+      "required": ["id", "label", "createdAt", "lastSyncAt", "revokedAt"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastSyncAt": {
+          "anyOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        },
+        "revokedAt": {
+          "anyOf": [
+            { "type": "string", "format": "date-time" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/pairing" },
+    { "$ref": "#/$defs/claimRequest" },
+    { "$ref": "#/$defs/claimResponse" },
+    {
+      "type": "object",
+      "required": ["devices"],
+      "properties": {
+        "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

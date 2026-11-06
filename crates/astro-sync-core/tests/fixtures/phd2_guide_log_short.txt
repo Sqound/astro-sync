@@ -1,0 +1,14 @@
+PHD2 version 2.6.13dev4, Log version 2.5. Log enabled at 2030-03-01 21:58:40
+Guiding Begins at 2030-03-01 22:00:00
+Pixel scale = 1.85 arc-sec/px, Binning = 1, Focal length = 400 mm
+Frame,Time,mount,dx,dy,RARawDistance,DECRawDistance,RAGuideDistance,DECGuideDistance,RADuration,RADirection,DECDuration,DECDirection,XStep,YStep,StarMass,SNR,ErrorCode
+1,1.203,Mount,-0.043,0.297,-0.120,0.180,0.000,0.000,0,,0,,0,0,31500,13.4,0
+2,3.401,Mount,0.021,-0.140,0.240,-0.090,0.000,0.000,80,East,40,North,0,0,31200,12.8,0
+3,5.602,Mount,0.005,0.030,0.060,0.040,0.000,0.000,0,,0,,0,0,31000,13.1,0
+INFO: SETTLING STATE CHANGE, Settling started
+INFO: SETTLING STATE CHANGE, Settling complete
+4,9.801,Mount,-0.010,0.020,-0.080,0.070,0.000,0.000,0,,0,,0,0,30800,12.5,0
+5,12.004,Mount,0.030,-0.010,0.150,-0.030,0.000,0.000,0,,0,,0,0,29500,9.7,0
+INFO: STAR LOST: SNR too low
+6,16.203,Mount,0.000,0.000,0.020,0.010,0.000,0.000,0,,0,,0,0,30900,13.0,0
+Guiding Ends at 2030-03-01 22:41:12

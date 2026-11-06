@@ -1,0 +1,914 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/debrief.schema.json",
+  "title": "Astro Portal API v1 debrief queue and debriefing decision",
+  "description": "The debriefing is a server-side state, not a local dialog: the queue is the same on every surface and a plan leaves it the moment either surface answers. When a set-aside version exists, the debriefing is also the divergence resolution point — the queue carries BOTH versions, field first, and the decision states which one describes the night. Sessions named here are observation sessions, never web authentication sessions. See api/v1.md, section \"Observation sessions and debriefing\".",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["executed", "partial", "abandoned"]
+    },
+    "staleDevice": {
+      "type": "object",
+      "description": "An unrevoked device token of the tenant that can hold offline plan changes (the phone app, never Astro Sync) whose lastSyncAt is null or predates nightEndAt. It is a warning, never a refusal: the phone may have been in airplane mode, broken, or used only for reading.",
+      "required": ["label", "lastSyncAt"],
+      "properties": {
+        "deviceId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "lastSyncAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "queueVersion": {
+      "type": "object",
+      "description": "One of the two divergent readings of the plan. `base` is the literal value to send back as the decision's `baseVersion`; `origin` is what the copy names (field = written by a paired device, web = written by the browser planner).",
+      "required": ["base", "origin", "revision", "createdAt", "payload"],
+      "properties": {
+        "base": {
+          "type": "string",
+          "enum": ["current", "set_aside"]
+        },
+        "origin": {
+          "type": "string",
+          "enum": ["field", "web"]
+        },
+        "versionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "deviceLabel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "$ref": "plan.schema.json#/$defs/payload"
+        }
+      },
+      "additionalProperties": false
+    },
+    "queueEntry": {
+      "type": "object",
+      "description": "`versions` is present only when a set-aside version exists, and then holds exactly the two readings, field first. `openSession` is non-null while an observation session for this plan is open or paused: a surface must not raise a debriefing or resolution prompt for such an entry — no resolution is ever requested at 2 a.m. `nightEndAt` is never null here: a plan whose night the server could not derive never enters the queue, because the queue would otherwise be asserting that a night it knows nothing about has passed. `nightStartAt` is the origin the plan items' `startMinute`/`endMinute` are counted from, carried so a surface can render the planned timeline of the night it is asking about without deriving it again.",
+      "required": ["planId", "nightEndAt", "plan", "staleDevices"],
+      "properties": {
+        "planId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "nightStartAt": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nightEndAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "plan": {
+          "$ref": "plan.schema.json#/$defs/resource"
+        },
+        "versions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/queueVersion"
+          }
+        },
+        "setAsideVersionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "staleDevices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/staleDevice"
+          }
+        },
+        "sessionId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "openSession": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["sessionId", "status"],
+              "properties": {
+                "sessionId": {
+                  "$ref": "#/$defs/uuid"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["open", "paused"]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "queue": {
+      "type": "object",
+      "description": "GET /v1/plans/debrief-queue. Several pending nights are normal — the list is never truncated to one and never gates another action.",
+      "required": ["generatedAt", "entries"],
+      "properties": {
+        "generatedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/queueEntry"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "skipReason": {
+      "description": "Why a planned target was not observed. It is the registry's own closed list (session-events/target-skipped.schema.json) restated here so the two cannot drift: weather, equipment, time, visibility, other. Read for `state: \"skipped\"` only and ignored on any other state, exactly as `note` is read for `modified` and `skipped` only. Optional everywhere: a target left unticked altogether is recorded as skipped with no reason, and \"did not say\" is a legitimate answer this contract never invents one for.",
+      "type": "string",
+      "enum": ["weather", "equipment", "time", "visibility", "other"]
+    },
+    "targetAdjustment": {
+      "type": "object",
+      "description": "One planned target, ticked or adjusted. `targetId` is a plan item id; an id absent from the chosen base payload is a sign the client is working from another version and is refused rather than guessed at. The done/skipped/modified classification lives here and never in the journal: the registry's target_finished deliberately carries no verdict, and a skipped target produces a target_skipped event instead of a finished one. `note` is the person's own sentence: under `modified` it becomes one `note` event and obeys that type's 500-character bound; under `skipped` it becomes the target_skipped payload's `notes` and is therefore bounded at 300, which the allOf below enforces. `reason` is read for `skipped` only. `partial` (additive) says the target was observed for part of its slot: it produces the same journal events as `done`, and a note under it becomes a `note` event exactly as under `modified`. `acquiredMinutes` (additive) is the observing time the person declares for this target, in whole minutes: read for `done`, `modified` and `partial`, ignored under `skipped` (nothing was acquired), stored with the debriefing (`record`) and never turned into an event. Additive: `frameCount`, `startedAt` and `finishedAt` are the figures and times the person declares for an observed target, and `removed` marks a planned target taken out of the session (sent as `skipped`). Like `acquiredMinutes`, they are stored with the debriefing and never turned into events by themselves.",
+      "required": ["targetId", "state"],
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "state": {
+          "type": "string",
+          "enum": ["done", "skipped", "modified", "partial"]
+        },
+        "reason": {
+          "$ref": "#/$defs/skipReason"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "acquiredMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frameCount": {
+          "description": "Additive: the frames the person declares for this target, a whole number. Read for `done`, `modified` and `partial`; stored with the debriefing; never turned into an event.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "startedAt": {
+          "description": "Additive: when the person says observing this target began, inside the declared window of the night. Read for `done`, `modified` and `partial`; stored; a time the person typed, never an observed one (the events it produces are `reconstructed`).",
+          "$ref": "#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "description": "Additive: when observing this target ended; same rules as `startedAt`.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "removed": {
+          "description": "Additive: the person removed this planned target from the session (« Retirée au débriefing »). It is sent with `state: \"skipped\"`, which stays the value an older reader understands; the session keeps the target as `removed` (`journal.schema.json`, `target.state`), never erasing it. Read for `skipped` only.",
+          "type": "boolean"
+        },
+        "exposureSeconds": {
+          "description": "Additive: the exposure of one frame of this target, in seconds (more than 0, a day at most), as the person declares it; stored with the debriefing and given back by the Journal's `target.exposureSeconds` when Astro Sync has no analysis of the night. Read for `done`, `modified` and `partial`.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "passages": {
+          "description": "Additive: the passages the person declares for this target, one at a time (the debriefing and « Remanier » edit one passage at a time), in the order of the night: each `{ start, end }` with `end` after `start`, none overlapping another (two that touch are one passage, the client joins them). When given, `startedAt` / `finishedAt` are the first start and the last end (the service writes them so when they are absent) and the acquired time is the sum of the passages (pauses inside them deducted on a rework). At most 50.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/declaredPassage"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "properties": {
+                "state": {
+                  "enum": ["done", "modified", "partial"]
+                }
+              }
+            },
+            {
+              "properties": {
+                "note": {
+                  "maxLength": 300
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "record": {
+      "type": "object",
+      "description": "The debriefing as stored with the plan, returned by GET /v1/sessions/{id} as `debrief` and by the web debriefing page: the outcome and instant of the decision, and the per-target adjustments the decision read, validated and normalized — `reason` only under `skipped`, `acquiredMinutes` only under `done`, `modified` or `partial`, notes never (they are journal events). `targets` is empty for an `executed` or `abandoned` night, which read no adjustment. Under `partial`, a plan item this list does not name was skipped with no reason, exactly as the request rule says. Additive: `reason` (under `abandoned` only) and `addedTargets` (the request's, normalized) are stored and given back; `targets` carries the new figures.",
+      "required": ["outcome", "decidedAt", "targets"],
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "decidedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["targetId", "state"],
+            "properties": {
+              "targetId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "state": {
+                "type": "string",
+                "enum": ["done", "skipped", "modified", "partial"]
+              },
+              "reason": {
+                "$ref": "#/$defs/skipReason"
+              },
+              "acquiredMinutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "frameCount": {
+                "description": "Additive: the frames the person declares for this target, a whole number. Read for `done`, `modified` and `partial`; stored with the debriefing; never turned into an event.",
+                "type": "integer",
+                "minimum": 0
+              },
+              "startedAt": {
+                "description": "Additive: when the person says observing this target began, inside the declared window of the night. Read for `done`, `modified` and `partial`; stored; a time the person typed, never an observed one (the events it produces are `reconstructed`).",
+                "$ref": "#/$defs/timestamp"
+              },
+              "finishedAt": {
+                "description": "Additive: when observing this target ended; same rules as `startedAt`.",
+                "$ref": "#/$defs/timestamp"
+              },
+              "removed": {
+                "description": "Additive: the person removed this planned target from the session (« Retirée au débriefing »). It is sent with `state: \"skipped\"`, which stays the value an older reader understands; the session keeps the target as `removed` (`journal.schema.json`, `target.state`), never erasing it. Read for `skipped` only.",
+                "type": "boolean"
+              },
+              "exposureSeconds": {
+                "description": "Additive: the exposure of one frame of this target, in seconds (more than 0, a day at most), as the person declares it; stored with the debriefing and given back by the Journal's `target.exposureSeconds` when Astro Sync has no analysis of the night. Read for `done`, `modified` and `partial`.",
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 86400
+              },
+              "passages": {
+                "description": "Additive: the passages the person declares for this target, one at a time (the debriefing and « Remanier » edit one passage at a time), in the order of the night: each `{ start, end }` with `end` after `start`, none overlapping another (two that touch are one passage, the client joins them). When given, `startedAt` / `finishedAt` are the first start and the last end (the service writes them so when they are absent) and the acquired time is the sum of the passages (pauses inside them deducted on a rework). At most 50.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                  "$ref": "#/$defs/declaredPassage"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "reason": {
+          "$ref": "#/$defs/skipReason"
+        },
+        "addedTargets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/addedTarget"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "lossCause": {
+      "type": "string",
+      "description": "What a lost minute is counted under: the eight pause causes (including `fatigue`), the skip reasons that are not weather (time, visibility; equipment and other are shared), and unexplained for the rest.",
+      "enum": [
+        "clouds",
+        "wind",
+        "dew",
+        "guiding",
+        "meridian_flip",
+        "equipment",
+        "fatigue",
+        "time",
+        "visibility",
+        "other",
+        "unexplained"
+      ]
+    },
+    "guidingLoss": {
+      "type": "object",
+      "description": "One stretch of a night lost to guiding: from the guide star lost (a `star-lost` event of the session analysis's timeline) to the first guiding sample with no error after it — else the end of the guiding session, else the last sample. Derived by packages/portal/src/guiding-losses.js from the latest analysis version.",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "description": "The summary of a night, computed by packages/portal/src/debrief-summary.js on the service, proved by the public fixture debrief-summary.json. Whole minutes only. Durations and causes, never a score or an overall mark: `additionalProperties: false` keeps it so. `guidingIncluded` is false when the service shows no guiding losses (no analysis of the session, or no `analysis.logs`): there is then no guiding line, and a reader says so. `lostByCause` is ordered by minutes, largest first, `unexplained` last; each span is one stretch of lost time on one target — a pause, a target given up (`abandon`), or frames lost to guiding (`rejected`). `perTarget` follows the plan's slots, then the targets added in the field (`planItemId` null, no planned time). Additive: each `perTarget` entry lists its `passages` (a target may be observed in several: `start`/`end` on the clock, whole minutes, inside the session's window; `minutes` = the passage minus its pauses; `auto` = its start or finish was written by the device's clock in automatic mode; `confirmed` = false only for an `auto` passage no `auto_time_confirmed` has confirmed yet; `pauses` = the stretches of it spent paused, with the pause's cause or null) and its `autoUnconfirmedMinutes`, the sum of the `minutes` of its unconfirmed passages, plus (additive) the minutes its other passages spent while the application did not run (`note` events carrying `appStopped`, pauses deducted) that no later `auto_time_confirmed` of the target has confirmed; the summary's `autoUnconfirmedMinutes` is the night's; `launchedSlots` restates the plan as it was launched, on the clock and inside the window, for the strip's « Prévu » row (the planned figure keeps the retouched plan's slots).",
+      "required": [
+        "plannedMinutes",
+        "acquiredMinutes",
+        "lostMinutes",
+        "guidingIncluded",
+        "lostByCause",
+        "perTarget"
+      ],
+      "properties": {
+        "plannedMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "acquiredMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lostMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "guidingIncluded": {
+          "type": "boolean"
+        },
+        "lostByCause": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["cause", "minutes", "spans"],
+            "properties": {
+              "cause": {
+                "$ref": "#/$defs/lossCause"
+              },
+              "minutes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "spans": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["start", "end", "targetId", "kind"],
+                  "properties": {
+                    "start": {
+                      "$ref": "#/$defs/timestamp"
+                    },
+                    "end": {
+                      "$ref": "#/$defs/timestamp"
+                    },
+                    "targetId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["pause", "abandon", "rejected"]
+                    },
+                    "note": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500,
+                      "description": "A `pause` span only, when the person said more than the cause: the `text` of the latest note whose `pauseCause` names that pause (the precision given when a stopped night is resumed). Absent otherwise."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "perTarget": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "targetId",
+              "planItemId",
+              "outcome",
+              "plannedMinutes",
+              "acquiredMinutes"
+            ],
+            "properties": {
+              "targetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "planItemId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "outcome": {
+                "type": "string",
+                "enum": ["done", "partial", "abandoned"]
+              },
+              "plannedMinutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "acquiredMinutes": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "slot": {
+                "description": "The target's planned slot inside the session's window, the stretch `plannedMinutes` counts, so a reader can draw the night as a strip without the plan. Absent for a target added in the field and when the night's start is unknown.",
+                "type": "object",
+                "required": ["start", "end"],
+                "properties": {
+                  "start": {
+                    "$ref": "#/$defs/timestamp"
+                  },
+                  "end": {
+                    "$ref": "#/$defs/timestamp"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "skipReason": {
+                "$ref": "#/$defs/skipReason"
+              },
+              "passages": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "start",
+                    "end",
+                    "minutes",
+                    "auto",
+                    "confirmed",
+                    "pauses"
+                  ],
+                  "properties": {
+                    "start": {
+                      "$ref": "#/$defs/timestamp"
+                    },
+                    "end": {
+                      "$ref": "#/$defs/timestamp"
+                    },
+                    "minutes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "auto": {
+                      "type": "boolean"
+                    },
+                    "confirmed": {
+                      "type": "boolean"
+                    },
+                    "pauses": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["start", "end", "cause"],
+                        "properties": {
+                          "start": {
+                            "$ref": "#/$defs/timestamp"
+                          },
+                          "end": {
+                            "$ref": "#/$defs/timestamp"
+                          },
+                          "cause": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/lossCause"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "autoUnconfirmedMinutes": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "autoUnconfirmedMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "launchedSlots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["planItemId", "targetId", "start", "end"],
+            "properties": {
+              "planItemId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "targetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "start": {
+                "$ref": "#/$defs/timestamp"
+              },
+              "end": {
+                "$ref": "#/$defs/timestamp"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "segments": {
+          "description": "Computed strip geometry in epoch minutes, including launched boxes and observed passages. Null when nothing can be drawn.",
+          "type": ["object", "null"],
+          "required": ["start", "end", "hasAuto", "targets"],
+          "properties": {
+            "start": {
+              "type": "integer"
+            },
+            "end": {
+              "type": "integer"
+            },
+            "hasAuto": {
+              "type": "boolean"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "targetId",
+                  "outcome",
+                  "start",
+                  "end",
+                  "segments",
+                  "passages"
+                ],
+                "properties": {
+                  "targetId": {
+                    "type": ["string", "null"]
+                  },
+                  "outcome": {
+                    "enum": ["done", "partial", "abandoned"]
+                  },
+                  "start": {
+                    "type": ["integer", "null"]
+                  },
+                  "end": {
+                    "type": ["integer", "null"]
+                  },
+                  "segments": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["start", "end", "kind"],
+                      "properties": {
+                        "start": {
+                          "type": "integer"
+                        },
+                        "end": {
+                          "type": "integer"
+                        },
+                        "kind": {
+                          "enum": ["acquired", "pause", "rejected", "abandoned"]
+                        },
+                        "cause": {
+                          "type": "string"
+                        },
+                        "auto": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "passages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["start", "end", "auto"],
+                      "properties": {
+                        "start": {
+                          "type": "integer"
+                        },
+                        "end": {
+                          "type": "integer"
+                        },
+                        "auto": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "request": {
+      "type": "object",
+      "description": "POST /v1/plans/{planId}/debrief. `baseVersion` is required when the queue offered two versions. `session` is the window the PERSON declares for the whole night; it decides the observation session's own `startedAt`/`finishedAt`, and the server falls back to the derived night boundaries when it is absent. It never moves a per-target timestamp: a target's time comes from its own plan slot when there is one, and a slot lying outside the declared window is emitted unchanged rather than clamped — the journal states what was planned and what the person declared, and resolves neither into the other. `sessionAdjustments` is read for `partial` only, and under `partial` a target it does not name is treated as skipped and still produces a `target_skipped` event — with no reason, because none was given. `executed` reads no adjustments at all and skips nothing; `abandoned` creates no session and therefore no event of any kind. Additive: `addedTargets` lists the targets observed that the plan did not hold (read for `executed` and `partial`; at most 32); `reason` (`skipReason`) is read for `abandoned` only and says why the night was not carried out. **An `abandoned` outcome no longer leaves the night without a session**: it creates, or keeps, a finished session of outcome `abandoned` carrying that reason (an empty one, or the one that already exists and holds no event; a session that holds events is still refused `409 plan_not_debriefable`), so the Journal keeps the night. A session created this way has `origin: \"debrief\"`, no event of any kind. Additive: `addedEvents`, `eventReplacements` and `eventMoves` (the signals the person adds, modifies or places after the fact, as the first layer of a rework), and `exposureSeconds` on an adjustment and on an added target.",
+      "required": ["outcome"],
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "baseVersion": {
+          "type": "string",
+          "enum": ["current", "set_aside"]
+        },
+        "setAsideVersionId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "session": {
+          "type": "object",
+          "properties": {
+            "startedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "finishedAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          },
+          "additionalProperties": false
+        },
+        "sessionAdjustments": {
+          "type": "object",
+          "required": ["targets"],
+          "properties": {
+            "targets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/targetAdjustment"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "`executed` and `partial`: a `note` event of the night. `abandoned` (additive): the night's own note (`night.notes` of `GET /v1/sessions/{id}`), kept when the night holds none; no event is written."
+        },
+        "addedTargets": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/addedTarget"
+          }
+        },
+        "reason": {
+          "$ref": "#/$defs/skipReason"
+        },
+        "addedEvents": {
+          "description": "Additive: events the person adds after the fact (a note, a condition, an equipment issue, a pause), **in the forms and under the rules of `PUT /v1/sessions/{id}/rework`** (`session-rework.schema.json`, `addedEvent`; at most 100). Read for `executed` and `partial` (`400 invalid_request` for `abandoned`, a night with no event). They are applied as the first layer of a rework of the session the debriefing writes: `at` must fall inside the session's window, a `targetId` must be a target of the session, the catalogue or the space (else `422 target_not_found`), the events read `timing: \"reconstructed\"`, and the session's `reworkRevision` becomes 1. The append-only log of events is not touched. A debriefing without them changes nothing.",
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "session-rework.schema.json#/$defs/addedEvent"
+          }
+        },
+        "eventReplacements": {
+          "description": "Additive: signals the person modifies after the fact — in the forms and under the rules of `PUT /v1/sessions/{id}/rework` (`session-rework.schema.json`, `eventReplacement`; at most 100). Read for `executed` and `partial` (`400 invalid_request` for `abandoned`). The original (a signal observed in the field, say) stays in the log and is hidden from the effective events; the modified one is added by the first layer of the rework. `404 event_not_found`, `409 event_not_replaceable`, `409 event_already_replaced` as for the rework.",
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "session-rework.schema.json#/$defs/eventReplacement"
+          }
+        },
+        "eventMoves": {
+          "description": "Additive: the placements of events the session already holds, on a target or on the whole night (`session-rework.schema.json`, `eventMove`; at most 200), under the same rules and the same reading as `addedEvents` (`404 event_not_found` for an event the session does not hold).",
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "$ref": "session-rework.schema.json#/$defs/eventMove"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "description": "Always 200. `replayed` is true when the plan had already been debriefed: the existing plan and session are returned unchanged, nothing is created, and the submitted body has no effect — the \"no double prompts, no duplicate sessions\" rule. For an `abandoned` outcome `session` is now the finished session of outcome `abandoned` (never `null` once the service writes it) and `createdSession` says whether this call created it.",
+      "required": [
+        "plan",
+        "session",
+        "outcome",
+        "decidedAt",
+        "createdSession",
+        "eventsCreated",
+        "replayed"
+      ],
+      "properties": {
+        "plan": {
+          "$ref": "plan.schema.json#/$defs/resource"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "$ref": "session.schema.json#/$defs/resource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "decidedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "createdSession": {
+          "type": "boolean"
+        },
+        "eventsCreated": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "replayed": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "addedTarget": {
+      "description": "Additive: a target the person observed that the plan did not hold (« Ajouter une cible » at the debriefing). `targetId` is the **target key**: a catalogue id, or an id of the space's own targets (never a plan item id, there is none); a key the space does not know is refused `400 unknown_target_adjustment` with the `targetId`, as for an adjustment. The session keeps it as an `added` target. `acquiredMinutes`, `frameCount` and `filter` are the figures the person declares, `startedAt` and `finishedAt` the times, inside the declared window.",
+      "type": "object",
+      "required": ["targetId"],
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "startedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "acquiredMinutes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "exposureSeconds": {
+          "description": "Additive: the exposure of one frame of this target, in seconds, as the person declares it (more than 0, a day at most).",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "passages": {
+          "description": "Additive: the passages the person declares for this target, one at a time (the debriefing and « Remanier » edit one passage at a time), in the order of the night: each `{ start, end }` with `end` after `start`, none overlapping another (two that touch are one passage, the client joins them). When given, `startedAt` / `finishedAt` are the first start and the last end (the service writes them so when they are absent) and the acquired time is the sum of the passages (pauses inside them deducted on a rework). At most 50.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/declaredPassage"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "declaredPassage": {
+      "type": "object",
+      "description": "Additive: one passage the person declares — a span of the night.",
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/queue"
+    },
+    {
+      "$ref": "#/$defs/request"
+    },
+    {
+      "$ref": "#/$defs/response"
+    },
+    {
+      "$ref": "#/$defs/record"
+    },
+    {
+      "$ref": "#/$defs/summary"
+    }
+  ]
+}

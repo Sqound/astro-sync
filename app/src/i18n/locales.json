@@ -1,0 +1,165 @@
+{
+  "$comment": "Generated from the locale list of the contracts package; never edit by hand.",
+  "version": 1,
+  "defaultLocale": "en",
+  "locales": [
+    {
+      "tag": "en",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ".",
+        "rangeFirstMonth": "written",
+        "midSentenceCase": "lower",
+        "groupSeparator": ",",
+        "groupFrom": "fourDigits"
+      },
+      "language": "en",
+      "name": "English",
+      "geocoder": "en"
+    },
+    {
+      "tag": "fr",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "omitted",
+        "midSentenceCase": "lower",
+        "groupSeparator": " ",
+        "groupFrom": "fourDigits"
+      },
+      "language": "fr",
+      "name": "Français",
+      "stellarium": "fr",
+      "geocoder": "fr"
+    },
+    {
+      "tag": "ja",
+      "typography": {
+        "spacing": "han",
+        "sentenceSeparator": "",
+        "decimalSeparator": ".",
+        "rangeFirstMonth": "written",
+        "midSentenceCase": "keep",
+        "groupSeparator": ",",
+        "groupFrom": "fourDigits"
+      },
+      "language": "ja",
+      "name": "日本語",
+      "stellarium": "ja"
+    },
+    {
+      "tag": "de",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "written",
+        "midSentenceCase": "keep",
+        "groupSeparator": ".",
+        "groupFrom": "fourDigits"
+      },
+      "language": "de",
+      "name": "Deutsch",
+      "stellarium": "de",
+      "geocoder": "de"
+    },
+    {
+      "tag": "es",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "omitted",
+        "midSentenceCase": "lower",
+        "groupSeparator": ".",
+        "groupFrom": "fiveDigits"
+      },
+      "language": "es",
+      "name": "Español",
+      "stellarium": "es"
+    },
+    {
+      "tag": "it",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "omitted",
+        "midSentenceCase": "lower",
+        "groupSeparator": ".",
+        "groupFrom": "fiveDigits"
+      },
+      "language": "it",
+      "name": "Italiano",
+      "stellarium": "it"
+    },
+    {
+      "tag": "pt-BR",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "omitted",
+        "midSentenceCase": "lower",
+        "groupSeparator": ".",
+        "groupFrom": "fourDigits"
+      },
+      "language": "pt",
+      "region": "BR",
+      "name": "Português",
+      "stellarium": "pt_BR"
+    },
+    {
+      "tag": "zh-Hans",
+      "typography": {
+        "spacing": "han",
+        "sentenceSeparator": "",
+        "decimalSeparator": ".",
+        "rangeFirstMonth": "written",
+        "midSentenceCase": "keep",
+        "groupSeparator": ",",
+        "groupFrom": "fourDigits"
+      },
+      "language": "zh",
+      "script": "Hans",
+      "name": "简体中文",
+      "stellarium": "zh_CN",
+      "deviceRegions": ["CN", "SG"],
+      "deviceDefault": true
+    },
+    {
+      "tag": "zh-Hant",
+      "typography": {
+        "spacing": "han",
+        "sentenceSeparator": "",
+        "decimalSeparator": ".",
+        "rangeFirstMonth": "written",
+        "midSentenceCase": "keep",
+        "groupSeparator": ",",
+        "groupFrom": "fourDigits"
+      },
+      "language": "zh",
+      "script": "Hant",
+      "name": "繁體中文",
+      "stellarium": "zh_TW",
+      "deviceRegions": ["TW", "HK", "MO"]
+    },
+    {
+      "tag": "ru",
+      "typography": {
+        "spacing": "latin",
+        "sentenceSeparator": " ",
+        "decimalSeparator": ",",
+        "rangeFirstMonth": "omitted",
+        "midSentenceCase": "lower",
+        "groupSeparator": " ",
+        "groupFrom": "fourDigits"
+      },
+      "language": "ru",
+      "name": "Русский",
+      "stellarium": "ru"
+    }
+  ]
+}

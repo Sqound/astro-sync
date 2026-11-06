@@ -1,0 +1,515 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/data-import.schema.json",
+  "title": "Data import routes",
+  "description": "`POST /v1/data-import/preview` and `POST /v1/data-import/confirm` (« Importer mes données »), on a private portal and where spaces are open. The body is the `planastro-export-<date>.zip` of « Exporter mes données » itself (../export/data-export-*.schema.json), read under the space's `storage.max_file_bytes` and under a cap of the service's own (`413` `payload_too_large` naming `reason` and `limitBytes`). The space's offer is applied to what enters: a plan its offer would not let it create (one plan per night, the plan guard), a multi-night plan or a mosaic it cannot hold, enters ARCHIVED and the report says how many (`notes.archivedFor…`); the captures (images and files) are not part of the export and are not imported. The preview (the dry run) writes nothing and answers the plan; the confirm writes, in one transaction, the records « to import » and answers the same plan with what was written. A record whose identifier ANOTHER space of this portal holds (an export of one space imported into another) is not dropped: it enters with a new identifier derived from the importing space, every link to it rewritten (`notes.reidentified`), and a second import finds it again. A record is « already there » when its identifier exists in the space: it is never overwritten nor merged.",
+  "$defs": {
+    "part": {
+      "type": "object",
+      "required": ["present", "toImport", "alreadyThere"],
+      "properties": {
+        "present": {
+          "type": "boolean",
+          "description": "Whether the file carries the box's JSON; false reads « absent du fichier »."
+        },
+        "toImport": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "alreadyThere": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "preview": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "exportedAt",
+        "parts",
+        "kinds",
+        "notes",
+        "totals"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "exportedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "parts": {
+          "type": "object",
+          "required": [
+            "plans",
+            "places",
+            "equipment",
+            "framings",
+            "journal",
+            "sky-measurements"
+          ],
+          "properties": {
+            "plans": {
+              "$ref": "#/$defs/part"
+            },
+            "places": {
+              "$ref": "#/$defs/part"
+            },
+            "equipment": {
+              "$ref": "#/$defs/part"
+            },
+            "framings": {
+              "$ref": "#/$defs/part"
+            },
+            "journal": {
+              "$ref": "#/$defs/part"
+            },
+            "sky-measurements": {
+              "$ref": "#/$defs/part"
+            }
+          },
+          "additionalProperties": false
+        },
+        "kinds": {
+          "type": "object",
+          "description": "The plans' box split into what it holds, each with its own words -- `plans` (the plans), `nights` (the planner's nights, kept in its document), `projects` (the multi-night plans). `parts.plans` is their sum.",
+          "required": ["plans", "nights", "projects"],
+          "properties": {
+            "plans": {
+              "$ref": "#/$defs/part2"
+            },
+            "nights": {
+              "$ref": "#/$defs/part2"
+            },
+            "projects": {
+              "$ref": "#/$defs/part2"
+            }
+          },
+          "additionalProperties": false
+        },
+        "notes": {
+          "type": "object",
+          "required": [
+            "reidentified",
+            "reidentifiedKinds",
+            "missingReference",
+            "unreadable",
+            "unknownFiles",
+            "archivedForNight",
+            "archivedForPlanLimit",
+            "archivedForCapability"
+          ],
+          "properties": {
+            "reidentified": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records whose identifier another space of this portal holds, imported with a NEW identifier (every link to them rewritten), counted in their box's `toImport`. Nothing is skipped for this reason."
+            },
+            "reidentifiedKinds": {
+              "type": "object",
+              "description": "`reidentified` by kind: `plans`, `projects` (multi-night plans), `framings`, `equipment`, `sessions` (the journal's nights).",
+              "required": [
+                "plans",
+                "projects",
+                "framings",
+                "equipment",
+                "sessions"
+              ],
+              "properties": {
+                "plans": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "projects": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "framings": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "equipment": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sessions": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "missingReference": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records that name a plan or a framing neither the file nor the space holds: skipped."
+            },
+            "unreadable": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records this portal cannot store (a place without its coordinates, a framing without its J2000 centre, a horizon without a place where the planner document keeps none, …): skipped."
+            },
+            "unknownFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Names in the archive the format does not know: ignored."
+            },
+            "archivedForNight": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Pending plans the space's offer cannot hold live because their night already holds a plan (`planner.multiple` false): imported ARCHIVED, counted in the plans' `toImport`."
+            },
+            "archivedForPlanLimit": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Pending plans beyond the offer's numeric guard (`sync.plan_limit`): imported ARCHIVED, counted in the plans' `toImport`."
+            },
+            "archivedForCapability": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Multi-night plans and mosaic framings a space without `planner.mosaic` cannot hold live: imported ARCHIVED, counted in their box's `toImport`."
+            }
+          },
+          "additionalProperties": false
+        },
+        "totals": {
+          "type": "object",
+          "required": ["toImport", "alreadyThere"],
+          "properties": {
+            "toImport": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "alreadyThere": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "confirm": {
+      "type": "object",
+      "required": [
+        "formatVersion",
+        "exportedAt",
+        "parts",
+        "kinds",
+        "notes",
+        "totals",
+        "written"
+      ],
+      "properties": {
+        "formatVersion": {
+          "const": 1
+        },
+        "exportedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "parts": {
+          "type": "object",
+          "required": [
+            "plans",
+            "places",
+            "equipment",
+            "framings",
+            "journal",
+            "sky-measurements"
+          ],
+          "properties": {
+            "plans": {
+              "$ref": "#/$defs/part"
+            },
+            "places": {
+              "$ref": "#/$defs/part"
+            },
+            "equipment": {
+              "$ref": "#/$defs/part"
+            },
+            "framings": {
+              "$ref": "#/$defs/part"
+            },
+            "journal": {
+              "$ref": "#/$defs/part"
+            },
+            "sky-measurements": {
+              "$ref": "#/$defs/part"
+            }
+          },
+          "additionalProperties": false
+        },
+        "kinds": {
+          "type": "object",
+          "description": "The plans' box split into what it holds, each with its own words -- `plans` (the plans), `nights` (the planner's nights, kept in its document), `projects` (the multi-night plans). `parts.plans` is their sum.",
+          "required": ["plans", "nights", "projects"],
+          "properties": {
+            "plans": {
+              "$ref": "#/$defs/part2"
+            },
+            "nights": {
+              "$ref": "#/$defs/part2"
+            },
+            "projects": {
+              "$ref": "#/$defs/part2"
+            }
+          },
+          "additionalProperties": false
+        },
+        "notes": {
+          "type": "object",
+          "required": [
+            "reidentified",
+            "reidentifiedKinds",
+            "missingReference",
+            "unreadable",
+            "unknownFiles",
+            "archivedForNight",
+            "archivedForPlanLimit",
+            "archivedForCapability"
+          ],
+          "properties": {
+            "reidentified": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records whose identifier another space of this portal holds, imported with a NEW identifier (every link to them rewritten), counted in their box's `toImport`. Nothing is skipped for this reason."
+            },
+            "reidentifiedKinds": {
+              "type": "object",
+              "description": "`reidentified` by kind: `plans`, `projects` (multi-night plans), `framings`, `equipment`, `sessions` (the journal's nights).",
+              "required": [
+                "plans",
+                "projects",
+                "framings",
+                "equipment",
+                "sessions"
+              ],
+              "properties": {
+                "plans": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "projects": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "framings": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "equipment": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sessions": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "missingReference": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records that name a plan or a framing neither the file nor the space holds: skipped."
+            },
+            "unreadable": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Records this portal cannot store (a place without its coordinates, a framing without its J2000 centre, a horizon without a place where the planner document keeps none, …): skipped."
+            },
+            "unknownFiles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Names in the archive the format does not know: ignored."
+            },
+            "archivedForNight": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Pending plans the space's offer cannot hold live because their night already holds a plan (`planner.multiple` false): imported ARCHIVED, counted in the plans' `toImport`."
+            },
+            "archivedForPlanLimit": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Pending plans beyond the offer's numeric guard (`sync.plan_limit`): imported ARCHIVED, counted in the plans' `toImport`."
+            },
+            "archivedForCapability": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Multi-night plans and mosaic framings a space without `planner.mosaic` cannot hold live: imported ARCHIVED, counted in their box's `toImport`."
+            }
+          },
+          "additionalProperties": false
+        },
+        "totals": {
+          "type": "object",
+          "required": ["toImport", "alreadyThere"],
+          "properties": {
+            "toImport": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "alreadyThere": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "written": {
+          "type": "object",
+          "required": ["total", "parts", "kinds"],
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "parts": {
+              "type": "object",
+              "required": [
+                "plans",
+                "places",
+                "equipment",
+                "framings",
+                "journal",
+                "sky-measurements"
+              ],
+              "properties": {
+                "plans": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "places": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "equipment": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "framings": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "journal": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sky-measurements": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            },
+            "kinds": {
+              "type": "object",
+              "required": ["plans", "nights", "projects"],
+              "properties": {
+                "plans": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "nights": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "projects": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "not_an_export",
+                "unsupported_format_version",
+                "payload_too_large",
+                "entitlement_read_only",
+                "not_found",
+                "data_import_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        "formatVersion": {
+          "type": "integer",
+          "description": "unsupported_format_version: the version the file follows."
+        },
+        "part": {
+          "enum": [
+            "plans",
+            "places",
+            "equipment",
+            "framings",
+            "journal",
+            "sky-measurements"
+          ],
+          "description": "not_an_export: the box whose JSON is not one or breaks its schema."
+        },
+        "reason": {
+          "type": "string",
+          "description": "not_an_export: why the archive was not read. payload_too_large: the cap that was met -- `storage_max_file_bytes` (the space's), `data_import_max_bytes` (the service's cap on the file) or `data_import_max_content_bytes` (its cap on what the file inflates to)."
+        },
+        "limitBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "payload_too_large on the file: the ceiling that was met, in bytes."
+        },
+        "entry": {
+          "type": "string",
+          "description": "not_an_export: the archive entry that is damaged."
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "part2": {
+      "type": "object",
+      "required": ["toImport", "alreadyThere"],
+      "properties": {
+        "toImport": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "alreadyThere": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "description": "A count of records to import and of records already there."
+    }
+  }
+}

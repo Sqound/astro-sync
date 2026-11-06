@@ -1,0 +1,132 @@
+{
+  "contract": "sign-in.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "current-space-for-device",
+      "description": "The screen « Espace Astro Portal » of the application: the address of the space, its web address, and the name of this device.",
+      "given": {
+        "authMode": "email-code",
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/currentSpace"
+      }
+    },
+    {
+      "id": "current-space-with-a-demo-mode",
+      "description": "The same read for a space the service's configuration allows a demo mode for: `demoModeAllowed` is true, and the application offers its demo mode. Any other space says nothing of it.",
+      "given": {
+        "authMode": "email-code",
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "demo@exemple.fr",
+            "webUrl": "https://portal.example.test",
+            "demoModeAllowed": true
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/currentSpace"
+      }
+    },
+    {
+      "id": "current-space-for-web-session",
+      "description": "The same read from a web session: no device.",
+      "given": {
+        "authMode": "email-code",
+        "publicUrl": "https://portal.example.test"
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": { "cookie": "__Host-astro_portal_session=<opaque>" }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": null
+        },
+        "schema": "sign-in.schema.json#/$defs/currentSpace"
+      }
+    },
+    {
+      "id": "current-space-without-credential",
+      "description": "No credential, or a revoked one.",
+      "given": { "authMode": "email-code" },
+      "request": { "method": "GET", "path": "/api/v1/space", "headers": {} },
+      "response": {
+        "status": 401,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "authentication_required",
+            "message": "Authentication required."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "current-space-on-private-server",
+      "description": "A private server signing in by password has no such route.",
+      "given": { "authMode": "password" },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 404,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": { "code": "not_found", "message": "Not found." }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    }
+  ]
+}

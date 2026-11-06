@@ -1,0 +1,597 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/project.schema.json",
+  "title": "Astro Portal API v1 project resources",
+  "description": "A project is the unit of intention that sits above the night plans: one target or one saved framing, an integration goal, and the snapshot of what a new night inherits (place, equipment, constraints). `project` is an internal name: an observer reads « plan multi-nuits ». The night plans stay the unit of execution; the link is carried by each plan item's optional `projectId` (`plan.schema.json`, `planItem`), never by the plan. A project carries no progress: progress is computed from the nights' debriefings. Writing one needs `planner.mosaic`; reading never does. One project read alone also carries the integrations Astro Sync sent for it, their totals by filter and the image of the plan (`integration.schema.json`). A night already run, or a plan of one night, is attached to a multi-night plan of its target afterwards (`POST /v1/projects/{projectId}/nights`, `nightsWrite`), detached (`DELETE …/nights/{nightId}`), or brought into a new one (`POST /v1/projects`, `create`); the project read alone lists its `nights`. See api/v1.md, section « Projects », and projects.md.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "description": "`active` while nights are still being planned; `finished` when the person says the goal is reached or stops it; `archived` only through `DELETE` (it hides the project from the current lists, never its nights).",
+      "enum": ["active", "finished", "archived"]
+    },
+    "target": {
+      "description": "The one target of the project: a catalogue object (`targetId`) or a saved framing (`framingId`), exactly one of the two. `name` is the designation shown first (« NGC 7000 »), `commonName` the common name under it (« Nébuleuse de l’Amérique du Nord »).",
+      "allOf": [
+        {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+            "framingId": { "$ref": "#/$defs/uuid" },
+            "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+            "commonName": { "type": "string", "minLength": 1, "maxLength": 300 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "oneOf": [{ "required": ["targetId"] }, { "required": ["framingId"] }]
+        }
+      ]
+    },
+    "place": {
+      "description": "The observing place a new night inherits. `horizonMask` is the place's mask as the planner stores it; the server writes it back on the 36-point grid (`normaliseHorizonMask`).",
+      "type": "object",
+      "required": ["name", "latitude", "longitude"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "timeZone": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "horizonMask": {
+          "$ref": "../planner/horizon-mask.schema.json#/$defs/mask"
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraints": {
+      "description": "The plan's own constraints, in degrees: the minimum altitude, the minimum separation from the Moon, and that minimum by filter name (an empty object when no filter has its own).",
+      "type": "object",
+      "required": [
+        "minAltitude",
+        "moonSeparationMinimum",
+        "moonSeparationMinimumByFilter"
+      ],
+      "properties": {
+        "minAltitude": { "type": "number", "minimum": 0, "maximum": 90 },
+        "moonSeparationMinimum": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180
+        },
+        "moonSeparationMinimumByFilter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 180
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "write": {
+      "description": "The body of `PUT /v1/projects/{projectId}`. `status` is optional: absent, a creation is `active` and an update keeps the current status (an archived project stays archived); `active` or `finished` sets it, which also brings an archived project back. `archived` is never written here: `DELETE` archives.",
+      "type": "object",
+      "required": [
+        "target",
+        "goalMinutes",
+        "place",
+        "equipment",
+        "constraints"
+      ],
+      "properties": {
+        "status": { "enum": ["active", "finished"] },
+        "target": { "$ref": "#/$defs/target" },
+        "goalMinutes": { "type": "integer", "minimum": 30, "maximum": 6000 },
+        "place": { "$ref": "#/$defs/place" },
+        "equipment": {
+          "type": "object",
+          "description": "The plan's equipment object (`plan.schema.json`, payload `equipment`), stored as given."
+        },
+        "constraints": { "$ref": "#/$defs/constraints" }
+      },
+      "additionalProperties": false
+    },
+    "create": {
+      "description": "The body of `POST /v1/projects`, a creation that needs no `If-Match`: the fields of `write`, an optional `id` (generated by the service when absent), and « à partir de plans déjà existants » the nights of the journal (`fromSessionIds`) and the plans of one night (`fromPlanIds`) of the target to attach in the same request. Every night and plan is checked before the project is created: nothing is created unless all can be attached.",
+      "type": "object",
+      "required": [
+        "target",
+        "goalMinutes",
+        "place",
+        "equipment",
+        "constraints"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "status": { "enum": ["active", "finished"] },
+        "target": { "$ref": "#/$defs/target" },
+        "goalMinutes": { "type": "integer", "minimum": 30, "maximum": 6000 },
+        "place": { "$ref": "#/$defs/place" },
+        "equipment": { "type": "object" },
+        "constraints": { "$ref": "#/$defs/constraints" },
+        "fromSessionIds": { "$ref": "#/$defs/idList" },
+        "fromPlanIds": { "$ref": "#/$defs/idList" }
+      },
+      "additionalProperties": false
+    },
+    "idList": {
+      "description": "Identifiers of nights (observation sessions) or of plans, at most fifty; a repeat counts once.",
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/uuid" }
+    },
+    "candidates": {
+      "description": "`GET /v1/projects/candidates?targetId=|framingId=`: the nights of the journal and the plans of one night of a target that has no multi-night plan yet, the earliest first, each with `link: null` and `projectId`, the other multi-night plan it already belongs to (or `null`). What « À partir de plans déjà existants » lists before the plan is created; an integration counts for its night whichever plan it follows.",
+      "type": "object",
+      "required": ["candidates"],
+      "properties": {
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/night" } }
+      },
+      "additionalProperties": false
+    },
+    "nightsWrite": {
+      "description": "The body of `POST /v1/projects/{projectId}/nights`: the nights of the journal (`sessionIds`) and the plans of one night (`planIds`) to attach, at least one id in all. A night is attached through its plan's item of the target when its plan has one, else by the night itself; a plan of one night through its item of the target.",
+      "type": "object",
+      "properties": {
+        "sessionIds": { "$ref": "#/$defs/idList" },
+        "planIds": { "$ref": "#/$defs/idList" }
+      },
+      "allOf": [
+        {
+          "anyOf": [{ "required": ["sessionIds"] }, { "required": ["planIds"] }]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "night": {
+      "description": "One night of a multi-night plan, or one candidate. `sessionId` is the night of the journal (`null` for a plan of one night not run yet), `planId` its plan of one night (`null` for a night run without a plan), `eveningDate` the date of the night (its plan's date, else the evening of its start at its longitude, local noon to local noon). `link` says what carries the link: `plan` (the plan item of the target names the multi-night plan) or `night` (the night itself, when it has no plan item of the target); `null` on a candidate. `integrationCount` and `integrationSeconds` add up the integrations of the night counted for this multi-night plan. `projectId`, on a candidate only, is the other multi-night plan it belongs to, or `null`: attaching it moves it. `state` says where the night stands as the single page of the multi-night plan draws it (« À venir » / « Sessions faites »): `upcoming` (a promise: a plan not run yet, or a session still open or paused), `to_debrief` (the night is over, its debriefing is still to be done: a finished session of a plan without a debriefing, or a plan whose night is past and was not carried out in the application), `done` (debriefed, or a finished session without a plan). Written by the service on every night and every candidate; optional in the schema so that a reader of an earlier answer still validates.",
+      "type": "object",
+      "required": [
+        "sessionId",
+        "planId",
+        "planName",
+        "eveningDate",
+        "sessionStatus",
+        "link",
+        "integrationCount",
+        "integrationSeconds"
+      ],
+      "properties": {
+        "sessionId": {
+          "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        },
+        "planId": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+        "planName": { "type": ["string", "null"] },
+        "eveningDate": {
+          "anyOf": [
+            { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+            { "type": "null" }
+          ]
+        },
+        "sessionStatus": { "enum": ["open", "paused", "finished", null] },
+        "link": { "enum": ["plan", "night", null] },
+        "state": { "enum": ["upcoming", "to_debrief", "done"] },
+        "integrationCount": { "type": "integer", "minimum": 0 },
+        "integrationSeconds": { "type": "number", "minimum": 0 },
+        "projectId": {
+          "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }]
+        }
+      },
+      "additionalProperties": false
+    },
+    "nights": {
+      "description": "`GET /v1/projects/{projectId}/nights`, and the answer of `POST …/nights` and `DELETE …/nights/{nightId}`: the nights of the plan, the earliest first, and the candidates — the nights of the journal and the plans of one night of the same target that are not among them, the earliest first.",
+      "type": "object",
+      "required": ["projectId", "nights", "candidates"],
+      "properties": {
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "nights": { "type": "array", "items": { "$ref": "#/$defs/night" } },
+        "candidates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/night" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "id",
+        "revision",
+        "status",
+        "target",
+        "goalMinutes",
+        "place",
+        "equipment",
+        "constraints",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "target": { "$ref": "#/$defs/target" },
+        "goalMinutes": { "type": "integer", "minimum": 30, "maximum": 6000 },
+        "place": { "$ref": "#/$defs/place" },
+        "equipment": { "type": "object" },
+        "constraints": { "$ref": "#/$defs/constraints" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" },
+        "integrations": {
+          "description": "On `GET /v1/projects/{projectId}` only, never on the list: the integrations Astro Sync sent for the plan, the earliest night first (`integration.schema.json`).",
+          "type": "array",
+          "items": { "$ref": "integration.schema.json#/$defs/integration" }
+        },
+        "totalsByFilter": {
+          "description": "The integrations added up by filter, computed by the service; with `integrations`.",
+          "type": "array",
+          "items": { "$ref": "integration.schema.json#/$defs/filterTotal" }
+        },
+        "planCapture": {
+          "description": "The image of the multi-night plan (the newest capture of role `plan`, `uploads.md`), `null` when Astro Sync sent none; with `integrations`.",
+          "anyOf": [
+            { "$ref": "integration.schema.json#/$defs/planCapture" },
+            { "type": "null" }
+          ]
+        },
+        "planCaptureCount": {
+          "description": "How many images of the plan the space holds (the newest is `planCapture`); with `integrations`.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "allSessionsDone": {
+          "description": "With `nights` (on `GET /v1/projects/{projectId}` and on the answer of `POST /v1/projects`, never on the list): true when no night of the plan is `upcoming` or `to_debrief` and at least one is `done`. It is what makes « Image du plan » the action of the page and what lets the Journal group the plan's sessions once the plan is also `finished` (`status`).",
+          "type": "boolean"
+        },
+        "nights": {
+          "description": "On `GET /v1/projects/{projectId}` and on the answer of `POST /v1/projects`, never on the list: the nights of the plan, the earliest first — planned from it or attached since.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/night" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "trashResponse": {
+      "description": "`POST /v1/projects/{projectId}/trash` (web session only), « Supprimer ce plan multi-nuits »: the multi-night plan goes to the trash for `daysRemaining` days with its nights still to come (`planIds`: its plans of one night not run); its nights already run are detached and stay in the Journal as ordinary sessions (`detachedSessionCount`). `409 project_in_progress` (with `planIds`) when one of its nights runs on a device; `{ \"force\": true }` deletes it anyway, that night with it. `DELETE /v1/projects/{projectId}` still archives.",
+      "type": "object",
+      "required": [
+        "project",
+        "deletedAt",
+        "purgeAt",
+        "daysRemaining",
+        "planIds",
+        "detachedSessionCount"
+      ],
+      "properties": {
+        "project": {
+          "$ref": "#/$defs/resource"
+        },
+        "deletedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "purgeAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "daysRemaining": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uuid"
+          }
+        },
+        "detachedSessionCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "restoreResponse": {
+      "description": "`POST /v1/projects/{projectId}/restore`: the multi-night plan back from the trash with the plans that went with it (`plansRestored`; one whose night is taken since, or beyond the plan limit, stays in the trash: `plansKept`) and the nights it was detached from, when they are still free.",
+      "type": "object",
+      "required": ["project", "plansRestored", "plansKept"],
+      "properties": {
+        "project": {
+          "$ref": "#/$defs/resource"
+        },
+        "plansRestored": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "plansKept": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "eraseResponse": {
+      "description": "`POST /v1/projects/{projectId}/erase`: the multi-night plan of the trash erased for good, with the plans that went with it (`plansErased`) and its integrations; its image stays in the captures.",
+      "type": "object",
+      "required": ["projectId", "erased", "plansErased"],
+      "properties": {
+        "projectId": {
+          "$ref": "#/$defs/uuid"
+        },
+        "erased": {
+          "const": true
+        },
+        "plansErased": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "nightsStatistics": {
+      "description": "GET /v1/projects/{projectId}/analyses (w61): the statistics of the nights of a multi-night plan, night by night and together — « Les nuits de cette image » of a capture of the plan. `nights`: each night run of the plan (a plan of one night not run yet is not listed), the earliest first, with its guiding summary and its frames as `GET /v1/sessions/{id}` gives them (`session.schema.json` `guidingSummary`, `posesSummary`), its place's zone and the medians of its frames (`fwhmPixels`, `eccentricity`); `analysed: false` for a night without an analysis. `cumulative`: the analysed nights together — each axis's RMS weighted by the night's guided time (√(Σ tᵢ·rmsᵢ² / Σ tᵢ)), the total from the two axes; frames, times and dithers summed. The traces stay on each night's own read. Never gated by a capability; `404 project_not_found`.",
+      "type": "object",
+      "required": ["projectId", "nights", "cumulative"],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nights": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sessionId",
+              "eveningDate",
+              "startedAt",
+              "zone",
+              "analysed",
+              "guidingSummary",
+              "posesSummary",
+              "fwhmPixels",
+              "eccentricity"
+            ],
+            "properties": {
+              "sessionId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "eveningDate": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "startedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "zone": {
+                "$ref": "session.schema.json#/$defs/nightZone"
+              },
+              "analysed": {
+                "type": "boolean"
+              },
+              "guidingSummary": {
+                "anyOf": [
+                  {
+                    "$ref": "session.schema.json#/$defs/guidingSummary"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "posesSummary": {
+                "anyOf": [
+                  {
+                    "$ref": "session.schema.json#/$defs/posesSummary"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "fwhmPixels": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "eccentricity": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "cumulative": {
+          "type": "object",
+          "required": [
+            "nights",
+            "guidedNights",
+            "rmsRaArcsec",
+            "rmsDecArcsec",
+            "rmsTotalArcsec",
+            "guidedSeconds",
+            "dithers",
+            "poses"
+          ],
+          "properties": {
+            "nights": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "guidedNights": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rmsRaArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rmsDecArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "rmsTotalArcsec": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "guidedSeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "dithers": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "poses": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "total",
+                    "kept",
+                    "rejected",
+                    "totalSeconds",
+                    "keptSeconds"
+                  ],
+                  "properties": {
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "kept": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "rejected": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "totalSeconds": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "keptSeconds": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/resource" },
+    {
+      "type": "object",
+      "description": "`GET /v1/projects`: every project of the space, archived ones included.",
+      "required": ["projects"],
+      "properties": {
+        "projects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resource" }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "`DELETE /v1/projects/{projectId}`: the project is archived, never deleted; its nights stay ordinary plans.",
+      "required": ["archived", "project"],
+      "properties": {
+        "archived": { "const": true },
+        "project": { "$ref": "#/$defs/resource" }
+      },
+      "additionalProperties": false
+    },
+    { "$ref": "#/$defs/nights" },
+    {
+      "type": "object",
+      "description": "A refusal. `409 project_conflict` carries the server's current `project`; `403 capability_required` names the `capability` the write needs. `403 multi_night_not_active` on the nights routes and on `POST /v1/projects` from existing nights names `planner.mosaic` (« Planification avancée »; the integrations of a plan and its image name `analysis.progression`, see integration.schema.json); `409 target_mismatch` and `404 session_not_found` / `plan_not_found` name the `sessionId` or the `planId` refused.",
+      "required": ["error"],
+      "properties": {
+        "error": { "$ref": "#/$defs/error" },
+        "project": { "$ref": "#/$defs/resource" },
+        "capability": { "enum": ["planner.mosaic", "analysis.progression"] },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "planId": { "$ref": "#/$defs/uuid" }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

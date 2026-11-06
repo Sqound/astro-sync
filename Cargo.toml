@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+# `app/src-tauri` is intentionally its own standalone Cargo project (own
+# edition, own dependency set, own release profile) rather than a workspace
+# member. Excluding it (rather than leaving it unlisted) is what lets
+# `cargo` commands run from *inside* `app/src-tauri` -- `cargo tauri build`,
+# `cargo add` -- without cargo climbing up to this manifest and refusing
+# because the crate is "in a workspace when it's not".
+exclude = ["app/src-tauri"]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[workspace.lints.clippy]
+# The default (non-pedantic) clippy lint set.
+all = "warn"

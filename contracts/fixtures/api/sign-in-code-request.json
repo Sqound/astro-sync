@@ -1,0 +1,462 @@
+{
+  "contract": "sign-in.schema.json",
+  "status": "built",
+  "exchanges": [
+    {
+      "id": "request-code-address-without-space",
+      "description": "An address that has no space yet. A message with a new code leaves; the space is created at the first successful verification.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:14:00.000Z",
+        "addressHasSpace": false
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "language": "fr",
+          "device": {
+            "application": "planner",
+            "installationId": "uwiNSxC6OIQqqkmdEeoVUB6dUVpI1kds",
+            "name": "iPhone 16 Pro",
+            "platform": "ios"
+          }
+        }
+      },
+      "response": {
+        "status": 202,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "codeLength": 6,
+          "expiresAt": "2026-09-29T21:24:00.000Z",
+          "expiresInSeconds": 600,
+          "resendAt": "2026-09-29T21:15:00.000Z",
+          "resendAfterSeconds": 60
+        },
+        "schema": "sign-in.schema.json#/$defs/codeRequestAccepted"
+      }
+    },
+    {
+      "id": "request-code-address-with-space",
+      "description": "An address that already has a space: the answer is the same, byte for byte, as for an address without one, and it takes the same time.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:14:00.000Z",
+        "addressHasSpace": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 202,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "email": "vous@exemple.fr",
+          "codeLength": 6,
+          "expiresAt": "2026-09-29T21:24:00.000Z",
+          "expiresInSeconds": 600,
+          "resendAt": "2026-09-29T21:15:00.000Z",
+          "resendAfterSeconds": 60
+        },
+        "schema": "sign-in.schema.json#/$defs/codeRequestAccepted"
+      }
+    },
+    {
+      "id": "request-code-normalizes-address",
+      "description": "White space is removed and letters are lowercased; dots and `+` stay (no rule of a provider). The answer names the address the message goes to.",
+      "given": { "authMode": "email-code", "now": "2026-09-29T21:14:00.000Z" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "  Jean.Dupont+Astro@Exemple.FR ", "language": "en" }
+      },
+      "response": {
+        "status": 202,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "email": "jean.dupont+astro@exemple.fr",
+          "codeLength": 6,
+          "expiresAt": "2026-09-29T21:24:00.000Z",
+          "expiresInSeconds": 600,
+          "resendAt": "2026-09-29T21:15:00.000Z",
+          "resendAfterSeconds": 60
+        },
+        "schema": "sign-in.schema.json#/$defs/codeRequestAccepted"
+      }
+    },
+    {
+      "id": "request-code-international-domain",
+      "description": "An address has one form only: composed Unicode, the domain in punycode (IDNA), lowercase, without its final dot.",
+      "given": { "authMode": "email-code", "now": "2026-09-29T21:14:00.000Z" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@Bücher.example.", "language": "fr" }
+      },
+      "response": {
+        "status": 202,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "email": "vous@xn--bcher-kva.example",
+          "codeLength": 6,
+          "expiresAt": "2026-09-29T21:24:00.000Z",
+          "expiresInSeconds": 600,
+          "resendAt": "2026-09-29T21:15:00.000Z",
+          "resendAfterSeconds": 60
+        },
+        "schema": "sign-in.schema.json#/$defs/codeRequestAccepted"
+      }
+    },
+    {
+      "id": "request-code-invisible-character",
+      "description": "A control or formatting character (here U+0007; the same for a zero-width space U+200B or a direction mark U+202E) makes the address invalid: it is refused, never removed, so that an address cannot look like another. The same for a local part that is not ASCII « dot-atom ».",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous\u0007@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "email_invalid",
+            "message": "Enter a valid e-mail address."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-invalid-address",
+      "description": "Not an address. Nothing is sent, nothing is counted.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous-exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "email_invalid",
+            "message": "Enter a valid e-mail address."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-malformed",
+      "description": "A body that is not a JSON object, or a request that is not `application/json`.",
+      "given": { "authMode": "email-code" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "text/plain" },
+        "body": "vous@exemple.fr"
+      },
+      "response": {
+        "status": 400,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "invalid_request",
+            "message": "A JSON sign-in request is required."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-resend-too-soon",
+      "description": "« Renvoyer le code » less than 60 seconds after the last message to this address — a message still leaving counts too, so that simultaneous requests send one message. `retryAt` is when the button unlocks (« Renvoyer le code (0:42) »).",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:14:18.000Z",
+        "lastCodeSentAt": "2026-09-29T21:14:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "42" },
+        "body": {
+          "error": {
+            "code": "sign_in_rate_limited",
+            "message": "A code was sent a moment ago. Try again shortly."
+          },
+          "retryAt": "2026-09-29T21:15:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-too-many-for-address",
+      "description": "Five messages to the same address within the hour: the sixth waits until the oldest leaves the hour.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:50:00.000Z",
+        "codesSentToAddressThisHour": 5,
+        "firstOfThemAt": "2026-09-29T21:14:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "1440" },
+        "body": {
+          "error": {
+            "code": "sign_in_rate_limited",
+            "message": "Too many codes were requested. Try again later."
+          },
+          "retryAt": "2026-09-29T22:14:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-too-many-from-origin",
+      "description": "Twenty requests within the hour from the same network origin, whatever the addresses.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:30:00.000Z",
+        "codesRequestedFromOriginThisHour": 20,
+        "firstOfThemAt": "2026-09-29T21:00:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "autre@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "1800" },
+        "body": {
+          "error": {
+            "code": "sign_in_rate_limited",
+            "message": "Too many codes were requested. Try again later."
+          },
+          "retryAt": "2026-09-29T22:00:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-while-locked",
+      "description": "After five wrong codes for this address from this network origin, asking for a new code from the same origin waits too (« Recevoir un nouveau code dans 14:52 »). From another origin a new message is sent: the person can then use its link, or type its code once no lock holds the address.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:20:08.000Z",
+        "lockedFromThisOriginUntil": "2026-09-29T21:35:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 429,
+        "headers": { "cache-control": "no-store", "retry-after": "892" },
+        "body": {
+          "error": {
+            "code": "sign_in_locked",
+            "message": "Too many attempts. Codes cannot be typed for this address until the wait ends."
+          },
+          "retryAt": "2026-09-29T21:35:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-service-budget-spent",
+      "description": "The e-mail budget of the whole service is spent (by default 20 messages a minute and 80 an hour, below the sending service's own limit). The same answer for every address, whether it has a space or not; nothing is sent and nothing is counted. The service writes an alert in its log, without any address. Clients show « La connexion par e-mail n'est pas disponible pour le moment » and may ask again after `Retry-After`.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-09-29T21:30:00.000Z",
+        "messagesSentByTheServiceThisHour": 80,
+        "firstOfThemAt": "2026-09-29T20:45:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 503,
+        "headers": { "cache-control": "no-store", "retry-after": "900" },
+        "body": {
+          "error": {
+            "code": "sign_in_unavailable",
+            "message": "Too many messages are leaving the service. Try again later."
+          },
+          "retryAt": "2026-09-29T21:45:00.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-delivery-failed",
+      "description": "The sending service refused the message or could not be reached. Nothing is counted as sent: no 60-second wait starts, the earlier code (if any) stays valid, and the request may be repeated at once.",
+      "given": { "authMode": "email-code", "mailSender": "failing" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 502,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "email_delivery_failed",
+            "message": "The message could not be sent. Try again."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-service-starting",
+      "description": "The service is waking up and cannot reach its database yet. Nothing was sent. Clients keep the address and ask again after `Retry-After`; a gateway error (502, 503 or 504 without this envelope) or a timeout is read the same way.",
+      "given": { "authMode": "email-code", "database": "unreachable" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 503,
+        "headers": { "cache-control": "no-store", "retry-after": "10" },
+        "body": {
+          "error": {
+            "code": "service_starting",
+            "message": "The service is starting. Try again in a moment."
+          },
+          "retryAt": "2026-09-29T21:14:10.000Z"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-not-configured",
+      "description": "The e-mail sign-in is switched on but its settings are incomplete (no sending service, no public address, no key). Nothing is sent.",
+      "given": { "authMode": "email-code", "mailSender": "disabled" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 503,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "sign_in_unavailable",
+            "message": "Sign-in by e-mail is not available on this service."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-on-private-server",
+      "description": "A private server signing in by password has no sign-in by e-mail: the route does not exist there. (A private server signing in by e-mail code answers it, for its owner alone: see request-code-not-owner.)",
+      "given": { "authMode": "password" },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 404,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": { "code": "not_found", "message": "Not found." }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-not-owner",
+      "description": "A private server (`spaceCreation: closed`): an address other than its owner's. Refused plainly, never a code: a private server has nothing to hide from enumeration, and the person must know at once that this portal is someone else's (« Ce portail appartient à quelqu’un d’autre. »). Nothing is sent, nothing is counted.",
+      "given": {
+        "authMode": "email-code",
+        "spaceCreation": "closed",
+        "owner": "vous@exemple.fr"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "autre@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 403,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "not_owner",
+            "message": "This portal belongs to someone else."
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    },
+    {
+      "id": "request-code-not-initialized",
+      "description": "A private server not installed yet (no owner): every address is refused, and the answer names the page where the owner installs it. Nothing is sent.",
+      "given": {
+        "authMode": "email-code",
+        "spaceCreation": "closed",
+        "owner": null
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/sign-in/code",
+        "headers": { "content-type": "application/json" },
+        "body": { "email": "vous@exemple.fr", "language": "fr" }
+      },
+      "response": {
+        "status": 409,
+        "headers": { "cache-control": "no-store" },
+        "body": {
+          "error": {
+            "code": "not_initialized",
+            "message": "This portal is not set up yet: its owner opens /auth/bootstrap on the web first."
+          },
+          "bootstrapPath": "/auth/bootstrap"
+        },
+        "schema": "sign-in.schema.json#/$defs/error"
+      }
+    }
+  ]
+}

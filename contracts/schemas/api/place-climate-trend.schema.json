@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/place-climate-trend.schema.json",
+  "title": "Astro Portal API v1 place climate trend",
+  "description": "GET /v1/places/climate-trend query and responses (packages/portal/src/place-climate-trend.js and place-climate-trend.server.js). Part of « Planification avancée »: a device or a web session is required (`401`) and the profile must hold `planner.mosaic`, else `403 capability_required` naming it (`refusal`); a private server never restricts what it serves: its open-source profile opens `planner.mosaic`, so its owner is served the trend too. The weather trend of a place over the ten calendar years finished before today, from the Open-Meteo archive. The service reads the archive once for the ten years of a place (coordinates rounded to 0.05 degree), reduces it to twelve monthly shares of clear night hours (night hour: Sun under -12 degrees, on the place's local solar time, no time zone; clear hour: cloud cover at most 30 % and under 0.1 mm of rain; a night belongs to the month of its evening) and the best and worst period (a window of two to four consecutive months, the year being circular, the worst one not overlapping the best one), keeps it for a year and serves it stale rather than failing. 200 is a trend; 202 is a first reading still going on (retry after Retry-After seconds).",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {
+          "type": "string"
+        },
+        "longitude": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "month": {
+      "type": "object",
+      "description": "One civil month, summed over the years of the trend. `nightHours` counts the night hours the archive holds, `clearHours` the clear ones among them; `clearShare` is their share in percent, null for a month with no night hour (a polar summer). `nights` counts the nights whose every night hour is known, `goodNights` those among them with at least four clear night hours (all of them for a night shorter than four hours).",
+      "required": [
+        "month",
+        "nightHours",
+        "clearHours",
+        "clearShare",
+        "goodNights",
+        "nights"
+      ],
+      "properties": {
+        "month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "nightHours": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clearHours": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "clearShare": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "goodNights": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nights": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "period": {
+      "type": "object",
+      "description": "A window of two to four consecutive months, `from` to `to` inclusive (1 to 12; `from` is greater than `to` when the window crosses the year-end), with its clear share in percent over the night hours of those months.",
+      "required": ["from", "to", "clearShare"],
+      "properties": {
+        "from": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "clearShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "ready": {
+      "type": "object",
+      "description": "`trend` is `distinct` (a best and a worst period, at least ten points apart), `flat` (a best period only: no net trend) or `insufficient` (fewer than five years with data or no eligible window: neither period). A month with fewer than 15 night hours a year takes part in no window.",
+      "required": [
+        "status",
+        "place",
+        "source",
+        "years",
+        "yearsWithData",
+        "months",
+        "trend",
+        "best",
+        "worst",
+        "computedAt",
+        "stale"
+      ],
+      "properties": {
+        "status": {
+          "const": "ready"
+        },
+        "place": {
+          "type": "object",
+          "description": "The place as the service rounded it (0.05 degree), the key of the cache.",
+          "required": ["latitude", "longitude"],
+          "properties": {
+            "latitude": {
+              "type": "number",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "longitude": {
+              "type": "number",
+              "minimum": -180,
+              "maximum": 180
+            }
+          },
+          "additionalProperties": false
+        },
+        "source": {
+          "const": "Open-Meteo"
+        },
+        "years": {
+          "type": "array",
+          "description": "The first and the last calendar year of the trend.",
+          "prefixItems": [{ "type": "integer" }, { "type": "integer" }],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "yearsWithData": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "months": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/month"
+          },
+          "minItems": 12,
+          "maxItems": 12
+        },
+        "trend": {
+          "enum": ["distinct", "flat", "insufficient"]
+        },
+        "best": {
+          "oneOf": [{ "$ref": "#/$defs/period" }, { "type": "null" }]
+        },
+        "worst": {
+          "oneOf": [{ "$ref": "#/$defs/period" }, { "type": "null" }]
+        },
+        "computedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "stale": {
+          "type": "boolean",
+          "description": "True when the trend is past its year (or the archive is unavailable) and the last one kept is served."
+        }
+      },
+      "additionalProperties": false
+    },
+    "computing": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "const": "computing"
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "403 `capability_required`: the profile has no `planner.mosaic` (« Planification avancée »), for an account without it; a private server's profile opens it. The web planner's read answers `{ error: \"capability_required\", capability }`; `401` is the v1 error envelope (`authentication_required` for a web session, `device_authentication_required` for a bearer).",
+      "required": ["error", "capability"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "const": "capability_required" },
+            "message": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "capability": { "const": "planner.mosaic" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/query"
+    },
+    {
+      "$ref": "#/$defs/ready"
+    },
+    {
+      "$ref": "#/$defs/computing"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

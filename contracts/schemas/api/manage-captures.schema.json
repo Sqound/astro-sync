@@ -1,0 +1,1830 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/manage-captures.schema.json",
+  "title": "Astro Portal API v1 — the owner's captures (« Mon espace » → « Captures »)",
+  "description": "What the web session of a space reads and writes of its own captures: `GET /v1/manage/captures` (the list, newest first), `GET /v1/manage/captures/{id}` and `PATCH /v1/manage/captures/{id}` (one capture), and their refusals. A capture here is the resource of capture.schema.json plus its state (the rule `captureState`), whether the list may draw its original (`preview`) and its detail for its owner — the place included, which no other reader ever receives. A web session only; a device bearer is refused (`web_session_required`). See api/v1.md, section \"The owner's captures\".",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "state": {
+      "type": "object",
+      "description": "The answer of `captureState` (packages/portal/src/captures/capture-state.js): the state drawn on the capture's screen, whether « Publique » may be chosen and why not, the « équipe » line, the date the private protection is lifted and the end of the owner's block on publishing.",
+      "required": [
+        "state",
+        "publishAllowed",
+        "publishRefusal",
+        "teamLine",
+        "protectionLiftsAt",
+        "publishingBlockedUntil"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "check_pending",
+            "private_sky",
+            "public_pending",
+            "public_verified",
+            "undetermined",
+            "review_requested",
+            "protection_notice",
+            "protection_lifted",
+            "refused",
+            "removed",
+            "publishing_blocked",
+            "private_verified",
+            "no_image"
+          ]
+        },
+        "publishAllowed": {
+          "type": "boolean"
+        },
+        "publishRefusal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/publishRefusal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "teamLine": {
+          "anyOf": [
+            {
+              "enum": ["pending", "approved", "refused"]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protectionLiftsAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "publishingBlockedUntil": {
+          "$ref": "#/$defs/nullableTimestamp"
+        }
+      },
+      "additionalProperties": false
+    },
+    "publishRefusal": {
+      "enum": [
+        "refused_by_team",
+        "publishing_blocked",
+        "check_pending",
+        "needs_review",
+        "review_pending",
+        "check_not_passed",
+        "no_image"
+      ]
+    },
+    "targetLabel": {
+      "type": "object",
+      "required": ["id", "designation", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "designation": {
+          "type": "string"
+        },
+        "name": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadataSource": {
+      "description": "Where a value comes from — `plan`, `night`, `astro-sync`, `photo` (the image's own `Software` or XMP `CreatorTool`), `import` (the old portal's nights), `owner` (typed by the owner, on the web or the phone); `null` when nothing holds it.",
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["plan", "night", "astro-sync", "photo", "import", "owner"]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "metadataText": {
+      "type": "object",
+      "required": ["value", "source", "at", "edited"],
+      "properties": {
+        "value": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/metadataSource"
+        },
+        "at": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "edited": {
+          "type": "boolean",
+          "description": "Whether the owner wrote this value by hand (« · modifié »): a producer never changes it afterwards."
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadataEquipment": {
+      "type": "object",
+      "required": ["value", "source", "at", "edited"],
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["id", "name"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "type": ["string", "null"]
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/metadataSource"
+        },
+        "at": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "edited": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "acquisitionLine": {
+      "type": "object",
+      "description": "One line of a capture's acquisition. `integrationSeconds` is computed (frames × exposure), never stored. `origin`: `night` (a step of the capture's night), `astro-sync`, `import`, `owner`, or (additive) `session` (a line declared by the session: « Synchroniser avec la session »); `edited` (« · modifié »): corrected by hand, never changed by a producer. `provenance` (additive, **derived by the service and read only**, never sent: a request carrying it is `400 invalid_request`) is what the screen writes on each line of « Intégrations »: `declared` (the session said so: `origin: session`), `measured` (Astro Sync measured it: `origin: astro-sync`, and `origin: night` when the night's step is of origin `analysis`), `manual` (written by hand: `owner`, `import`, and `night` otherwise). A **declared line whose frame count is not known** (a debriefing that gave only minutes) has `frameCount: 0` and `exposureSeconds: 0`, and `integrationSeconds` is then the declared time, stored; for every other line `integrationSeconds` is computed (frames × exposure). Written by the service on every read; optional in the schema so that a reader of an earlier answer still validates (it then derives nothing and shows no provenance).",
+      "required": [
+        "id",
+        "filter",
+        "frameCount",
+        "exposureSeconds",
+        "gain",
+        "integrationSeconds",
+        "origin",
+        "editedAt",
+        "edited"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "filter": {
+          "type": ["string", "null"],
+          "maxLength": 40
+        },
+        "frameCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exposureSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "gain": {
+          "type": ["integer", "null"]
+        },
+        "integrationSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "origin": {
+          "enum": ["night", "astro-sync", "import", "owner", "session"]
+        },
+        "provenance": {
+          "enum": ["declared", "measured", "manual"]
+        },
+        "sessionId": {
+          "description": "Additive: on the lines of the image of a multi-night plan (role `plan`) only — the session (the night) the line comes from, one line per session, target and family (`POST …/acquisition/sync`); `null` or absent on every other capture's lines.",
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "eveningDate": {
+          "description": "Additive: with `sessionId`, the evening date of that session (`YYYY-MM-DD`), so that the line says « Nuit du 7 oct. » without a second call.",
+          "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }]
+        },
+        "editedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "edited": {
+          "type": "boolean"
+        },
+        "computerLabel": {
+          "description": "Additive: the computer Astro Sync measured the line on (`provenance: measured`), when it sent the name with the line; `null` otherwise. Written by the service on every read; optional in the schema so that a reader of an earlier answer still validates.",
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "description": "The capture's metadata read through plan → night → capture, each value with its origin. A `null` value is taken from the level above (the title from the targets). Computed at reading, never stored, « · calculé »: the integration per line and the total, the sky quality, the Moon. `place` is the night's, the owner's alone (never on a capture of its own, never published). Never in a gallery: a visitor reads `gallery.schema.json`'s `metadata`.",
+      "required": [
+        "title",
+        "description",
+        "notes",
+        "calibration",
+        "sensor",
+        "acquisition",
+        "equipment",
+        "processing",
+        "sessionId",
+        "night",
+        "place",
+        "computed"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "#/$defs/metadataText",
+          "description": "80 characters at most; `null`: the targets' label (« M31 — Galaxie d’Andromède »)."
+        },
+        "description": {
+          "$ref": "#/$defs/metadataText",
+          "description": "2 000 characters at most, shown in the galleries."
+        },
+        "notes": {
+          "$ref": "#/$defs/metadataText",
+          "description": "4 000 characters at most, the owner's alone: never published."
+        },
+        "calibration": {
+          "$ref": "#/$defs/metadataText",
+          "description": "Free text, 120 characters at most (« 30 darks · 30 flats · 30 dark-flats »)."
+        },
+        "sensor": {
+          "type": "object",
+          "required": ["value", "source", "at", "edited"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["temperatureC", "binning"],
+                  "properties": {
+                    "temperatureC": {
+                      "type": ["number", "null"]
+                    },
+                    "binning": {
+                      "type": ["integer", "null"],
+                      "minimum": 1,
+                      "maximum": 8
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/metadataSource"
+            },
+            "at": {
+              "$ref": "#/$defs/nullableTimestamp"
+            },
+            "edited": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "acquisition": {
+          "type": "object",
+          "description": "`own`: false while the capture reads its night's steps for its targets; true once a line was corrected or a producer proposed lines (then the capture keeps its own lines). `totalSeconds` computed, `null` without a line.",
+          "required": [
+            "source",
+            "at",
+            "edited",
+            "own",
+            "lines",
+            "totalFrames",
+            "totalSeconds"
+          ],
+          "properties": {
+            "source": {
+              "$ref": "#/$defs/metadataSource"
+            },
+            "at": {
+              "$ref": "#/$defs/nullableTimestamp"
+            },
+            "edited": {
+              "type": "boolean"
+            },
+            "own": {
+              "type": "boolean"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/acquisitionLine"
+              }
+            },
+            "totalFrames": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "totalSeconds": {
+              "type": ["number", "null"],
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "equipment": {
+          "type": "object",
+          "description": "Per role, the capture's own choice among the space's equipment, else the night's (or its plan's).",
+          "required": ["telescope", "camera", "mount", "filters"],
+          "properties": {
+            "telescope": {
+              "$ref": "#/$defs/metadataEquipment"
+            },
+            "camera": {
+              "$ref": "#/$defs/metadataEquipment"
+            },
+            "mount": {
+              "$ref": "#/$defs/metadataEquipment"
+            },
+            "filters": {
+              "type": "object",
+              "required": ["value", "source", "at", "edited"],
+              "properties": {
+                "value": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "name"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "name": {
+                        "type": ["string", "null"]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "source": {
+                  "$ref": "#/$defs/metadataSource"
+                },
+                "at": {
+                  "$ref": "#/$defs/nullableTimestamp"
+                },
+                "edited": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "processing": {
+          "type": "object",
+          "required": ["software", "steps"],
+          "properties": {
+            "software": {
+              "$ref": "#/$defs/metadataText",
+              "description": "120 characters at most; Astro Sync, the import, or the photo's own program."
+            },
+            "steps": {
+              "$ref": "#/$defs/metadataText",
+              "description": "500 characters at most."
+            }
+          },
+          "additionalProperties": false
+        },
+        "sessionId": {
+          "description": "The capture's night (« Changer la nuit de la capture »: another night of the space).",
+          "type": ["string", "null"]
+        },
+        "night": {
+          "type": "object",
+          "required": ["value", "source", "planName"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["title", "date", "startedAt", "finishedAt"],
+                  "properties": {
+                    "title": {
+                      "type": ["string", "null"]
+                    },
+                    "date": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/date"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "$ref": "#/$defs/nullableTimestamp"
+                    },
+                    "finishedAt": {
+                      "$ref": "#/$defs/nullableTimestamp"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/metadataSource"
+            },
+            "planName": {
+              "type": ["string", "null"]
+            },
+            "placeTimeZone": {
+              "description": "The IANA zone the night's hours are read in (the place's, as the session's page reads it); null when none can be read: the hours are then in UTC.",
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "place": {
+          "type": "object",
+          "required": ["value", "source"],
+          "properties": {
+            "value": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/metadataSource"
+            }
+          },
+          "additionalProperties": false
+        },
+        "computed": {
+          "type": "object",
+          "required": ["skyQuality", "moon"],
+          "properties": {
+            "skyQuality": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["bortle"],
+                  "properties": {
+                    "bortle": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 9
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "moon": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": ["illumination", "setsAt"],
+                  "properties": {
+                    "illumination": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "setsAt": {
+                      "$ref": "#/$defs/nullableTimestamp"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "detail": {
+      "type": "object",
+      "description": "The builder `captureDetail` for its owner (packages/portal/src/captures/capture-detail.js): a value the data lacks is `null` (or an empty list), and a screen draws a line only where its value exists. `night` is the night of the capture's plan or session; `place` is the owner's alone, never published.",
+      "required": [
+        "targets",
+        "night",
+        "addedAt",
+        "fileName",
+        "byteSize",
+        "equipment",
+        "skyQuality",
+        "place"
+      ],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetLabel"
+          }
+        },
+        "night": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "addedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "nightMonth": {
+          "description": "Additive: the first month (`YYYY-MM`) of the nights the image of a multi-night plan combines (`plan.combinedNightIds`), absent for a capture of one night (its month is `night`'s).",
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "nightMonthEnd": {
+          "description": "Additive: with `nightMonth`, the last month when those nights span several; absent when they fall in one month.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"
+        },
+        "fileName": {
+          "type": ["string", "null"]
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "intermediate": {
+          "description": "Additive (`null`, never absent once the service writes it): set only when the capture's session belongs to a multi-night plan that is **not finished**: this capture is then an intermediate capture of that plan, and the screen says so. `sessionsDone` are the plan's sessions already done (state `done`), `sessionsPlanned` the ones still to come or to debrief (`upcoming`, `to_debrief`), each with its `eveningDate`, the earliest first. `null` for a capture without a session, for a session of no multi-night plan, and for a finished plan.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/intermediate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionQuality": {
+          "description": "Additive (`null`, never absent once the service writes it): the quality of the capture's **session** — the medians over the frames of the night Astro Sync measured (`journal.schema.json` `quality`: `skyBackground` in ADU, `fwhm` in arcseconds, `eccentricity` between 0 and 1, each `null` when not measured) — with `frameCount`, the frames measured, and the session it comes from (« Voir la session »). `null` for a capture without a session and for a session Astro Sync has not analysed. It is the night's, not the image's: the image's own is `quality` of the capture (`capture.schema.json` `imageQuality`). Reading it is never held by a right.",
+          "anyOf": [{ "$ref": "#/$defs/sessionQuality" }, { "type": "null" }]
+        },
+        "equipment": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skyQuality": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["bortle"],
+              "properties": {
+                "bortle": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "place": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["name"],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "capture": {
+      "type": "object",
+      "description": "The capture resource of capture.schema.json, plus `state`, `preview` and `detail`, and always its `tags` (the owner's own). Plus its `stage` and its images (`variants`). The same resource answers `GET /v1/captures/{id}` and `PATCH /v1/captures/{id}` (a device token or the web session). A capture may have no image yet (`hasImage: false`, `variants: []`, `sha256`, `originalName` and `byteSize` `null`, `state` `no_image`, never public); its first image becomes its main image. The devices' list `GET /v1/captures` leaves such a capture out until its first image arrives.",
+      "required": [
+        "id",
+        "sessionId",
+        "planId",
+        "targetIds",
+        "originalName",
+        "sha256",
+        "byteSize",
+        "status",
+        "visibility",
+        "checks",
+        "createdAt",
+        "state",
+        "preview",
+        "thumbnail",
+        "showable",
+        "protectionLapsed",
+        "detail",
+        "tags",
+        "stage",
+        "variants"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "capture.schema.json#/$defs/uuid"
+        },
+        "sessionId": {
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "planId": {
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "targetIds": {
+          "$ref": "capture.schema.json#/$defs/targetIds"
+        },
+        "originalName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "$ref": "capture.schema.json#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "byteSize": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "uploaded"]
+        },
+        "visibility": {
+          "$ref": "capture.schema.json#/$defs/visibility"
+        },
+        "madePublicAt": {
+          "description": "Additive: the same field as `capture.schema.json`: the instant the capture last turned public (« Publique depuis le … »); only on a public capture; `null` for a capture that was public before the date was kept (unknown, never guessed). Optional so that a reader of an earlier answer still validates.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "archivedAt": {
+          "description": "Additive: present only on a capture archived after the end of a subscription: when it was archived. The owner still reads and exports it, « Mes captures » labels it « Archivée », no gallery shows it; a resubscription removes the field. A reader of an earlier answer, and a capture that is not archived, has no such field.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "checks": {
+          "$ref": "capture.schema.json#/$defs/checks"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "replacedAt": {
+          "description": "Additive: `capture.schema.json`'s `replacedAt`, on the owner's resource too.",
+          "$ref": "capture.schema.json#/$defs/capture/properties/replacedAt"
+        },
+        "replacedSource": {
+          "description": "Additive: `capture.schema.json`'s `replacedSource`, on the owner's resource too.",
+          "$ref": "capture.schema.json#/$defs/capture/properties/replacedSource"
+        },
+        "replacedMadePrivate": {
+          "description": "Additive: `capture.schema.json`'s `replacedMadePrivate`, on the owner's resource too.",
+          "$ref": "capture.schema.json#/$defs/capture/properties/replacedMadePrivate"
+        },
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "preview": {
+          "type": "boolean",
+          "description": "Whether the stored bytes are a JPEG, PNG, WebP or AVIF image a browser draws: the opened capture shows the original through `GET /v1/manage/captures/{id}/media`."
+        },
+        "thumbnail": {
+          "type": "boolean",
+          "description": "Whether the capture has its thumbnail (written after the upload for a raster image or a FITS file whose pixels are read), served by `GET /v1/manage/captures/{id}/media?variant=thumbnail`. The list draws it, else the original when `preview`, else a neutral placeholder."
+        },
+        "showable": {
+          "type": "boolean",
+          "description": "Whether the file can be shown in a gallery — a JPEG, PNG, WebP, AVIF or TIFF image, never a FITS, an XISF or a camera's raw file. « Publique » is refused with `not_showable` otherwise."
+        },
+        "protectionLapsed": {
+          "type": "boolean",
+          "description": "For a capture in `protection_lifted`, whether its protection was lifted by the end of the delay, without an answer (« Protection levée le … »), rather than by « Accepter la vérification »; false otherwise."
+        },
+        "detail": {
+          "$ref": "#/$defs/detail"
+        },
+        "tags": {
+          "$ref": "capture.schema.json#/$defs/captureTags"
+        },
+        "stage": {
+          "description": "`draft` or `finalized`, distinct from the visibility and from `state` (the answer of `captureState`).",
+          "type": "string",
+          "enum": ["draft", "finalized"]
+        },
+        "metadata": {
+          "description": "The capture's metadata with the origin of each value. Always written by the service; optional so that a reader of an earlier answer still validates.",
+          "$ref": "#/$defs/metadata"
+        },
+        "finalizedAt": {
+          "description": "When the capture passed from « Brouillon » to « Finalisée », written once and never cleared; `null` for a draft, and for a capture finalized before the date was kept (« Finalisée. »). Always written by the service; optional so that a reader of an earlier answer still validates. Never in a gallery.",
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "revision": {
+          "description": "Additive: the capture's revision (`capture.schema.json` `capture.revision`), the one an owner write names in `If-Match`. On the owner's resource, on each item of `GET /v1/manage/captures` and in the answer of every write.",
+          "$ref": "capture.schema.json#/$defs/capture/properties/revision"
+        },
+        "quality": {
+          "description": "Additive: the quality of the main image itself (`variants[].quality` of the main one, repeated here), measured by Astro Sync on the stacked master when it sent it; `null` when none was measured. The night's is `detail.sessionQuality`. Reading it is never held by a right.",
+          "anyOf": [
+            { "$ref": "capture.schema.json#/$defs/imageQuality" },
+            { "type": "null" }
+          ]
+        },
+        "qualityShown": {
+          "description": "The owner's two switches « Afficher la qualité en privé » (`private`, on by default) and « Afficher la qualité en public » (`public`, on for a capture created since this rule, off for older ones until their owner turns it on): whether the quality of the images (`quality`, `variants[].quality`) and of the nights (the medians and the guiding, `gallery.schema.json` `nights`) is drawn in the capture's page of the private gallery and of the public gallery. Always written by the service; optional so that a reader of an earlier answer still validates (it then reads the defaults). Changed by `PATCH` `{ qualityPrivate }` / `{ qualityPublic }`, from the web and from a device.",
+          "type": "object",
+          "required": ["private", "public"],
+          "properties": {
+            "private": { "type": "boolean" },
+            "public": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "projectId": {
+          "description": "Additive: only on the image of a multi-night plan (role `plan`): the plan it belongs to, as the items of `GET /v1/captures` carry it, so that the page of the capture knows it is the plan's image (its « Intégrations » come from the sessions it combines). Absent on every other capture.",
+          "$ref": "capture.schema.json#/$defs/uuid"
+        },
+        "plan": {
+          "description": "Additive: with `projectId`: the nights the image combines, its totals by filter and its render (`capture.schema.json` `capture.plan`).",
+          "$ref": "capture.schema.json#/$defs/capture/properties/plan"
+        },
+        "variants": {
+          "description": "Every image of the capture, the main one first, then the variants, newest first.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "capture-variant.schema.json#/$defs/variant"
+          }
+        },
+        "galleryLabel": {
+          "description": "The generic label of the card's kicker, as `GET /v1/captures` writes it.",
+          "$ref": "capture.schema.json#/$defs/capture/properties/galleryLabel"
+        },
+        "telescope": {
+          "description": "The name of the night's telescope, the instrument of the card's kicker (« Galaxie · Askar 50P »); `null` when the night names none.",
+          "type": ["string", "null"]
+        },
+        "targets": {
+          "description": "The targets of `targetIds`, resolved as `GET /v1/captures` writes them (aliases of a catalogue target, the name and label of a personal one).",
+          "type": "array",
+          "items": {
+            "$ref": "capture.schema.json#/$defs/listedTarget"
+          }
+        },
+        "integrationMinutes": {
+          "description": "The minutes the night's debriefing says were acquired on the capture's first target; `null` when the capture has no night, the target no debriefed time (« non noté »).",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "skySolution": {
+          "description": "The sky solution of the main image with the owner's switch (`annotationsEnabled`, « Afficher le plate solving »), as soon as one exists; absent otherwise. Each image says whether it has its own (`variants[].skySolved`).",
+          "$ref": "sky-solution.schema.json#/$defs/stored"
+        },
+        "hasImage": {
+          "type": "boolean",
+          "description": "`false` while the capture has no image (its definition alone)."
+        },
+        "progression": {
+          "description": "The progression images of the capture — the milestones of its night Astro Sync stacked, its history — from the first (one frame) to the last; never among `variants`, never counted against `capture.variant_limit`, shown on the capture's page (« Progression de la nuit ») and with the capture in its galleries (`gallery.schema.json`, `progression`). On the image of a multi-night plan (`projectId` set) they are the image stacked after each night, `frameCount` the frames stacked up to that night (120, then 209, then 309), and the page calls the zone « Progression de l’empilement ». Each is served by the media routes with `imageId`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/progressionImage"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "progressionImage": {
+      "type": "object",
+      "description": "One milestone of the night: its image and the light frames it stacks.",
+      "required": [
+        "id",
+        "sha256",
+        "byteSize",
+        "originalName",
+        "frameCount",
+        "createdAt",
+        "thumbnail"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "capture.schema.json#/$defs/uuid"
+        },
+        "sha256": {
+          "$ref": "capture.schema.json#/$defs/sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "originalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "frameCount": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "thumbnail": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "description": "The storage of capture.schema.json, plus the number of captures of the space and, only when the profile caps it (`capture.count_limit`), that cap: « 2 captures sur 3 » is drawn only then.",
+      "required": ["usedBytes", "quotaBytes", "maxFileBytes", "captureCount"],
+      "properties": {
+        "usedBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quotaBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxFileBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captureCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "captureCountLimit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "included": {
+          "description": "`true` for a space exempted from quotas by the service's configuration (« Inclus » instead of a quota line); absent otherwise.",
+          "const": true
+        },
+        "variantLimit": {
+          "description": "The profile's `capture.variant_limit` (the variants a capture may hold besides its main image), only when it is finite: `0` draws « Votre offre garde une seule image par capture. ».",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "night": {
+      "type": "object",
+      "description": "A finished night of the space the add box offers — its date (the plan's, else the start's day), its place's name, and the targets observed (`done`, `partial`) with their debriefed integration and the captures already added for them.",
+      "required": ["sessionId", "planId", "night", "place", "targets"],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planId": {
+          "type": ["string", "null"]
+        },
+        "night": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "place": {
+          "type": ["string", "null"]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "designation",
+              "name",
+              "outcome",
+              "integrationMinutes",
+              "captureCount"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "designation": {
+                "type": "string"
+              },
+              "name": {
+                "type": ["string", "null"]
+              },
+              "outcome": {
+                "enum": ["done", "partial"]
+              },
+              "integrationMinutes": {
+                "type": ["integer", "null"],
+                "minimum": 1
+              },
+              "captureCount": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "required": [
+        "captures",
+        "hasMore",
+        "nextBefore",
+        "storage",
+        "publishing",
+        "names"
+      ],
+      "properties": {
+        "captures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capture"
+          }
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "nextBefore": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": ["createdAt", "id"],
+              "properties": {
+                "createdAt": {
+                  "$ref": "#/$defs/timestamp"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "storage": {
+          "$ref": "#/$defs/storage"
+        },
+        "publishing": {
+          "type": "object",
+          "description": "`available`: the profile's `capture.public` (true unless named false). `warningsCount`: the person's warnings (`users.warnings_count`). `blockedUntil`: the end of the block on publishing while it lasts (`users.publishing_blocked_until`), `null` otherwise. `moderated` (additive; absent when a team looks at the captures, `false` on a server with no team (a private server), where no check is run: every capture is the sky, public at once, and nothing is refused, asked or shown of a check.",
+          "required": ["available", "warningsCount", "blockedUntil"],
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "moderated": {
+              "type": "boolean"
+            },
+            "warningsCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "blockedUntil": {
+              "$ref": "#/$defs/nullableTimestamp"
+            }
+          },
+          "additionalProperties": false
+        },
+        "names": {
+          "type": "object",
+          "description": "The names of the space refused on review, until the owner saves another.",
+          "required": ["publicNameRefusedAt", "portalNameRefusedAt"],
+          "properties": {
+            "publicNameRefusedAt": {
+              "$ref": "#/$defs/nullableTimestamp"
+            },
+            "portalNameRefusedAt": {
+              "$ref": "#/$defs/nullableTimestamp"
+            }
+          },
+          "additionalProperties": false
+        },
+        "nights": {
+          "description": "The nights the add box offers, newest first (first page only). Additive: every finished session of the space is offered, one without an observed target (a night built from a capture, a plan not debriefed) with `targets: []`; `night` is the evening date of the session and `place` the night's own place, else its plan's.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/night"
+          }
+        },
+        "places": {
+          "description": "The places of the space with their position (first page only): « Nouvelle cible » proposes the one nearest to a photo's position. Additive: the space's saved places come first, then the places its plans name; the default place carries `default: true` (the place of a photo that has no position).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "latitude", "longitude"],
+            "properties": {
+              "default": {
+                "const": true
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "latitude": {
+                "type": "number",
+                "minimum": -90,
+                "maximum": 90
+              },
+              "longitude": {
+                "type": "number",
+                "minimum": -180,
+                "maximum": 180
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "serverFeatures": {
+          "description": "What this server does by itself (`sky.solve_on_server`, read from its environment): « Résoudre sur ce serveur » or not.",
+          "$ref": "sky-solution.schema.json#/$defs/serverFeatures"
+        },
+        "readOnly": {
+          "description": "Whether the space is in the read-only window of an ended subscription — every write of a capture's metadata answers `403 entitlement_read_only`, the screen draws no pencil. Always `false` on a private server. Optional so that a reader of an earlier answer still validates.",
+          "type": "boolean"
+        },
+        "readOnlyUntil": {
+          "description": "Additive: with `readOnly: true`, the end of the read-only window. The screen says « Lecture seule jusqu'au … » instead of the free space's count. Absent when the window has no date and outside it.",
+          "$ref": "#/$defs/timestamp"
+        },
+        "paymentFailed": {
+          "description": "Additive: present and `true` only with `readOnly: true` when the window is that of a payment that failed (a payment on hold), not of a subscription that ended: the screen says the payment did not go through and the rights come back at once when it resumes. Absent otherwise; a reader reads an absent field as `false`.",
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "one": {
+      "type": "object",
+      "description": "The answer of `GET` and of `PATCH /v1/manage/captures/{id}`; `GET` also carries `serverFeatures`.",
+      "required": ["capture"],
+      "properties": {
+        "capture": {
+          "$ref": "#/$defs/capture"
+        },
+        "serverFeatures": {
+          "$ref": "sky-solution.schema.json#/$defs/serverFeatures"
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadataChange": {
+      "type": "object",
+      "description": "Exactly one field (the web session writes all of them, a device those of `deviceMetadataField`). Texts: `title` (80), `description` (2 000), `notes` (4 000), `calibration` (120), `processing.software` (120), `processing.steps` (500) — trimmed, a blank one read as `null`. `sensor`: `{ temperatureC?, binning? }`. `equipment.telescopeId`, `equipment.cameraId`, `equipment.mountId`: an identifier of the space's equipment; `equipment.filterIds`: a list of them (`404 equipment_not_found` otherwise). `sessionId`: another night of the space (« Changer la nuit de la capture »; `404 session_not_found`). `acquisition`: `null` (back to the night's steps), `{ add: line }`, `{ line: id, set: line }`, `{ line: id, delete: true }` (`404 acquisition_line_not_found`). `targetIds` (« Ajouter / changer la cible »): the capture's whole ordered list of targets, 16 at most, `[]` removes them all (`404 target_not_found` for a target neither of the catalogue nor the space's own); web session only. The place is never a field of a capture.",
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["title"]
+            },
+            {
+              "required": ["description"]
+            },
+            {
+              "required": ["notes"]
+            },
+            {
+              "required": ["calibration"]
+            },
+            {
+              "required": ["processing.software"]
+            },
+            {
+              "required": ["processing.steps"]
+            },
+            {
+              "required": ["sensor"]
+            },
+            {
+              "required": ["equipment.telescopeId"]
+            },
+            {
+              "required": ["equipment.cameraId"]
+            },
+            {
+              "required": ["equipment.mountId"]
+            },
+            {
+              "required": ["equipment.filterIds"]
+            },
+            {
+              "required": ["sessionId"]
+            },
+            {
+              "required": ["acquisition"]
+            },
+            {
+              "required": ["targetIds"]
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "title": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "calibration": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "processing.software": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 120
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "processing.steps": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sensor": {
+          "anyOf": [
+            {
+              "$ref": "capture.schema.json#/$defs/proposedSensor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipment.telescopeId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipment.cameraId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipment.mountId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "equipment.filterIds": {
+          "anyOf": [
+            {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionId": {
+          "description": "Another session of the space (« Changer la nuit de la capture »; `404 session_not_found`), or, additively, `null`: the capture leaves its session and stays without one. Detaching also drops the capture from the Journal's thumbnails and counts of that session.",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acquisition": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": ["add"],
+              "properties": {
+                "add": {
+                  "$ref": "capture.schema.json#/$defs/proposedAcquisitionLine"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["line", "set"],
+              "properties": {
+                "line": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "set": {
+                  "$ref": "capture.schema.json#/$defs/proposedAcquisitionLine"
+                }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["line", "delete"],
+              "properties": {
+                "line": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "delete": {
+                  "const": true
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetIds": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposed": {
+      "type": "object",
+      "description": "`PATCH /v1/captures/{id}` `{ \"proposed\": … }` by a device token — a producer's proposals for a capture that exists (Astro Sync, the import of the old nights): several fields, one source. Same rule as an upload's proposals (capture.schema.json `uploadMetadata`): never over a value the owner edited, a value proposed earlier and untouched updated, a missing one added, nothing deleted, the same body twice changes nothing.",
+      "required": ["source"],
+      "properties": {
+        "source": {
+          "enum": ["astro-sync", "import"]
+        },
+        "title": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/title"
+        },
+        "description": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/description"
+        },
+        "acquisition": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/acquisition"
+        },
+        "calibration": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/calibration"
+        },
+        "sensor": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/sensor"
+        },
+        "processing": {
+          "$ref": "capture.schema.json#/$defs/uploadMetadata/properties/processing"
+        }
+      },
+      "additionalProperties": false
+    },
+    "proposedAnswer": {
+      "type": "object",
+      "description": "The answer to a producer's proposals (`PATCH /v1/captures/{id}` `proposed`, `PATCH /v1/captures/{id}/variants/{imageId}`): the capture as `GET /v1/captures/{id}` gives it, and what was left.",
+      "required": ["capture", "skipped"],
+      "properties": {
+        "capture": {
+          "$ref": "#/$defs/capture"
+        },
+        "skipped": {
+          "$ref": "capture.schema.json#/$defs/skipped"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sessionQuality": {
+      "description": "Additive: `detail.sessionQuality` — the night's quality figures of the capture's session, the medians of `journal.schema.json` `quality` (same units) with the session and the frames they were measured on.",
+      "type": "object",
+      "required": [
+        "sessionId",
+        "eveningDate",
+        "frameCount",
+        "skyBackground",
+        "fwhm",
+        "eccentricity"
+      ],
+      "properties": {
+        "sessionId": { "$ref": "capture.schema.json#/$defs/uuid" },
+        "eveningDate": {
+          "anyOf": [{ "$ref": "#/$defs/date" }, { "type": "null" }]
+        },
+        "frameCount": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "skyBackground": {
+          "$ref": "journal.schema.json#/$defs/quality/properties/skyBackground"
+        },
+        "fwhm": {
+          "$ref": "journal.schema.json#/$defs/quality/properties/fwhm"
+        },
+        "eccentricity": {
+          "$ref": "journal.schema.json#/$defs/quality/properties/eccentricity"
+        }
+      },
+      "additionalProperties": false
+    },
+    "intermediate": {
+      "description": "The multi-night plan an intermediate capture belongs to. `projectId` and `projectName` name the plan (internally a « project »); `sessionsDone` and `sessionsPlanned` list its nights as `{ eveningDate, sessionId, planId }` (`sessionId` is `null` for a night with no session yet, `planId` is `null` for a session without a plan).",
+      "type": "object",
+      "required": [
+        "projectId",
+        "projectName",
+        "sessionsDone",
+        "sessionsPlanned"
+      ],
+      "properties": {
+        "projectId": {
+          "$ref": "capture.schema.json#/$defs/uuid"
+        },
+        "projectName": {
+          "type": "string"
+        },
+        "sessionsDone": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/intermediateNight"
+          }
+        },
+        "sessionsPlanned": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/intermediateNight"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "intermediateNight": {
+      "type": "object",
+      "required": ["eveningDate", "sessionId", "planId"],
+      "properties": {
+        "eveningDate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sessionId": {
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "planId": {
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "acquiredSeconds": {
+          "description": "Additive: the integration, in seconds, the plan gathered on the capture's target that night (measured, else declared); `null` when the night gathered none or it is not known, and for a night still to come. Optional so that a reader of an earlier answer still validates.",
+          "type": ["number", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "acquisitionSync": {
+      "description": "The answer of `POST /v1/manage/captures/{id}/acquisition/sync` (« Synchroniser avec la session »: either credential — `POST /v1/captures/{id}/acquisition/sync` answers the same for a device token —, no body, `If-Match` optional, `403 entitlement_read_only` in the read-only window, `404 capture_not_found`, `409 capture_without_session` only for a capture that has neither a session nor a plan, `409 capture_conflict` when a line changed after the revision named). On the image of a multi-night plan (role `plan`) it fills the lines from the sessions the image combines instead (v1.md, « A capture written by two hands »). It fills the capture's lines from its session and target: the measured steps when Astro Sync analysed the session, else one declared line per target from the debriefing or the events (seconds, frames and filter when known); it replaces the uncorrected lines of origin `session`, `night` and `astro-sync`, keeps the lines of origin `owner` and `import` and every line corrected by hand (`edited`), and answers the capture's lines as `metadata.acquisition` gives them, plus the capture.",
+      "type": "object",
+      "required": ["acquisition", "capture"],
+      "properties": {
+        "acquisition": {
+          "$ref": "#/$defs/metadata/properties/acquisition"
+        },
+        "capture": {
+          "$ref": "#/$defs/capture"
+        }
+      },
+      "additionalProperties": false
+    },
+    "patch": {
+      "type": "object",
+      "description": "Exactly one change per call. `tags` replaces the owner's own tags of the capture. `visibility: public` passes the rule of `captureState` and the profile's `capture.public`, then writes the shared copy (no EXIF, XMP or IPTC, 4096 px at most) before the capture becomes public; `requestReview` applies to a capture whose check is undetermined, `acceptVerification` to a private capture that did not pass it; neither makes a capture public. `stage` (`draft` · `finalized`); a public capture does not go back to a draft (`409 capture_public`), and `visibility: public` is refused on a draft (`409 capture_draft`). Additive: the body is still **one change**, never the whole record, and the request carries `If-Match: \"<revision>\"` (`ifMatch`): the write is refused with `409 capture_conflict` (`error.field`, and the current `capture`) only when the field it writes changed after that revision — a change of another field never refuses it. `PATCH /v1/captures/{id}` takes the same bodies from a device token, but for `visibility`, `requestReview`, `acceptVerification` and `skyAnnotations` (the web session's); a device also writes `tags` (the rule of the web route, 40 characters and 20 tags), `qualityPrivate` and `qualityPublic` (the owner's two switches of the quality of the images in the galleries, booleans, one per call) and, in `metadata`, the fields of `deviceMetadataField`.",
+      "oneOf": [
+        {
+          "required": ["visibility"],
+          "properties": {
+            "visibility": {
+              "$ref": "capture.schema.json#/$defs/visibility"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["requestReview"],
+          "properties": {
+            "requestReview": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["acceptVerification"],
+          "properties": {
+            "acceptVerification": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["tags"],
+          "properties": {
+            "tags": {
+              "description": "The whole list of the capture's own tags, replacing the former one (`[]` removes them all). Each tag is trimmed; the empty ones and the exact repetitions are dropped; nothing else is changed. 40 characters at most each and 20 tags at most once so kept, else `400` `invalid_request` and nothing written. Written in any state of the capture.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "maxItems": 200
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "required": ["stage"],
+          "properties": {
+            "stage": {
+              "enum": ["draft", "finalized"]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "One field of the capture's metadata by the owner's hand, `null` giving it back to its source (the night, its plan, the targets, or the value a producer proposed). From the web session every field; from a device token (`PATCH /v1/captures/{id}`, the owner's phone) the fields of `deviceMetadataField`: the title, the description, the notes, the calibration, the sensor, the processing, the equipment, the targets and the lines of « Intégrations », not `sessionId` (`403 web_session_required` for that one).",
+          "required": ["metadata"],
+          "properties": {
+            "metadata": {
+              "$ref": "#/$defs/metadataChange"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "« Afficher le plate solving », the owner's switch of the sky annotations in the gallery, on by default; `409 sky_solution_not_found` while no image of the capture has a sky solution.",
+          "required": ["skyAnnotations"],
+          "properties": {
+            "skyAnnotations": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "« Afficher la qualité en privé »: the owner's switch of the quality of the images (Astro Sync's measures) in the private gallery, on by default. A device writes it too. Allowed whether or not a quality was measured.",
+          "required": ["qualityPrivate"],
+          "properties": {
+            "qualityPrivate": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "« Afficher la qualité en public »: the same switch for the public gallery, on for a new capture. A device writes it too.",
+          "required": ["qualityPublic"],
+          "properties": {
+            "qualityPublic": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "refusal": {
+      "type": "object",
+      "description": "400 `invalid_request` (a body that is not one change; `tags` not a list of strings, a tag over 40 characters, more than 20 tags); 413 `payload_too_large` (a body past the common ceiling of the JSON bodies); 401 `authentication_required`; 403 `csrf_invalid`, `web_session_required` (a device bearer), `capture_public_unavailable` (the profile's `capture.public` is false), `publishing_blocked` (the person's block on publishing, on « Publique » and on a review request, with `publishingBlockedUntil`, its end); 404 `capture_not_found` (another space's capture, or none); 409 one of the other `publishRefusal` for « Publique », `not_showable` (the file cannot be shown in a gallery), `review_not_applicable`, `verification_not_applicable`; 503 `capture_storage_unavailable`, `shared_copy_failed` (the copy without location could not be written; the capture stays private). 409 `capture_draft` (« Rendre publique » on a draft), `capture_public` (a public capture back to a draft); 403 `visibility_web_only` (`PATCH /v1/captures/{id}` with a device token naming the visibility). 409 `sky_solution_not_found` (`skyAnnotations` while no image of the capture has a sky solution). 400 `invalid_metadata` (with `field` and `limit`); 403 `entitlement_read_only` (every write of the metadata in the read-only window of an ended subscription), `web_session_required` (a device naming a field of the web, the main image of an image or a field of an image other than its title and description), `device_required` (the web session on the producers' image route); 404 `session_not_found`, `equipment_not_found`, `acquisition_line_not_found`, `image_not_found`. 400 `invalid_if_match` (an `If-Match` that is not a quoted positive integer, or names a revision the capture never had); 409 `capture_conflict` (the field written changed after the revision named; carries `error.field`, `error.line` for a line of « Intégrations », and the current `capture`; nothing written); the owner's tags and the equipment, sensor, processing and targets are written by a device too, with the same `404` as the web route.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "payload_too_large",
+                "authentication_required",
+                "csrf_invalid",
+                "web_session_required",
+                "capture_public_unavailable",
+                "capture_not_found",
+                "refused_by_team",
+                "publishing_blocked",
+                "check_pending",
+                "needs_review",
+                "review_pending",
+                "check_not_passed",
+                "not_showable",
+                "review_not_applicable",
+                "verification_not_applicable",
+                "capture_storage_unavailable",
+                "shared_copy_failed",
+                "capture_draft",
+                "capture_public",
+                "visibility_web_only",
+                "sky_solution_not_found",
+                "invalid_metadata",
+                "entitlement_read_only",
+                "session_not_found",
+                "equipment_not_found",
+                "acquisition_line_not_found",
+                "image_not_found",
+                "device_required",
+                "no_image",
+                "target_not_found",
+                "capture_limit_reached",
+                "capture_without_session",
+                "capture_conflict",
+                "invalid_if_match"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "field": {
+              "description": "With `invalid_metadata` (400), the field refused (`title`, `acquisition.exposureSeconds`…). With `capture_conflict` (409), the field the write named that changed after the revision it read — a metadata field by its name (`title`, `processing.software`, `equipment.telescopeId`…), or `tags`, `stage`, `visibility`, `acquisition`, `imageTexts` (the title or the description of an image: `line` is its id).",
+              "type": "string"
+            },
+            "line": {
+              "description": "Additive: with `capture_conflict` on `acquisition`, the id of the line the write named (`{ line, set }` or `{ line, delete }`) when that line is the one that changed; absent when the conflict is on the lines as a whole (a synchronisation, `acquisition: null`). With `capture_conflict` on `imageTexts`, the id of the image whose title or description changed.",
+              "type": "string",
+              "minLength": 1
+            },
+            "limit": {
+              "description": "With `invalid_metadata`, the field's limit (characters, or the bound), `null` when it has none.",
+              "type": ["integer", "null"]
+            },
+            "publishingBlockedUntil": {
+              "$ref": "#/$defs/nullableTimestamp",
+              "description": "With `publishing_blocked` only: the end of the block (`users.publishing_blocked_until`)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "capture": {
+          "description": "Additive: with `capture_conflict` only, the capture as it stands (the owner's resource, its `revision` the current one), nothing of the write applied.",
+          "$ref": "#/$defs/capture"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ifMatch": {
+      "description": "Additive: the `If-Match` header of an owner write of a capture (`PATCH /v1/captures/{id}`, `PATCH /v1/manage/captures/{id}`, `POST …/acquisition/sync` on both families of routes) — the capture's `revision` the client read, quoted: `\"7\"`. Optional (a producer's `proposed`, an older client send none: the write is applied); present, it must be a quoted positive integer no greater than the current revision, else `400 invalid_if_match`; stale for the field written, `409 capture_conflict`.",
+      "type": "string",
+      "pattern": "^\"[1-9][0-9]*\"$"
+    },
+    "deviceMetadataField": {
+      "description": "Additive: the metadata fields (`metadataChange`) the owner's hand writes from the phone, by its device token, through `PATCH /v1/captures/{id}` `{ metadata }`: every field of `metadataChange` except `sessionId` (changing the capture's session stays the web session's; the phone leaves it). The tags (`{ tags }`), the stage (`{ stage }`) and, the switches of the quality (`{ qualityPrivate }`, `{ qualityPublic }`) are written by a device too; an image's title and description are written by a device too (`PATCH /v1/captures/{id}/variants/{imageId}` with no `source`, `capture-variant.schema.json` `deviceTexts`); the visibility, the main image, an image's visibility, the deletion, the original and `skyAnnotations` stay the web session's.",
+      "enum": [
+        "title",
+        "description",
+        "notes",
+        "calibration",
+        "processing.software",
+        "processing.steps",
+        "sensor",
+        "equipment.telescopeId",
+        "equipment.cameraId",
+        "equipment.mountId",
+        "equipment.filterIds",
+        "acquisition",
+        "targetIds"
+      ]
+    },
+    "create": {
+      "type": "object",
+      "description": "`POST /v1/manage/captures`: a capture without an image — its definition alone, a private draft; answers `201` with `{ capture }` (`one`). `sessionId`: a night of the space (`404 session_not_found`); `targetIds`: the targets it shows, 16 at most (`404 target_not_found`). Both optional. Web session only; `403 entitlement_read_only`, `409 capture_limit_reached`.",
+      "properties": {
+        "sessionId": {
+          "$ref": "capture.schema.json#/$defs/nullableUuid"
+        },
+        "targetIds": {
+          "$ref": "capture.schema.json#/$defs/targetIds"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/one"
+    },
+    {
+      "$ref": "#/$defs/patch"
+    },
+    {
+      "$ref": "#/$defs/create"
+    },
+    {
+      "$ref": "#/$defs/proposedAnswer"
+    },
+    {
+      "$ref": "#/$defs/acquisitionSync"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

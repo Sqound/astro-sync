@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/sky-quality.schema.json",
+  "title": "Astro Portal API v1 sky quality",
+  "description": "GET /v1/sky-quality query and response (packages/portal/src/planner/sky-quality.server.js). Public read: a thin wrapper over the same monthly-cached Bortle/SQM estimate the web planner reads, sampled from the self-hosted VIIRS Nighttime Lights raster, whose cells hold the radiance of everything within 300 km summed with a distance kernel rather than the radiance of the cell itself. A present Authorization header must still be a valid device bearer. The queried coordinates are never echoed back. `source` names the annual composite the installed raster was built from, so it carries the year rather than a fixed value.",
+  "$defs": {
+    "query": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "string" },
+        "longitude": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "bortleClass",
+        "sqm",
+        "source",
+        "method",
+        "estimated",
+        "calculatedAt",
+        "stale"
+      ],
+      "properties": {
+        "bortleClass": { "type": "integer", "minimum": 1, "maximum": 9 },
+        "sqm": { "type": "number", "minimum": 10, "maximum": 22.1 },
+        "source": { "type": "string", "pattern": "^viirs-vnl-[0-9]{4}$" },
+        "method": {
+          "const": "viirs-propagated-radiance-zenith-sky-brightness"
+        },
+        "estimated": { "const": true },
+        "calculatedAt": { "type": "string", "format": "date-time" },
+        "stale": { "type": "boolean" },
+        "calibration": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}/[a-z0-9-]+$",
+          "description": "Additive, optional: `<calibration-set version>/<region id>` (e.g. \"2026-09/japan\", \"2026-09/global\") from the regional table in packages/portal/src/sky-quality.js. Not required so an older client, or a fixture recorded before this field existed, still validates; a client MAY treat a cached estimate whose `calibration` differs from the current one as stale."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [{ "$ref": "#/$defs/query" }, { "$ref": "#/$defs/result" }]
+}

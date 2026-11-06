@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/integration.schema.json",
+  "title": "Astro Portal API v1 — the integrations of a multi-night plan",
+  "description": "An integration is one line Astro Sync sends for one night, one target and one family of frames (filter, exposure, gain, binning, temperature): how many frames it integrated and for how long. It is metadata only — never a file: the masters stay on the computer that made them. Integrations hang under a multi-night plan (`project.schema.json`, « projet » internally): `GET /v1/projects/{projectId}/integrations` lists them with their totals by filter, `PUT` adds or replaces them (idempotent per night, target and family) and, with `replace`, sends a night's lines for a target as a complete set, removing the ones no longer sent. Reading never needs a capability; writing needs the multi-night plans of Astro Sync (`analysis.progression`, « Synchronisation avancée+ »), and is always refused on a private server. See api/v1.md, « Integrations of a multi-night plan ».",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "eveningDate": {
+      "description": "The calendar date of the night's evening (`YYYY-MM-DD`), the date the night is named by: its plan's date, or the evening of its start at the place's longitude (never a time zone).",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "filter": {
+      "description": "The filter as the frames name it, never normalised; `null` for frames without a filter (« Sans filtre »).",
+      "anyOf": [
+        { "type": "string", "minLength": 1, "maxLength": 40 },
+        { "type": "null" }
+      ]
+    },
+    "write": {
+      "description": "One integration as Astro Sync sends it. The family is `filter`, `exposureSeconds`, `gain`, `binning` and `temperatureC`; with `nightId` and `targetId` it is the key of the line: sending the same key again replaces the line. `totalSeconds` is never sent: the service computes it (`frameCount × exposureSeconds`).",
+      "type": "object",
+      "required": [
+        "nightId",
+        "targetId",
+        "filter",
+        "exposureSeconds",
+        "frameCount",
+        "eveningDate"
+      ],
+      "properties": {
+        "nightId": {
+          "$ref": "#/$defs/uuid",
+          "description": "The night (`sessionId`, the observation session) the frames were taken in."
+        },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "filter": { "$ref": "#/$defs/filter" },
+        "exposureSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "gain": {
+          "anyOf": [
+            { "type": "integer", "minimum": -100000, "maximum": 100000 },
+            { "type": "null" }
+          ]
+        },
+        "binning": {
+          "anyOf": [
+            { "type": "integer", "minimum": 1, "maximum": 16 },
+            { "type": "null" }
+          ]
+        },
+        "temperatureC": {
+          "anyOf": [
+            { "type": "number", "minimum": -100, "maximum": 100 },
+            { "type": "null" }
+          ]
+        },
+        "frameCount": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+        "eveningDate": { "$ref": "#/$defs/eveningDate" },
+        "sensor": {
+          "description": "The sensor (`INSTRUME`, or the night's equipment).",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 80 },
+            { "type": "null" }
+          ]
+        },
+        "computerLabel": {
+          "description": "The label of the computer Astro Sync runs on (« iMac du bureau »): where the master is kept.",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 80 },
+            { "type": "null" }
+          ]
+        },
+        "installationId": {
+          "description": "Astro Sync's installation on that computer: tells « on this computer » from « on another computer ».",
+          "anyOf": [
+            { "type": "string", "minLength": 1, "maxLength": 100 },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "set": {
+      "description": "A set of lines: everything one night holds for one target. Listed in `replace`, the set is sent **complete**.",
+      "type": "object",
+      "required": ["nightId", "targetId"],
+      "properties": {
+        "nightId": { "$ref": "#/$defs/uuid" },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 }
+      },
+      "additionalProperties": false
+    },
+    "integration": {
+      "description": "One integration as the service keeps and lists it. `source` says who wrote the line — `declared` (the service, from the debriefing of a night attached to the multi-night plan: one line per target of the plan, family key `declared`, `filter` null unless the debriefing named one) or `measured` (Astro Sync's `PUT`); absent means `measured`. `sessionId` is the night's session, the **same value as `nightId`** (the word the Journal uses). A declared line is **replaced** by the measured lines Astro Sync sends for the same night and target; a declared line whose frame count is not known has `frameCount: 0` and `exposureSeconds: 0`, and `totalSeconds` is then the declared time, stored (for every other line it is computed). Reading the declared lines needs no capability.",
+      "type": "object",
+      "required": [
+        "id",
+        "projectId",
+        "nightId",
+        "targetId",
+        "filter",
+        "exposureSeconds",
+        "gain",
+        "binning",
+        "temperatureC",
+        "frameCount",
+        "totalSeconds",
+        "eveningDate",
+        "sensor",
+        "computerLabel",
+        "installationId",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "nightId": { "$ref": "#/$defs/uuid" },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "filter": { "$ref": "#/$defs/filter" },
+        "source": { "enum": ["declared", "measured"] },
+        "sessionId": { "$ref": "#/$defs/uuid" },
+        "exposureSeconds": { "type": "number", "minimum": 0 },
+        "gain": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
+        "binning": { "anyOf": [{ "type": "integer" }, { "type": "null" }] },
+        "temperatureC": { "anyOf": [{ "type": "number" }, { "type": "null" }] },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "totalSeconds": {
+          "description": "Computed: `frameCount × exposureSeconds` (a declared line with an unknown frame count: the declared time).",
+          "type": "number",
+          "minimum": 0
+        },
+        "eveningDate": { "$ref": "#/$defs/eveningDate" },
+        "sensor": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
+        "computerLabel": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "installationId": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "updatedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "filterTotal": {
+      "description": "The integrations of one filter added up over the nights, computed by the service, in the order the filters first appear (the earliest night first).",
+      "type": "object",
+      "required": ["filter", "frameCount", "totalSeconds", "nightCount"],
+      "properties": {
+        "filter": { "$ref": "#/$defs/filter" },
+        "frameCount": { "type": "integer", "minimum": 0 },
+        "totalSeconds": { "type": "number", "minimum": 0 },
+        "nightCount": { "type": "integer", "minimum": 0 },
+        "declaredSeconds": {
+          "description": "The part of `totalSeconds` that is still **declared** (no measured line replaced it yet).",
+          "type": "number",
+          "minimum": 0
+        },
+        "measuredSeconds": {
+          "description": "The part of `totalSeconds` that Astro Sync measured. `declaredSeconds + measuredSeconds = totalSeconds`.",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "planTotal": {
+      "description": "One filter's line of the image of a multi-night plan, as Astro Sync declares it (the nights it combined).",
+      "type": "object",
+      "required": ["filter", "totalSeconds"],
+      "properties": {
+        "filter": { "$ref": "#/$defs/filter" },
+        "frameCount": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "totalSeconds": { "type": "number", "minimum": 0, "maximum": 100000000 }
+      },
+      "additionalProperties": false
+    },
+    "planCapture": {
+      "description": "The image of the multi-night plan (`uploads.md`, role `plan`): the newest capture Astro Sync sent for the plan, with the nights it combined and its totals by filter. It is a capture of the space beside the nights' captures: it belongs to no night, and it is no variant of a night's capture.",
+      "type": "object",
+      "required": [
+        "id",
+        "createdAt",
+        "combinedNightIds",
+        "totalsByFilter",
+        "render"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/uuid" },
+        "createdAt": { "$ref": "#/$defs/timestamp" },
+        "combinedNightIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uuid" },
+          "maxItems": 100
+        },
+        "totalsByFilter": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/planTotal" },
+          "maxItems": 40
+        },
+        "render": {
+          "description": "The render Astro Sync applied: `natural` (« Rendu naturel »), `dualband` (« Correction bibande »), `polished` (« Rendu soigné »), `hoo` (« Palette HOO »), `none` (« Sans traitement »); `null` when it did not say. Not Astro Sync's pipeline ids: its pipeline `raw` is « Rendu naturel », `natural` here.",
+          "anyOf": [
+            { "enum": ["natural", "dualband", "polished", "hoo", "none"] },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "type": "object",
+      "description": "The body of `PUT /v1/projects/{projectId}/integrations`, earlier form (what the clients that predate `replace` send): one to 200 integrations, added or replaced, **none removed**.",
+      "required": ["integrations"],
+      "properties": {
+        "integrations": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/write" }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "The body of `PUT /v1/projects/{projectId}/integrations`, complete form: `replace` names the (night, target) sets sent **complete**. The service replaces the measured lines the plan holds for each set by the `integrations` received and removes the ones not sent any more (the declared lines are the service's own and stay). `integrations` holds 0 to 200 lines — none empties the sets — and each belongs to one of the listed sets (a line outside them, or a set listed twice, is `400 invalid_request`). One transaction: all or none. A service that predates `replace` answers `400 invalid_request` (unexpected property), and the client then sends the earlier form.",
+      "required": ["integrations", "replace"],
+      "properties": {
+        "integrations": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/write" }
+        },
+        "replace": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/set" }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "`GET` (and the answer of `PUT`): every integration of the plan, the earliest night first, and their totals by filter.",
+      "required": [
+        "projectId",
+        "integrations",
+        "totalsByFilter",
+        "totalSeconds",
+        "nightCount"
+      ],
+      "properties": {
+        "projectId": { "$ref": "#/$defs/uuid" },
+        "integrations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/integration" }
+        },
+        "totalsByFilter": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/filterTotal" }
+        },
+        "totalSeconds": { "type": "number", "minimum": 0 },
+        "declaredSeconds": { "type": "number", "minimum": 0 },
+        "measuredSeconds": { "type": "number", "minimum": 0 },
+        "nightCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "A refusal. `403 multi_night_not_active` (no `analysis.progression`, a subscription in its read-only window, or a private server, where the multi-night plans of Astro Sync never run) names the capability; `409 integration_outside_night` gives the night's own `eveningDate`; `409 integration_night_not_in_project` (a night that does not belong to the multi-night plan: the `PUT` writes only for the plan's own nights; carries `nightId`) is checked after the capability gate and before `integration_outside_night`; `404 project_not_found`, `404 session_not_found` (the night), `400 invalid_request`.",
+      "required": ["error"],
+      "properties": {
+        "error": { "$ref": "#/$defs/error" },
+        "capability": { "const": "analysis.progression" },
+        "nightId": { "$ref": "#/$defs/uuid" },
+        "eveningDate": { "$ref": "#/$defs/eveningDate" }
+      },
+      "additionalProperties": false
+    }
+  ]
+}

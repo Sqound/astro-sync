@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/private-gallery.schema.json",
+  "title": "Astro Portal API v1 — the private gallery of a space (« Galerie privée »)",
+  "description": "The owner's settings of the private gallery of a space (`GET` and `PATCH /v1/manage/portal`, a web session only) and what a viewer of its random address receives (`GET /v1/portals/{portalToken}`, and the files by `GET /v1/portals/{portalToken}/media/{captureId}`). One gate decides for every route: the owner in every mode; anyone in `link`; `none`, an unknown or a replaced address answer one same `404`. A private server has one account, its owner's, and these two modes; a service that opens spaces may add one of its own, which it describes itself. Never the place of a capture. See api/v1.md, section \"The private gallery\".",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableTimestamp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "mode": {
+      "enum": ["none", "link"],
+      "description": "`none` « Partagée avec personne » (the mode at creation), `link` « Accessible à tous par son adresse »."
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "settings": {
+      "type": "object",
+      "description": "`GET /v1/manage/portal` and the answer of its `PATCH`. `address` is the absolute address of the gallery (`…/p/{portalToken}`), minted at the first read and kept until a new one is asked for. `mode` is the stored mode. `modes` offers `none` and `link`, always `available`.",
+      "required": ["address", "mode", "publicName", "portalName", "modes"],
+      "properties": {
+        "address": {
+          "type": "string",
+          "pattern": "/p/[A-Za-z0-9_-]{22,}$"
+        },
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "publicName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "portalName": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "modes": {
+          "type": "object",
+          "required": ["none", "link"],
+          "properties": {
+            "none": {
+              "const": "available"
+            },
+            "link": {
+              "const": "available"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "patch": {
+      "description": "Exactly one change per call: the mode (`link` needs `confirmVerifiers: true`, the « oui » of the dialog that says the captures become visible to the verifiers), the names (each optional; trimmed; empty or null = none), or a new address.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["mode"],
+          "properties": {
+            "mode": {
+              "$ref": "#/$defs/mode"
+            },
+            "confirmVerifiers": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "publicName": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "portalName": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "required": ["publicName"]
+                },
+                {
+                  "required": ["portalName"]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "required": ["regenerateToken"],
+          "properties": {
+            "regenerateToken": {
+              "const": true
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "description": "A capture of the gallery, private or public alike (no mark of visibility): its targets (the title is the first designation, else the file name; each as the public gallery's card reads it, with its alias and its position, the target's never the place's), the night of its plan or session and its month, the telescope of that night, when it was added, whether it has its thumbnail (`?variant=thumbnail` of the media route), and its tags for the filter bar (the tags of the galleries): `tags`, the generic one derived from the first target's object type as in the public gallery (« Grand champ » without a target; the catalogue's French keys, translated by the page), and `ownTags`, the owner's own (free text, shown in the private gallery only).",
+      "required": [
+        "id",
+        "targets",
+        "fileName",
+        "night",
+        "nightMonth",
+        "telescope",
+        "addedAt",
+        "thumbnail",
+        "tags",
+        "ownTags"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "gallery.schema.json#/$defs/target"
+          }
+        },
+        "fileName": {
+          "type": ["string", "null"]
+        },
+        "night": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nightMonth": {
+          "$ref": "gallery.schema.json#/$defs/item/properties/nightMonth"
+        },
+        "nightMonthEnd": {
+          "$ref": "gallery.schema.json#/$defs/item/properties/nightMonthEnd"
+        },
+        "telescope": {
+          "$ref": "gallery.schema.json#/$defs/item/properties/telescope"
+        },
+        "addedAt": {
+          "$ref": "#/$defs/nullableTimestamp"
+        },
+        "thumbnail": {
+          "type": "boolean"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/genericTag"
+          },
+          "uniqueItems": true
+        },
+        "ownTags": {
+          "description": "The owner's own tags (`capture_tags`, the same shape as `captureTags` of capture.schema.json): free text as typed, 40 characters at most each, 20 at most.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "maxItems": 20,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "gallery": {
+      "type": "object",
+      "description": "`GET /v1/portals/{portalToken}`: the gallery's name (`null`: « Galerie privée »), the owner's public name (`null`: no signature), every capture the gallery shows, newest first — never one refused on review — and the tags of its filter bar (the tags of the galleries): the generic ones and the owner's own.",
+      "required": ["gallery"],
+      "properties": {
+        "gallery": {
+          "type": "object",
+          "required": [
+            "portalName",
+            "publicName",
+            "captures",
+            "tags",
+            "ownTags"
+          ],
+          "properties": {
+            "portalName": {
+              "$ref": "#/$defs/name"
+            },
+            "publicName": {
+              "$ref": "#/$defs/name"
+            },
+            "captures": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/item"
+              }
+            },
+            "tags": {
+              "description": "The filter bar's generic tags: those of the captures shown, in the public gallery's order.",
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/genericTag"
+              },
+              "uniqueItems": true
+            },
+            "ownTags": {
+              "description": "The filter bar's own tags: the owner's tags of the captures shown, each once, in the order of their text.",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "A refusal: `invalid_request` (400, with `field` for a name too long, or a body that is not JSON), `payload_too_large` (413: a body over the common ceiling of 1 MiB), `confirmation_required` (409: `link` without `confirmVerifiers`), `name_forbidden` (422, with `field` and the dictionary's `word`: nothing saved), `web_session_required` (403), `csrf_invalid`, `space_not_found`, `gallery_unavailable`, `gallery_not_found` (404: gate 3 — unknown or replaced address, a gallery shared with nobody, a capture it does not show).",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "payload_too_large",
+                "confirmation_required",
+                "name_forbidden",
+                "web_session_required",
+                "csrf_invalid",
+                "gallery_not_found",
+                "space_not_found",
+                "gallery_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "field": {
+              "enum": ["publicName", "portalName"]
+            },
+            "word": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retryAt": {
+              "$ref": "#/$defs/timestamp"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "genericTag": {
+      "description": "A generic tag of the galleries, derived from the object type of a capture's first target, never a free word (`PUBLIC_GALLERY_TAGS`).",
+      "enum": [
+        "Galaxie",
+        "Nébuleuse",
+        "Amas",
+        "Lune",
+        "Planète",
+        "Soleil",
+        "Étoile",
+        "Comète",
+        "Grand champ"
+      ]
+    },
+    "captureProgression": {
+      "description": "The capture page of the private gallery carries `progression` when the capture has milestones, shown with it (no switch of their own): `plan` as in gallery.schema.json, each step its `id`, `frameCount` and `image` (the pixel size, or `null`); the page reads their files through the gallery's own media route with `imageId`, never the public routes.",
+      "type": "object",
+      "required": ["plan", "steps"],
+      "properties": {
+        "plan": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 500,
+          "items": {
+            "type": "object",
+            "required": ["id", "frameCount", "image"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "frameCount": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "image": {
+                "anyOf": [
+                  {
+                    "$ref": "gallery.schema.json#/$defs/image"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "media": {
+                "type": "null"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "captureNights": {
+      "description": "The capture page of the private gallery carries `nights`, the same shape as the public page's (gallery.schema.json `night`), only while the owner's switch « Afficher la qualité en privé » is on and a night was analysed; absent otherwise.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "$ref": "gallery.schema.json#/$defs/night"
+      }
+    },
+    "captureQualityCharts": {
+      "description": "The capture page of the private gallery carries `qualityCharts`, the same shape as the public page's (gallery.schema.json `qualityCharts`), only while the owner's switch « Afficher la qualité en privé » is on and a night was analysed; absent otherwise.",
+      "$ref": "gallery.schema.json#/$defs/qualityCharts"
+    },
+    "captureQuality": {
+      "description": "The capture page of the private gallery carries `quality` on the capture and on each variant it shows, the same shape as the public page's (gallery.schema.json `imageQuality`), only while the owner's switch « Afficher la qualité en privé » is on (on by default) and the image was measured; absent otherwise.",
+      "$ref": "gallery.schema.json#/$defs/imageQuality"
+    },
+    "captureMetadata": {
+      "description": "The capture page of the private gallery (`/{locale}/p/{token}/{captureId}`) carries the capture's `metadata` for a visitor, the same shape as the public page's (gallery.schema.json `visitorMetadata`): never the place, the notes, an origin, `edited`, `finalizedAt`, the file name or the fingerprint; a draft is in no gallery.",
+      "$ref": "gallery.schema.json#/$defs/visitorMetadata"
+    }
+  }
+}

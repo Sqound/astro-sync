@@ -1,0 +1,17 @@
+{
+  "notes": "Allow-list of the Siril CLI versions (`siril --version` / `siril-cli --version`) that Astro Sync's progressions recognise as compatible. Data, not code: adding or removing a version here touches no .rs file. Covers the two stable lines known on 27/09/2026 -- 1.2.x (LTS, first published 2023-09-15) and 1.4.x (current stable, first published 2025-12-05, last maintenance release 1.4.4 on 2026-06-17) -- leaving out the 1.5.x development line on purpose until it is confirmed stable. To reconfirm or extend with a version actually installed on a real machine.",
+  "compatibleVersions": [
+    "1.2.0",
+    "1.2.1",
+    "1.2.2",
+    "1.2.3",
+    "1.2.4",
+    "1.2.5",
+    "1.2.6",
+    "1.4.0",
+    "1.4.1",
+    "1.4.2",
+    "1.4.3",
+    "1.4.4"
+  ]
+}

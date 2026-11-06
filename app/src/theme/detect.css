@@ -1,0 +1,282 @@
+/* The header's buttons stay on one line; the description gives way. */
+.as-page--list .as-page__actions {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.as-page--list .as-page__actions .as-button {
+  white-space: nowrap;
+}
+
+/* « Détecter les sessions », step 1 (a page): the three locations. */
+.as-detect-folder {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--as-space-xs);
+}
+
+.as-detect-folder__label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--as-space-xs);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.as-detect-folder__label > span {
+  color: var(--as-color-muted-text);
+}
+
+.as-detect-folder__label > span::before {
+  content: "· ";
+}
+
+.as-detect-folder__line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--as-space-sm);
+}
+
+.as-detect-folder__path {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  gap: var(--as-space-sm);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+}
+
+.as-detect-folder__path > .as-icon {
+  flex: none;
+  color: var(--as-color-gold-accent);
+}
+
+.as-detect-folder__path.is-empty {
+  color: var(--as-color-muted-text);
+  font-family: var(--as-font-family);
+}
+
+.as-detect-folder__path.is-empty > .as-icon {
+  color: var(--as-color-muted-text);
+}
+
+.as-detect-folder__path > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-detect-folder__remove,
+.as-detect-folder__choose {
+  flex: none;
+}
+
+.as-detect-subfolders {
+  display: flex;
+  accent-color: var(--as-color-gold-accent);
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.8125rem;
+}
+
+.as-detect-foot__why {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  gap: var(--as-space-sm);
+}
+
+/* The reading, on the same page: its bar, the file read, « Trouvé
+   jusqu'ici ». */
+.as-detect-scan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-sm);
+}
+
+.as-detect-scan__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+/* The file being read, under the bar (mono, cut), and « Trouvé
+   jusqu'ici ». */
+.as-detect-scan__current {
+  margin: var(--as-space-sm) 0 0;
+  overflow: hidden;
+  color: var(--as-color-muted-text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.as-detect-scan__found {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  margin: var(--as-space-md) 0 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  list-style: none;
+}
+
+.as-detect-scan__found li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-detect-scan__found svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--as-color-success);
+}
+
+.as-detect-scan__found .is-later {
+  color: var(--as-color-muted-text);
+}
+
+.as-detect-scan__found .is-later svg {
+  color: var(--as-color-muted-text);
+}
+
+/* The import in the wizard's frame. The review's cards stay together;
+   read-only once the sessions are created (a disabled fieldset). */
+.as-import__review {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  gap: var(--as-space-sm);
+}
+
+/* « Sessions »: an import running or waiting, « Reprendre ». */
+.as-import-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-import-card__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  gap: var(--as-space-xs);
+}
+
+.as-import-card__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+/* « Terminé »: what was done, each image sent and its sky annotations, the
+   ways on. */
+.as-import-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-import-done__lines,
+.as-import-done__images {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-xs);
+  margin: 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
+  list-style: none;
+}
+
+.as-import-done__lines li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+}
+
+.as-import-done__lines svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--as-color-success);
+}
+
+.as-import-done__lines .is-later,
+.as-import-done__lines .is-later svg {
+  color: var(--as-color-muted-text);
+}
+
+/* « Aucune image envoyée : <raison> » when the offer refused the stacking or
+   the treatments failed: the text in amber, the mark unchanged. */
+.as-import-done__lines .is-later.is-warn {
+  color: var(--as-color-warning);
+}
+
+.as-import-done__images li {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--as-space-xs);
+  overflow-wrap: anywhere;
+}
+
+.as-import-done__images li + li {
+  border-top: 1px solid var(--as-color-border);
+  padding-top: var(--as-space-sm);
+}
+
+.as-import-done__sky {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+  font-size: 0.8125rem;
+}
+
+.as-import-done__sky.is-success {
+  color: var(--as-color-success);
+}
+
+.as-import-done__sky.is-warning {
+  color: var(--as-color-warning);
+}
+
+.as-import-done__sky.is-neutral {
+  color: var(--as-color-muted-text);
+}
+
+.as-import-done__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--as-space-md);
+}
+
+/* The import's badge on its menu entry: « 12 % », « à vous ». It sits on
+   its own line under the label (`.as-tab__label--stacked`), at the start of
+   the line like the text. */
+.as-tab .as-tab__badge--import {
+  margin-block: 0;
+  white-space: nowrap;
+}

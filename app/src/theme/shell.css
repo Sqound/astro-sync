@@ -1,0 +1,489 @@
+/*
+ * The shell of every screen. Same rule as `primitives.css`: every value is a
+ * `var(--as-*)` reference, never a colour literal (`shell.test.ts`).
+ *
+ * The content has one width, the widest the screens had (47.5 rem), centred
+ * in a wider window; it never shrinks -- a window narrower than the content
+ * scrolls instead (the window itself has a minimum width,
+ * `tauri.conf.json`). The head of a screen (the way back, the title) stays
+ * at the top while the content scrolls under it; the foot of a step («
+ * Retour », « Continuer ») stays at the bottom of the window. A list («
+ * Nuits ») scrolls by itself under its head.
+ */
+
+.as-content {
+  padding: 0 var(--as-space-xl);
+  /* A snackbar is on screen: the content ends above it (`Snackbar.tsx`
+     measures it), so nothing is hidden behind it, the foot of a step
+     included. */
+  margin-bottom: var(--as-snackbar-clearance, 0);
+}
+
+.as-content > * {
+  box-sizing: border-box;
+  flex: none;
+  width: 47.5rem;
+  min-width: 47.5rem;
+  max-width: none;
+  margin-right: auto;
+  margin-left: auto;
+  padding-top: var(--as-space-xl);
+  padding-bottom: var(--as-space-xl);
+}
+
+/* A screen whose head is `.as-page__top` takes its top margin there. */
+.as-content > .as-page,
+.as-content > .as-home {
+  padding-top: 0;
+}
+
+.as-page__top {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  padding-top: var(--as-space-xl);
+  padding-bottom: var(--as-space-sm);
+  background-color: var(--as-color-page-background);
+}
+
+/* The foot of a step: always in sight, at the bottom of the window. */
+.as-step-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 0;
+  padding: var(--as-space-md) 0;
+  border-top: 1px solid var(--as-color-border);
+  background-color: var(--as-color-panel);
+}
+
+/* The foot every wizard shares (`WizardFoot`): the message above,
+   then one row -- « Précédent » (link) at the far left, the secondary
+   (tertiary) and the primary at the right. */
+.as-wizard-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+}
+
+.as-wizard-foot__message {
+  min-width: 0;
+}
+
+.as-wizard-foot__message > p {
+  margin: 0;
+}
+
+.as-wizard-foot__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-md);
+}
+
+.as-wizard-foot__gap {
+  flex: 1;
+}
+
+/* A step done of the thread opens again: a button that looks like the step,
+   underlined when hovered. */
+.as-thread__go,
+.as-thread__still {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-thread__go {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.as-thread__go:hover .as-thread__label,
+.as-thread__go:focus-visible .as-thread__label {
+  text-decoration: underline;
+}
+
+/* « Nuits »: the page is the height of the window and only its rows scroll;
+   the title, its buttons and the heads of the columns stay. */
+.as-content > .as-page--list {
+  height: 100%;
+  padding-bottom: 0;
+}
+
+.as-page--list .as-nights {
+  flex: 1;
+  min-height: 0;
+}
+
+.as-page--list .as-nights__rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--as-space-xl);
+}
+
+/* A long word wraps inside its column, never past the row's edge. */
+.as-nights__cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What a cell holds (a line, a chip, a pill) never goes wider than the cell;
+   the row's tracks are fixed, so a long value wraps in its column and the row
+   grows in height instead of printing over its neighbour. */
+.as-nights__cell > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/*
+ * A list to choose from (the language, a target, a family of frames) has
+ * the look of the text field beside it -- same height, edge, corners and
+ * text -- with its chevron drawn by the theme, never the system's small
+ * button.
+ */
+.as-field {
+  box-sizing: border-box;
+  min-height: 2.375rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+select.as-field {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding-right: 2.25rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--as-color-muted-text) 50%),
+    linear-gradient(135deg, var(--as-color-muted-text) 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.125rem) 50%,
+    calc(100% - 0.8125rem) 50%;
+  background-size: 0.3125rem 0.3125rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+select.as-field:disabled {
+  color: var(--as-color-inactive-text);
+  cursor: default;
+}
+
+/*
+ * The snackbars -- a small stack at the bottom centre of the window, over
+ * the content and never pushing it. The panel's surface, a thin edge, the
+ * small mark of Astro Sync in the colour of its tone (success, information,
+ * warning, error), never a solid block of colour.
+ */
+.as-snackbars {
+  position: fixed;
+  bottom: var(--as-space-xl);
+  /* The centre of the content, right of the side menu (12 rem and its two
+     margins). */
+  left: calc(13.5rem + (100vw - 13.5rem) / 2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--as-space-sm);
+  width: min(32rem, calc(100vw - 13.5rem - 2 * var(--as-space-xl)));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.as-snackbar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-md);
+  width: 100%;
+  border: 1px solid var(--as-color-border);
+  border-left: 3px solid var(--as-snack-tone);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-modal-surface);
+  color: var(--as-color-primary-text);
+  padding: var(--as-space-sm) var(--as-space-sm) var(--as-space-sm)
+    var(--as-space-md);
+  font-family: var(--as-font-family);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+
+.as-snackbar--success {
+  --as-snack-tone: var(--as-color-success);
+}
+
+.as-snackbar--info {
+  --as-snack-tone: var(--as-color-gold-accent);
+}
+
+.as-snackbar--warning {
+  --as-snack-tone: var(--as-color-warning);
+}
+
+.as-snackbar--error {
+  --as-snack-tone: var(--as-color-destructive-text);
+}
+
+.as-snackbar__mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--as-snack-tone);
+}
+
+.as-snackbar__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.as-snackbar__text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: var(--as-space-xs) 0;
+  overflow-wrap: anywhere;
+}
+
+/* What is running says how far it is, under its text. */
+.as-snackbar__detail {
+  margin: 0;
+  color: var(--as-color-muted-text);
+  font-size: 0.8125rem;
+}
+
+.as-snackbar__progress {
+  margin: var(--as-space-xs) 0;
+}
+
+.as-snackbar__action {
+  flex: none;
+  min-height: 2rem;
+  font-size: 0.875rem;
+}
+
+.as-snackbar__close {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: var(--as-radius-sm);
+  background: transparent;
+  color: var(--as-color-muted-text);
+  padding: 0;
+  cursor: pointer;
+}
+
+.as-snackbar__close:hover {
+  color: var(--as-color-primary-text);
+}
+
+.as-snackbar__close:focus-visible {
+  outline: 2px solid var(--as-color-focus);
+  outline-offset: 1px;
+}
+
+.as-snackbar__close-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* A night of « Nuits » whose detail is being read says so in its row, the
+   small star beside the sentence. */
+.as-nights__reading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--as-space-xs);
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}
+
+/* The gesture of a notice keeps its label on one line. */
+.as-notice--inline > .as-button {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The prompt for an AI assistant in a window of the app. */
+.as-prompt-window {
+  width: min(42rem, 92vw);
+  max-height: calc(100vh - 4rem);
+}
+
+.as-prompt-window__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+}
+
+.as-prompt-window__text {
+  min-height: 16rem;
+  max-height: 50vh;
+  resize: vertical;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* A window of the app (a dialog) is above the head that stays and the foot
+   of a step; the snackbars stay above it, so what it did is seen. */
+.as-dialog__scrim {
+  z-index: 30;
+}
+
+.as-snackbars {
+  z-index: 40;
+}
+
+/* « Poser une question à une IA », the one action of
+   the Guide, in a frame of its own above the anchors; its window is the
+   prompt's, with the language, the guide's file and « Copier le guide
+   entier ». */
+.as-guide-ask {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-lg);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-panel);
+  padding: var(--as-space-md) var(--as-space-lg);
+}
+
+.as-guide-ask p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.as-guide-ask .as-button {
+  flex: none;
+}
+
+.as-prompt-window {
+  overflow-y: auto;
+}
+
+.as-prompt-window__label {
+  color: var(--as-color-muted-text);
+  font-size: 0.875rem;
+}
+
+.as-guide-ask-window__language {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-guide-ask-window__file {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--as-space-sm);
+  font-size: 0.875rem;
+}
+
+.as-guide-ask-window__file-icon {
+  flex: none;
+  margin-top: 0.125rem;
+  color: var(--as-color-muted-text);
+}
+
+.as-guide-ask-window__file .as-button {
+  flex: none;
+}
+
+.as-guide-ask-window__file-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-guide-ask-window__kept {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-sm);
+}
+
+.as-language-list {
+  position: relative;
+  width: min(18.75rem, 100%);
+}
+
+.as-language-list__field {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.as-language-list__chevron {
+  flex: none;
+  transform: rotate(90deg);
+  color: var(--as-color-muted-text);
+}
+
+.as-language-list__chevron.is-open {
+  transform: rotate(-90deg);
+}
+
+.as-language-list__options {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + var(--as-space-xs));
+  right: 0;
+  left: 0;
+  box-sizing: border-box;
+  max-height: 26rem;
+  margin: 0;
+  overflow-y: auto;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-modal-surface);
+  padding: var(--as-space-xs);
+  list-style: none;
+}
+
+.as-language-list__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  border-radius: var(--as-radius-sm);
+  padding: var(--as-space-sm) var(--as-space-md);
+  cursor: pointer;
+}
+
+.as-language-list__option.is-active {
+  background-color: var(--as-color-active-surface);
+}
+
+.as-language-list__option[aria-selected="true"] {
+  color: var(--as-color-active-gold-text);
+}
+
+.as-language-list__tag {
+  color: var(--as-color-muted-text);
+  font-size: 0.75rem;
+}

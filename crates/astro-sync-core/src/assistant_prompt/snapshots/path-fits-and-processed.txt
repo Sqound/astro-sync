@@ -1,0 +1,54 @@
+Step 1. Tell the person you are going to look for this night's light frames (raw FITS), darks, flats and dark-flats, offsets (biases), logs and final image. Ask: "Are all your files from this night together in one folder where I can search, or are they in separate places?"
+  - If the answer is "In one folder": step 2.
+  - If the answer is "In separate places": step 8.
+> In separate places
+Step 8. Ask: "Did you take raw frames (FITS) this night, or do you only have an image already processed?"
+  - If the answer is "Raw frames (FITS)": step 9.
+  - If the answer is "Only a processed image": step 30.
+> Raw frames (FITS)
+Step 9. Ask: "Do you want me to search for the light frames (raw FITS) of this night, or would you rather give me the full path?"
+  - If the answer is "Please search": step 11.
+  - If the answer is "Here is the path": step 10.
+> Please search
+Step 11. Search for the light frames (raw FITS), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 12.
+Step 12. Propose placing the light frames (raw FITS) in `<target>/lights/` (the target its `OBJECT` header names), by the rule "Placing a file". Then step 13.
+Step 13. Ask: "Do you want me to search for the darks of this night, or would you rather give me the full path? Tell me as well if you had none."
+  - If the answer is "Please search": step 15.
+  - If the answer is "Here is the path": step 14.
+  - If the answer is "I had none": step 17.
+> Here is the path
+Step 14. Ask: "Please give me the full path of the folder that holds the darks." Then step 15.
+Step 15. Search for the darks, by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 16.
+Step 16. Propose placing the darks in `calibration/darks/`, by the rule "Placing a file". Then step 17.
+Step 17. Ask: "Do you want me to search for the flats and the dark-flats of this night, or would you rather give me the full path? Tell me as well if you had none."
+  - If the answer is "Please search": step 19.
+  - If the answer is "Here is the path": step 18.
+  - If the answer is "I had none": step 21.
+> Please search
+Step 19. Search for the flats and the dark-flats, by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 20.
+Step 20. Propose placing the flats in `calibration/flats/`; the dark-flats in `calibration/dark-flats/`, by the rule "Placing a file". Then step 21.
+Step 21. Ask: "Do you want me to search for the offsets (biases) of this night, or would you rather give me the full path? Tell me as well if you had none."
+  - If the answer is "Please search": step 23.
+  - If the answer is "Here is the path": step 22.
+  - If the answer is "I had none": step 25.
+> I had none
+Step 25. The logs are important: they give the night's steps and the quality of the guiding. NINA writes its logs in `%LOCALAPPDATA%\NINA\Logs` (Windows), PHD2 its guide logs (`PHD2_GuideLog_*.txt`) in its `PHD2` folder (Documents on Windows and macOS), the ASIAIR its `Autorun_Log*` files in its `Autorun/Log` folder. Keep the logs of this night only (by their date). Ask: "Do you have the logs of this night (NINA, PHD2, ASIAIR)? They give the night's steps and the quality of the guiding. Do you want me to search for them, or would you rather give me the full path? Tell me as well if you had none."
+  - If the answer is "Please search": step 27.
+  - If the answer is "Here is the path": step 26.
+  - If the answer is "I had none": step 29.
+> Here is the path
+Step 26. Ask: "Please give me the full path of the folder that holds the logs of the night (NINA, PHD2, ASIAIR)." Then step 27.
+Step 27. Search for the logs of the night (NINA, PHD2, ASIAIR), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 28.
+Step 28. Propose placing the logs of the night (NINA, PHD2, ASIAIR) in `logs/`, by the rule "Placing a file". Then step 29.
+Step 29. Ask: "Do you also have an image already processed (a final image)?"
+  - If the answer is "Yes": step 34.
+  - If the answer is "No": step 38.
+> Yes
+Step 34. Ask: "Do you want me to search for the final image (TIFF, JPEG or PNG) of this night, or would you rather give me the full path?"
+  - If the answer is "Please search": step 36.
+  - If the answer is "Here is the path": step 35.
+> Here is the path
+Step 35. Ask: "Please give me the full path of the folder that holds the final image (TIFF, JPEG or PNG)." Then step 36.
+Step 36. Search for the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 37.
+Step 37. Propose placing the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+Step 38. Sum up: what was placed, where, by link, copy or move, and what is still missing. Then tell the person to go back to Astro Sync and open the night again.

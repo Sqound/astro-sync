@@ -1,0 +1,8 @@
+2030/03/01 22:00:00 [Autorun|Begin] Synthetic Target Start
+2030/03/01 22:05:00 [Guide] Dither
+2030/03/01 22:05:12 [Guide] Dither Settle
+2030/03/01 22:18:00 [Guide] Dither
+2030/03/01 22:18:45 [Guide] Settle Timeout
+2030/03/01 22:25:00 [AutoFocus|Begin] Run AF when temperature changed 2 degrees, 12.0℃ changed to 10.0℃, exposure 3.0s Bin1, temperature 10.0℃
+2030/03/01 22:26:30 [AutoFocus|End] Auto focus succeeded
+2030/03/01 23:10:00 [Meridian Flip|End] Meridian Flip succeeded

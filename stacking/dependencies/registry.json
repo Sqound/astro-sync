@@ -1,0 +1,235 @@
+{
+  "format": 1,
+  "dependencies": [
+    {
+      "id": "siril",
+      "name": {
+        "fr": "Siril",
+        "en": "Siril",
+        "ja": "Siril",
+        "de": "Siril",
+        "es": "Siril",
+        "it": "Siril",
+        "pt-BR": "Siril",
+        "ru": "Siril",
+        "zh-Hans": "Siril",
+        "zh-Hant": "Siril"
+      },
+      "kind": "tool",
+      "minVersion": "1.4",
+      "check": {
+        "command": ["siril-cli", "siril"],
+        "args": ["--version"],
+        "versionPattern": "(?i)siril[^\\d\\n]*(\\d+(?:\\.\\d+)+)"
+      },
+      "sizes": {
+        "macos-arm64": 75765778,
+        "macos-x64": 92701562,
+        "windows-x64": 101872289,
+        "linux-x64": 96516600
+      },
+      "page": "https://siril.org/download/",
+      "licence": "GPL-3.0-or-later"
+    },
+    {
+      "id": "starnet2",
+      "name": {
+        "fr": "StarNet2",
+        "en": "StarNet2",
+        "ja": "StarNet2",
+        "de": "StarNet2",
+        "es": "StarNet2",
+        "it": "StarNet2",
+        "pt-BR": "StarNet2",
+        "ru": "StarNet2",
+        "zh-Hans": "StarNet2",
+        "zh-Hant": "StarNet2"
+      },
+      "kind": "tool",
+      "minVersion": "2.0",
+      "check": {
+        "command": "starnet2",
+        "args": ["--version"],
+        "versionPattern": "(?i)starnet2?[^\\d\\n]*(\\d+(?:\\.\\d+)+)"
+      },
+      "sizes": {
+        "macos-arm64": 127977753,
+        "macos-x64": 151943354,
+        "windows-x64": 192822891,
+        "linux-x64": 151481786
+      },
+      "page": "https://starnetastro.com/cli-tools/starnet/",
+      "licence": "Freeware (all rights reserved)"
+    },
+    {
+      "id": "python-env",
+      "name": {
+        "fr": "Environnement Python",
+        "en": "Python environment",
+        "ja": "Python 環境",
+        "de": "Python-Umgebung",
+        "es": "Entorno de Python",
+        "it": "Ambiente Python",
+        "pt-BR": "Ambiente Python",
+        "ru": "Среда Python",
+        "zh-Hans": "Python 环境",
+        "zh-Hant": "Python 環境"
+      },
+      "kind": "python-packages",
+      "minVersion": ">=3.12,<3.14",
+      "requirements": "../requirements.txt",
+      "sizes": {
+        "macos-arm64": 82092366,
+        "macos-x64": 93141567,
+        "windows-x64": 101840692,
+        "linux-x64": 119615414
+      },
+      "page": "https://www.python.org/downloads/",
+      "licence": "PSF-2.0 AND BSD-3-Clause AND BSD-2-Clause AND MIT AND MIT-CMU AND Apache-2.0 AND LGPL-3.0-or-later"
+    },
+    {
+      "id": "graxpert",
+      "name": {
+        "fr": "GraXpert",
+        "en": "GraXpert",
+        "ja": "GraXpert",
+        "de": "GraXpert",
+        "es": "GraXpert",
+        "it": "GraXpert",
+        "pt-BR": "GraXpert",
+        "ru": "GraXpert",
+        "zh-Hans": "GraXpert",
+        "zh-Hant": "GraXpert"
+      },
+      "kind": "tool",
+      "minVersion": "3.0",
+      "check": {
+        "command": ["graxpert", "GraXpert"],
+        "args": ["--version"],
+        "versionPattern": "(?i)graxpert[^\\d\\n]*(\\d+(?:\\.\\d+)+)"
+      },
+      "downloads": {
+        "macos-arm64": {
+          "url": "https://github.com/Steffenhir/GraXpert/releases/download/3.0.2/graxpert-macos-arm64.dmg",
+          "sha256": "35804ba2c1fdc63c05ff766b5be71469f991a69350413b86654878982063d9df",
+          "bytes": 130103079
+        },
+        "macos-x64": {
+          "url": "https://github.com/Steffenhir/GraXpert/releases/download/3.0.2/graxpert-macos-amd64.dmg",
+          "sha256": "b4d973d26177463caa2e098457aff37a9c88011741310bb6283ec17f71bbead8",
+          "bytes": 168538872
+        },
+        "windows-x64": {
+          "url": "https://github.com/Steffenhir/GraXpert/releases/download/3.0.2/graxpert-windows-amd64.msi",
+          "sha256": "767fac98f57d89185a0ac5d1c1aee43083f1310e77682168a9aa3a70a88c8bd6",
+          "bytes": 160124928
+        },
+        "linux-x64": {
+          "url": "https://github.com/Steffenhir/GraXpert/releases/download/3.0.2/graxpert-linux-amd64.zip",
+          "sha256": "0a7364c3304ba19f12231d533c80b294054d6558d54ecd81668e4dec49092588",
+          "bytes": 392722792
+        }
+      },
+      "page": "https://graxpert.com/",
+      "licence": "GPL-3.0-only (the program); AI models CC-BY-NC-SA-4.0, downloaded by GraXpert on first use"
+    },
+    {
+      "id": "astap",
+      "name": {
+        "fr": "ASTAP",
+        "en": "ASTAP",
+        "ja": "ASTAP",
+        "de": "ASTAP",
+        "es": "ASTAP",
+        "it": "ASTAP",
+        "pt-BR": "ASTAP",
+        "ru": "ASTAP",
+        "zh-Hans": "ASTAP",
+        "zh-Hant": "ASTAP"
+      },
+      "kind": "tool",
+      "downloads": {
+        "macos-arm64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/macOS%20installer/astap_command-line_version_macOS_M1.zip",
+          "sha256": "6a59b61c3b9fac987ab5b8241cbd4bffacc05816f58097f52ad1e6bd733cbc45",
+          "bytes": 1308120
+        },
+        "macos-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/macOS%20installer/astap_command-line_version_macOS_x86_64.zip",
+          "sha256": "3cc08ef3f823dd02bcbde2a0b8247db2f24607777e63adaea0a4fe578f6db343",
+          "bytes": 1424473
+        },
+        "windows-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/windows_installer/astap_command-line_version_win64.zip",
+          "sha256": "e9b94a44bd0f7b60e6e1beeb75951d955815445b965d04c4a61fc6f4c398a3ca",
+          "bytes": 322357
+        },
+        "linux-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/linux_installer/astap_command-line_version_Linux_amd64.zip",
+          "sha256": "5e7dca28e0e52ad98d4186a01056189e403ba2729bfea9b30f12354436641fe7",
+          "bytes": 329328
+        }
+      },
+      "page": "https://www.hnsky.org/astap.htm",
+      "licence": "MPL-2.0"
+    },
+    {
+      "id": "astap-database",
+      "name": {
+        "fr": "Base d’étoiles d’ASTAP (D20)",
+        "en": "ASTAP star database (D20)",
+        "ja": "ASTAP D20",
+        "de": "ASTAP D20",
+        "es": "ASTAP D20",
+        "it": "ASTAP D20",
+        "pt-BR": "ASTAP D20",
+        "ru": "ASTAP D20",
+        "zh-Hans": "ASTAP D20",
+        "zh-Hant": "ASTAP D20"
+      },
+      "kind": "tool",
+      "downloads": {
+        "macos-arm64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/star_databases/d20_star_database.zip",
+          "sha256": "c1cb092cb47563ebf095988358746e0c905a16f6a9b860152bc1caf10b788252",
+          "bytes": 399561156
+        },
+        "macos-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/star_databases/d20_star_database.zip",
+          "sha256": "c1cb092cb47563ebf095988358746e0c905a16f6a9b860152bc1caf10b788252",
+          "bytes": 399561156
+        },
+        "windows-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/star_databases/d20_star_database.zip",
+          "sha256": "c1cb092cb47563ebf095988358746e0c905a16f6a9b860152bc1caf10b788252",
+          "bytes": 399561156
+        },
+        "linux-x64": {
+          "url": "https://downloads.sourceforge.net/project/astap-program/star_databases/d20_star_database.zip",
+          "sha256": "c1cb092cb47563ebf095988358746e0c905a16f6a9b860152bc1caf10b788252",
+          "bytes": 399561156
+        }
+      },
+      "page": "https://www.hnsky.org/astap.htm",
+      "licence": "Gaia DR3 extract by ESA/DPAC (free use with acknowledgement), packaged by the ASTAP project"
+    },
+    {
+      "id": "astrometry-net",
+      "name": {
+        "fr": "astrometry.net",
+        "en": "astrometry.net",
+        "ja": "astrometry.net",
+        "de": "astrometry.net",
+        "es": "astrometry.net",
+        "it": "astrometry.net",
+        "pt-BR": "astrometry.net",
+        "ru": "astrometry.net",
+        "zh-Hans": "astrometry.net",
+        "zh-Hant": "astrometry.net"
+      },
+      "kind": "tool",
+      "page": "https://astrometry.net/use.html",
+      "licence": "BSD-style (see the project page)"
+    }
+  ]
+}
