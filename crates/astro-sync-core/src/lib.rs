@@ -212,9 +212,22 @@ pub fn version() -> &'static str {
 mod tests {
     use super::*;
 
+    /// The crate's version is the workspace's (`Cargo.toml` at the root of
+    /// the repository), the one the release tag carries.
     #[test]
     fn version_matches_cargo_toml() {
-        assert_eq!(version(), "1.0.0");
+        let workspace = include_str!("../../../Cargo.toml");
+        let section = workspace
+            .split("[workspace.package]")
+            .nth(1)
+            .expect("a [workspace.package] section");
+        let line = section
+            .lines()
+            .map(str::trim)
+            .find(|line| line.starts_with("version"))
+            .expect("a version line");
+        let expected = line.split('"').nth(1).expect("a quoted version");
+        assert_eq!(version(), expected);
     }
 
     #[test]
