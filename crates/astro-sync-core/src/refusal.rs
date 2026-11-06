@@ -28,7 +28,7 @@
 /// A sentence says the reason and what the person can do; the wrapper around
 /// it (the queue's notice, the command line's line) says what became of the
 /// file.
-const KNOWN: [(&str, &str); 18] = [
+const KNOWN: [(&str, &str); 20] = [
     (
         "capture_content_refused",
         "This file is an SVG or HTML document: the service does not accept it. If it was meant to be an image, export it as JPEG, PNG or TIFF, then add it again.",
@@ -92,6 +92,14 @@ const KNOWN: [(&str, &str); 18] = [
     (
         "variant_capture_pending",
         "Waiting: this image is a variant of the capture another image of this sending creates. It will leave as soon as that image is sent; send again.",
+    ),
+    (
+        "project_not_found",
+        "This plan does not exist in this space: import the night again from Sessions.",
+    ),
+    (
+        "variant_capture_refused",
+        "This file was not sent: import the night again from Sessions.",
     ),
     (
         "not_a_result",
@@ -191,6 +199,20 @@ mod tests {
             Some("service_starting")
         );
         assert_eq!(code_for_answer(302, "moved"), None);
+    }
+
+    /// A plan of another space is refused `404 project_not_found`, and the
+    /// variants of the same capture are refused in cascade
+    /// (`variant_capture_refused`): both say to import the night again, never
+    /// « update Astro Sync ».
+    #[test]
+    fn a_plan_of_another_space_says_to_import_the_night_again() {
+        for (status, code) in [(404, "project_not_found"), (400, "variant_capture_refused")] {
+            assert_eq!(code_for_answer(status, code), Some(code));
+            let sentence = plain_sentence(code).unwrap();
+            assert!(sentence.contains("import the night again from Sessions"));
+            assert!(!sentence.to_lowercase().contains("update"));
+        }
     }
 
     /// The sentence of the fourth capture of a free space is said in each of

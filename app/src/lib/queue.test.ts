@@ -67,7 +67,7 @@ async function catalogueOfTheCore(): Promise<string[]> {
 
 test("the refusals of the core each have a sentence in every language, and the window knows them all", async () => {
   const codes = await catalogueOfTheCore();
-  assert.equal(codes.length, 18, "the catalogue of the core");
+  assert.equal(codes.length, 20, "the catalogue of the core");
   assert.deepEqual([...REFUSAL_CODES].sort(), [...codes].sort());
   for (const locale of SUPPORTED_LOCALES) {
     const words = await dictionary(locale);

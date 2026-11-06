@@ -537,8 +537,9 @@ fn make_plan_images<R: Runtime>(
         job.starnet = path_of("starnet2");
         job.graxpert = path_of("graxpert");
         job.pipelines_dirs = vec![paths.data_dir.join("pipelines")];
-        job.contrast = contrast;
-        job.retouch = retouch;
+        // The finish chosen for the pipeline (the wizard's contrast, a
+        // custom one included) wins over the settings' default.
+        job.apply_finish(astro_sync_core::stacking::PipelineFinish { contrast, retouch });
         // The name the steps give a pipeline the service has no word for.
         job.pipeline_label =
             astro_sync_core::metadata::render_texts(&listed, &job.pipeline.pipeline_id, "en").0;

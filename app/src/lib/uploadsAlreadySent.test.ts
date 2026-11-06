@@ -215,6 +215,8 @@ test("the button says why nothing starts, and the page wires « Renvoyer » and 
   const screen = source("screens/QueueScreen.tsx");
   assert.match(screen, /t\("uploads\.row\.resend"\)/);
   assert.match(screen, /t\("uploads\.beforeLink\.title"\)/);
+  // A row still queued before the link is « to import again », never « waiting ».
+  assert.match(screen, /t\("uploads\.beforeLink\.reimport"\)/);
   assert.match(screen, /queueForgetBeforeLink\(\)/);
   const flow = source("components/ImportProvider.tsx");
   assert.match(flow, /enqueued\?\.alreadySent/);
@@ -231,6 +233,9 @@ test("the new words exist in every language", () => {
       "uploads.alreadySent.other",
       "uploads.beforeLink.title",
       "uploads.beforeLink.description",
+      "uploads.beforeLink.reimport",
+      "errors.project_not_found",
+      "errors.variant_capture_refused",
     ])
       assert.notEqual(t(key), key, `${locale}: ${key}`);
     assert.match(t("uploads.row.alreadySent", { date: "X" }), /X/);

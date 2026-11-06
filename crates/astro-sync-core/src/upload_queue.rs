@@ -521,7 +521,33 @@ fn scope_rows_by_space(connection: &Connection) -> rusqlite::Result<()> {
         ))?;
         transaction.commit()?;
     }
+    remember_rows_still_in_the_queue(connection)?;
     connection.execute_batch(SPACE_INDEXES)
+}
+
+/// The version from which the rows of a space-less queue file that were still
+/// on their way (`queued`, `uploading`) are meant for the space linked **at
+/// the first opening after the migration** ([`UploadQueue::for_space`]):
+/// they are listed once, here, so that a file written later without a space
+/// (the command line) is never adopted by a space linked afterwards.
+const ADOPTION_VERSION: i64 = 2;
+
+/// Lists, once, the rows without a space that were still on their way when
+/// the file was migrated to [`ADOPTION_VERSION`].
+fn remember_rows_still_in_the_queue(connection: &Connection) -> rusqlite::Result<()> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version >= ADOPTION_VERSION {
+        return Ok(());
+    }
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS rows_to_adopt (id INTEGER PRIMARY KEY);
+         INSERT OR IGNORE INTO rows_to_adopt (id)
+             SELECT id FROM upload_queue
+             WHERE space_id IS NULL AND state IN ('queued', 'uploading');
+         PRAGMA user_version = {ADOPTION_VERSION};"
+    ))?;
+    transaction.commit()
 }
 
 /// One row per digest **and space**; the rows without a space (NULL) are one
@@ -591,10 +617,33 @@ impl UploadQueue {
     /// `link.space.id`): every read, every write and every « already known »
     /// is that space's. `None`: the rows without a space (the command line,
     /// a computer paired without an e-mail sign-in).
+    ///
+    /// The first time a queue file migrated from before the spaces is seen
+    /// from a linked space, the rows that were still on their way (`queued`,
+    /// `uploading`) become that space's: they leave at the next « Tout
+    /// envoyer ». A row whose digest the space already holds stays where it
+    /// was (before the link), to import again.
     #[must_use]
     pub fn for_space(mut self, space_id: Option<String>) -> Self {
         self.space_id = space_id.filter(|id| !id.is_empty());
+        if self.space_id.is_some() {
+            // Best effort: a failure leaves the rows before the link, which
+            // the window then says to import again.
+            let _ = self.adopt_rows_still_in_the_queue();
+        }
         self
+    }
+
+    fn adopt_rows_still_in_the_queue(&self) -> rusqlite::Result<()> {
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "UPDATE OR IGNORE upload_queue SET space_id = ?1
+             WHERE space_id IS NULL AND state IN ('queued', 'uploading')
+               AND id IN (SELECT id FROM rows_to_adopt)",
+            params![self.space_id],
+        )?;
+        transaction.execute("DELETE FROM rows_to_adopt", [])?;
+        transaction.commit()
     }
 
     /// The space this queue is seen from.
@@ -2081,6 +2130,118 @@ mod tests {
         assert_eq!(back.sky_of("m31").unwrap().unwrap().state, SkyState::Sent);
         // None of these rows is « before the link ».
         assert!(back.list_before_link().unwrap().is_empty());
+    }
+
+    /// Builds a queue file as the first build of the spaces left it: version
+    /// 1, rows without a space, a finished one and two still in the queue.
+    fn file_with_rows_from_before_the_spaces(path: &std::path::Path) {
+        let connection = Connection::open(path).unwrap();
+        prepare_schema(&connection).unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE IF EXISTS rows_to_adopt;
+                 PRAGMA user_version = 1;
+                 INSERT INTO upload_queue (source_path, sha256, size, state, capture_id, created_at, updated_at, kind)
+                 VALUES ('/w/a.tif', 'done', 1, 'completed', 'cap', '2026-11-03T10:00:00Z', '2026-11-03T10:00:00Z', 'final'),
+                        ('/w/b.tif', 'waiting', 1, 'queued', NULL, '2026-11-05T09:52:00Z', '2026-11-05T09:52:00Z', 'final'),
+                        ('/w/c.tif', 'going', 1, 'uploading', NULL, '2026-11-05T09:52:00Z', '2026-11-05T09:52:00Z', 'final');",
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn rows_still_queued_at_the_migration_go_to_the_linked_space() {
+        let directory = crate::test_support::TempDir::new("upload-queue-adopt");
+        let db_path = directory.path().join("queue.sqlite");
+        file_with_rows_from_before_the_spaces(&db_path);
+
+        let queue = UploadQueue::open(&db_path)
+            .unwrap()
+            .for_space(Some("space-sample".into()));
+        let mine: Vec<_> = queue
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|e| e.sha256)
+            .collect();
+        assert_eq!(mine, ["waiting", "going"]);
+        assert_eq!(queue.next_pending().unwrap().unwrap().sha256, "waiting");
+        // The finished one stays before the link, nothing queued does.
+        let before = queue.list_before_link().unwrap();
+        assert_eq!(before.len(), 1);
+        assert_eq!(before[0].sha256, "done");
+
+        // Once: a row written later without a space is not adopted by a
+        // space linked afterwards.
+        UploadQueue::open(&db_path)
+            .unwrap()
+            .enqueue_results(&[result(
+                "/w/d.tif",
+                "cli",
+                ResultKind::Final,
+                EntryTarget::default(),
+            )])
+            .unwrap();
+        let other = UploadQueue::open(&db_path)
+            .unwrap()
+            .for_space(Some("space-other".into()));
+        assert!(other.list().unwrap().is_empty());
+        assert_eq!(other.list_before_link().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn without_a_linked_space_the_rows_still_queued_stay_before_the_link() {
+        let directory = crate::test_support::TempDir::new("upload-queue-no-adopt");
+        let db_path = directory.path().join("queue.sqlite");
+        file_with_rows_from_before_the_spaces(&db_path);
+
+        // Opened with no space (command line, computer only paired): nothing
+        // moves, and the rows are still the queue's own.
+        let unlinked = UploadQueue::open(&db_path).unwrap();
+        assert_eq!(unlinked.list().unwrap().len(), 3);
+        drop(unlinked);
+
+        // The space linked later adopts them, they were never sent.
+        let linked = UploadQueue::open(&db_path)
+            .unwrap()
+            .for_space(Some("space-sample".into()));
+        assert_eq!(linked.list().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn a_row_already_before_the_link_does_not_block_a_new_import_of_the_night() {
+        let directory = crate::test_support::TempDir::new("upload-queue-reimport");
+        let db_path = directory.path().join("queue.sqlite");
+        {
+            let connection = Connection::open(&db_path).unwrap();
+            prepare_schema(&connection).unwrap();
+            connection
+                .execute(
+                    "INSERT INTO upload_queue (source_path, sha256, size, state, capture_id, created_at, updated_at, kind)
+                     VALUES ('/w/a.tif', 'sh2', 1, 'completed', 'old', '2026-11-03T10:00:00Z', '2026-11-03T10:00:00Z', 'final')",
+                    [],
+                )
+                .unwrap();
+        }
+        let queue = UploadQueue::open(&db_path)
+            .unwrap()
+            .for_space(Some("space-sample".into()));
+        let outcome = queue
+            .enqueue_results(&[result(
+                "/w/a.tif",
+                "sh2",
+                ResultKind::Final,
+                EntryTarget {
+                    session_id: Some("night".into()),
+                    ..EntryTarget::default()
+                },
+            )])
+            .unwrap();
+        assert_eq!(outcome.inserted, 1);
+        assert!(outcome.already_sent.is_empty());
+        assert_eq!(queue.next_pending().unwrap().unwrap().sha256, "sh2");
+        // The old row is untouched, still before the link.
+        assert_eq!(queue.list_before_link().unwrap().len(), 1);
     }
 
     #[test]

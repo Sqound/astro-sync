@@ -3,6 +3,21 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.0.1
+
+- The contrast chosen for a pipeline in the stacking assistant now reaches
+  the image of the multi-night plan: a strong contrast or a custom value no
+  longer falls back to the default of the settings.
+- Uploads that were still queued when the computer was linked to a space
+  (version 1.0.0 kept them « before the link ») are adopted by the linked
+  space at the next start and leave with the next « Send all ». Without a
+  linked space they are shown as « To import again », never as « Waiting ».
+- When the portal does not know the plan an upload refers to, Astro Sync
+  says so exactly (« This plan does not exist in this space: import the
+  night again from Sessions », in the ten languages) instead of a generic
+  failure.
+- The installers are unchanged: the Windows installer is still unsigned.
+
 ## 1.0.0
 
 First public release of the repository.

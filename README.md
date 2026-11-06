@@ -36,7 +36,7 @@ file names carry no version:
 | Windows (x64)                      | `Astro-Sync_windows_x64-setup.exe`, the Windows installer, not yet signed  |
 | Linux (x64, Ubuntu 22.04 or newer) | `Astro-Sync_linux_x64.deb` and `Astro-Sync_linux_x64.AppImage`, not signed |
 
-The Windows installer of version 1.0.0 is not yet signed, so Windows may show a
+The Windows installer of version 1.0.1 is not yet signed, so Windows may show a
 SmartScreen warning: choose "More info", then "Run anyway".
 
 On Linux, install the `.deb` with `sudo apt install ./Astro-Sync_linux_x64.deb`

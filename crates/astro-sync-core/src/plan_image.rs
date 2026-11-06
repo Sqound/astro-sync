@@ -809,6 +809,17 @@ pub struct PlanImageJob {
 }
 
 impl PlanImageJob {
+    /// The finish of the image: the one the pipeline was chosen with (the
+    /// contrast of the wizard, a slider value included) when it has one,
+    /// else `default` (the settings of « Traitements »). Same rule as the
+    /// night's `--finish`.
+    pub fn apply_finish(&mut self, default: crate::stacking::PipelineFinish) {
+        let finish = self.pipeline.finish.filter(|_| !self.pipeline.is_linear());
+        let finish = finish.unwrap_or(default);
+        self.contrast = finish.contrast;
+        self.retouch = finish.retouch;
+    }
+
     /// The job file beside the scratch (`.astro-sync-work/plan-image.job.json`).
     #[must_use]
     pub fn job_file(&self) -> PathBuf {

@@ -1963,3 +1963,64 @@ fn the_variants_of_a_plan_leave_through_the_queue_as_images_of_one_capture() {
         1
     );
 }
+
+/// The contrast chosen in the wizard travels with the pipeline: the plan's
+/// image gets its finish, not the default of the settings.
+#[test]
+fn the_contrast_chosen_for_a_pipeline_reaches_the_finish_of_the_plan() {
+    use crate::stacking::{Contrast, PipelineFinish};
+    let dir = TempDir::new("plan-image-own-finish");
+    let (project, current) = heart_here(dir.path());
+    let lines = plan_lines(dir.path(), &project, Some(&current));
+    let plan_dir = plan_folder(dir.path(), &project).unwrap();
+    let chosen: Vec<String> = lines.iter().map(|l| l.key.clone()).collect();
+    let default = PipelineFinish {
+        contrast: Contrast::Presentation,
+        ..PipelineFinish::default()
+    };
+    for (own, expected) in [
+        (Contrast::Strong, "strong"),
+        (Contrast::from_gain(3.35).unwrap(), "contrast-3.35"),
+    ] {
+        let choice = PipelineChoice::new("raw").with_finish(PipelineFinish {
+            contrast: own,
+            ..PipelineFinish::default()
+        });
+        let PlanImagePlan::Job(mut job) =
+            plan_image_job(&project, &lines, &chosen, &plan_dir, Some(choice))
+        else {
+            panic!("a job")
+        };
+        job.apply_finish(default);
+        assert_eq!(job.contrast, own);
+        let open = PlanImageGate {
+            allowed: true,
+            tool_present: true,
+            image_quality: false,
+        };
+        let imager = FakeImager {
+            calls: Cell::new(0),
+        };
+        let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
+        assert_eq!(outcome.finishes.len(), 1);
+        let file = outcome.finishes[0].render.path.file_name().unwrap();
+        assert!(file.to_string_lossy().contains(expected), "{file:?}");
+        let steps = format!("{:?}", outcome.finishes[0].processing);
+        assert!(
+            steps.contains(&format!("contrast {}", own.token())),
+            "{steps}"
+        );
+    }
+    // Without a finish of its own, the default of the settings.
+    let PlanImagePlan::Job(mut job) = plan_image_job(
+        &project,
+        &lines,
+        &chosen,
+        &plan_dir,
+        Some(PipelineChoice::new("raw")),
+    ) else {
+        panic!("a job")
+    };
+    job.apply_finish(default);
+    assert_eq!(job.contrast, Contrast::Presentation);
+}

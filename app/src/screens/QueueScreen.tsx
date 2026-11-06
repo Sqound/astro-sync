@@ -235,7 +235,9 @@ export function QueueScreen() {
                 </span>
                 <span className="as-uploads__state">
                   <span className={badgeClassName("neutral")}>
-                    {t(`status.${row.state}`)}
+                    {row.state === "queued" || row.state === "uploading"
+                      ? t("uploads.beforeLink.reimport")
+                      : t(`status.${row.state}`)}
                   </span>
                   <span className={helpTextClassName}>
                     {formatDateTime(row.at, locale)}

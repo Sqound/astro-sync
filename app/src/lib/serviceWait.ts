@@ -72,6 +72,8 @@ export const REFUSAL_CODES: readonly string[] = [
   "service_error",
   "capture_variant_limit_reached",
   "variant_capture_pending",
+  "project_not_found",
+  "variant_capture_refused",
   "not_a_result",
   "analysis_empty",
 ];
