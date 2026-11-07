@@ -110,6 +110,10 @@ pub struct CheckArgs {
     /// first pipeline the stacking was asked for).
     #[arg(long, value_name = "ID")]
     pub main: Option<String>,
+    /// Join the TIFF of the renders (full resolution) to the sending; without it, a render written as
+    /// PNG and TIFF leaves as its PNG, and a render that exists only as a TIFF (`linear`) as its TIFF.
+    #[arg(long)]
+    pub with_tiff: bool,
     /// Language of the titles and descriptions proposed for a render (fr, en, ja...).
     #[arg(long, default_value = "en")]
     pub lang: String,
@@ -129,6 +133,10 @@ pub struct SendNightArgs {
     /// first pipeline the stacking was asked for).
     #[arg(long, value_name = "ID")]
     pub main: Option<String>,
+    /// Join the TIFF of the renders (full resolution) to the sending; without it, a render written as
+    /// PNG and TIFF leaves as its PNG, and a render that exists only as a TIFF (`linear`) as its TIFF.
+    #[arg(long)]
+    pub with_tiff: bool,
     /// Upload queue (SQLite).
     #[arg(long)]
     pub queue: PathBuf,

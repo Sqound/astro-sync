@@ -1,6 +1,6 @@
 use super::*;
 use crate::multi_night::project_of;
-use crate::plan_image::{Band, Place, PlanField, PlanImager, PlanSource, band_of};
+use crate::plan_image::{Band, Place, PlanDisplay, PlanField, PlanImager, PlanSource, band_of};
 use crate::stacking::{Contrast, StackerOutput};
 use crate::test_support::TempDir;
 use std::cell::RefCell;
@@ -136,6 +136,20 @@ struct FakeImager {
     fail_at: Option<usize>,
     /// The jobs as they were given, in the order they were made.
     seen: RefCell<Vec<PlanImageJob>>,
+    /// Whether the record carries a display (the script of a render that has none does not).
+    records_display: bool,
+}
+
+/// The display a job's image is shown with: the one given, else its own, which depends on its nights
+/// (more nights, less noise, a black point nearer the sky).
+fn display_shown(job: &PlanImageJob) -> serde_json::Value {
+    job.display.map_or_else(
+        || {
+            let nights = job.night_ids().len() as f64;
+            serde_json::json!({"black": [0.03 / nights, 0.031 / nights, 0.032 / nights], "scale": 0.9 - 0.1 * nights, "imposed": false})
+        },
+        |d| serde_json::json!({"black": d.black, "scale": d.scale, "imposed": true}),
+    )
 }
 
 impl PlanImager for FakeImager {
@@ -182,7 +196,12 @@ impl PlanImager for FakeImager {
         );
         fs::write(
             job.out.join(crate::plan_image::record_file_name(&job.name)),
-            serde_json::json!({"crop": crop, "frameMaster": master}).to_string(),
+            if self.records_display {
+                serde_json::json!({"crop": crop, "frameMaster": master, "display": display_shown(job)})
+            } else {
+                serde_json::json!({"crop": crop, "frameMaster": master})
+            }
+            .to_string(),
         )
         .unwrap();
         Ok(written)
@@ -218,6 +237,7 @@ fn the_milestones_are_written_in_the_progression_folder_and_the_scratch_goes() {
         made: RefCell::default(),
         fail_at: None,
         seen: RefCell::default(),
+        records_display: true,
     };
     let run = run_plan_progression(
         &imager,
@@ -271,6 +291,7 @@ fn a_milestone_that_fails_stops_the_next_and_keeps_the_ones_made() {
         made: RefCell::default(),
         fail_at: Some(2),
         seen: RefCell::default(),
+        records_display: true,
     };
     let run = run_plan_progression(
         &imager,
@@ -303,6 +324,7 @@ fn the_last_milestone_is_made_first_and_gives_its_rectangle_and_frame_to_the_oth
         made: RefCell::default(),
         fail_at: None,
         seen: RefCell::default(),
+        records_display: true,
     };
     let run = run_plan_progression(
         &imager,
@@ -371,6 +393,7 @@ fn the_milestones_leave_as_the_history_of_the_capture_of_the_plan() {
         made: RefCell::default(),
         fail_at: None,
         seen: RefCell::default(),
+        records_display: true,
     };
     let run = run_plan_progression(
         &imager,
@@ -399,4 +422,104 @@ fn the_milestones_leave_as_the_history_of_the_capture_of_the_plan() {
         crate::upload_queue::result_kind_of(&results[0].path)
             .is_ok_and(|kind| kind == ResultKind::Progression)
     );
+}
+
+#[test]
+fn the_last_milestone_gives_its_display_to_the_others() {
+    let dir = TempDir::new("plan-progression-display");
+    let plan_dir = dir.path().join("Veil · p");
+    let lines = veil();
+    let jobs = plan_progression_jobs(
+        &project(),
+        &lines,
+        &keys(&lines),
+        &plan_dir,
+        &PipelineChoice::new("raw"),
+        &PlanMaking::default(),
+    );
+    assert!(jobs.iter().all(|j| j.job.display.is_none()));
+    let imager = FakeImager {
+        made: RefCell::default(),
+        fail_at: None,
+        seen: RefCell::default(),
+        records_display: true,
+    };
+    let run = run_plan_progression(
+        &imager,
+        &jobs,
+        &plan_dir,
+        OPEN,
+        &CancelFlag::new(),
+        &mut |_| {},
+    );
+    assert!(run.failure.is_none(), "{:?}", run.failure);
+    let seen = imager.seen.borrow();
+    // The image of the plan measures its own; the others are shown with it.
+    assert_eq!(seen[0].night_ids().len(), 3);
+    assert!(seen[0].display.is_none());
+    let plan_display = PlanDisplay {
+        black: [0.01, 0.031 / 3.0, 0.032 / 3.0],
+        scale: 0.9 - 0.3,
+        sky: None,
+        final_with_stars: None,
+    };
+    for milestone in &seen[1..] {
+        let given = milestone
+            .display
+            .expect("the display of the image of the plan");
+        assert!((given.scale - plan_display.scale).abs() < 1e-12);
+        assert!((given.black[0] - plan_display.black[0]).abs() < 1e-12);
+        assert!((given.black[2] - plan_display.black[2]).abs() < 1e-12);
+    }
+    // The job file says it as the script reads it.
+    let json = serde_json::to_value(&seen[1]).unwrap();
+    assert!((json["display"]["scale"].as_f64().unwrap() - plan_display.scale).abs() < 1e-12);
+    assert_eq!(json["display"]["black"].as_array().unwrap().len(), 3);
+    assert!(
+        serde_json::to_value(&seen[0])
+            .unwrap()
+            .get("display")
+            .is_none()
+    );
+}
+
+#[test]
+fn without_a_recorded_display_the_milestones_keep_their_own_and_the_record_says_so() {
+    let dir = TempDir::new("plan-progression-no-display");
+    let plan_dir = dir.path().join("Veil · p");
+    let lines = veil();
+    let jobs = plan_progression_jobs(
+        &project(),
+        &lines,
+        &keys(&lines),
+        &plan_dir,
+        &PipelineChoice::new("raw"),
+        &PlanMaking::default(),
+    );
+    let imager = FakeImager {
+        made: RefCell::default(),
+        fail_at: None,
+        seen: RefCell::default(),
+        records_display: false,
+    };
+    let run = run_plan_progression(
+        &imager,
+        &jobs,
+        &plan_dir,
+        OPEN,
+        &CancelFlag::new(),
+        &mut |_| {},
+    );
+    assert!(run.failure.is_none(), "{:?}", run.failure);
+    let seen = imager.seen.borrow();
+    assert_eq!(seen.len(), 3);
+    assert!(seen.iter().all(|j| j.display.is_none()));
+    // The rectangle and the frame are still shared: only the display is missing.
+    assert!(
+        seen[1..]
+            .iter()
+            .all(|j| j.crop.is_some() && j.frame_master.is_some())
+    );
+    // What a milestone made without it records (the script's `imposed`): its own measure.
+    assert_eq!(display_shown(&seen[1])["imposed"], false);
 }

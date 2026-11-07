@@ -171,7 +171,7 @@ pub struct PlanImageArgs {
     pub device: Vec<String>,
     /// Kept framing of the plan's image: TOP,LEFT,HEIGHT,WIDTH (the four integers of a step of
     /// `coverage.framings` of the latest `..._plan.json` sheet); the whole image stays in stacked/,
-    /// the cropped image (`..._framed.tif`) is the one that is sent.
+    /// the cropped image (`..._framed.png`, its TIFF with --with-tiff) is the one that is sent.
     #[arg(long, value_name = "TOP,LEFT,HEIGHT,WIDTH", value_parser = parse_frame)]
     pub frame: Option<plan_image::PlanFrame>,
     /// Frame of the plan's image and of its progression: `nets` (the default: the largest rectangle
@@ -198,6 +198,10 @@ pub struct PlanImageArgs {
     /// after their treatment. Without it, the first one asked for.
     #[arg(long = "main", value_name = "ID")]
     pub main: Option<String>,
+    /// Join the TIFF of the renders (full resolution) to the sending; without it, a render written as
+    /// PNG and TIFF leaves as its PNG, and a render that exists only as a TIFF (`linear`) as its TIFF.
+    #[arg(long)]
+    pub with_tiff: bool,
     /// "No processing": the combined integration, linear, as a 16-bit TIFF; alone, no
     /// render; with pipelines, written in addition, after them.
     #[arg(long)]
@@ -738,6 +742,7 @@ pub fn plan_image(args: &PlanImageArgs) -> Outcome {
                     &run.outcomes,
                     args.main.as_deref(),
                     capture_ref.as_deref(),
+                    args.with_tiff,
                 );
                 if capture_ref.is_none()
                     && let Some(main) = results.first()

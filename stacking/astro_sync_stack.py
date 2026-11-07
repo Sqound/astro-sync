@@ -818,7 +818,8 @@ def write_output(report: Reporter, pipeline: str, path: Path, contrast: str = "n
 def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: Path | None,
                     graxpert: Path | None, render_log, notes: dict[str, object],
                     siril: Path | None = None, dualband: bool = False,
-                    natural_layers=None):
+                    natural_layers=None, imposed: dict[str, object] | None = None,
+                    measured: dict[str, object] | None = None):
     """The nebula and star layers of one preparation (``renders.PREPARATIONS``): ``native`` or ``polished``.
 
     ``polished`` runs the engine the task chose (``--polished-engine``:
@@ -832,6 +833,11 @@ def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: 
     of the natural render of the same master: ``natural_layers``, the
     natural nebula and star layers when they were made anyway, or made here
     for the level alone.
+
+    The preparation shows the master with a display -- a black point per channel and a stretch scale, and for
+    the polished one the sky levels its matches aim at (``sky``: ``displayed`` and ``final``, ``finalWithStars``)
+    -- that it measures, unless ``imposed`` (``{"black": [r, g, b], "scale": s, ...}``) gives it; ``measured``
+    (when given) receives the one used.
     """
     import renders
 
@@ -841,17 +847,27 @@ def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: 
             master, graxpert, work, f"{args.name}_polished", render_log,
             args.gradient_degree, args.black_percentile, args.deconv_fwhm,
             getattr(args, "polished_engine", renders.DEFAULT_POLISHED_ENGINE), siril, dualband,
+            imposed, measured,
         )
         notes["polished"] = done
         nebula, stars = renders.star_layer(native, work, f"{args.name}_polished", starnet, render_log)
         if starnet is not None and stars.any():
-            if natural_layers is None:
-                natural_layers = prepared_layers(args, "native", master, starnet, graxpert, render_log, {})
-            target = renders.natural_final_level(*natural_layers)
+            # The level of the natural render's sky, stars included: the master's own, unless the display imposes it.
+            target = (imposed or {}).get("finalWithStars")
+            if target is None:
+                if natural_layers is None:
+                    natural_layers = prepared_layers(args, "native", master, starnet, graxpert, render_log, {})
+                target = renders.natural_final_level(*natural_layers)
+            if measured is not None:
+                measured["finalWithStars"] = float(target)
             nebula, shift = renders.match_final_sky_level(nebula, stars, target)
             done["skyLevelFinalShift"] = round(shift, 6)
         return nebula, stars
-    native = renders.prepare_native(master, args.gradient_degree, args.black_percentile, args.deconv_fwhm)
+    imposed = imposed or {}
+    native = renders.prepare_native(
+        master, args.gradient_degree, args.black_percentile, args.deconv_fwhm,
+        imposed.get("scale"), imposed.get("black"), measured,
+    )
     return renders.star_layer(native, work, args.name, starnet, render_log)
 
 
@@ -916,9 +932,13 @@ def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runne
     # and GraXpert's progress go to render.log in the work folder.
     try:
         with (work / "render.log").open("ab") as render_log, contextlib.redirect_stdout(sys.stderr):
+            # The display (imposed and recorded) is the image's own: the one preparation its pipeline uses.
+            shown = len(kinds) == 1
             for kind in kinds:
                 layers[kind] = prepared_layers(args, kind, master, starnet, graxpert, render_log, notes, siril, dualband,
-                                               layers.get("native"))
+                                               layers.get("native"),
+                                               getattr(args, "display", None) if shown else None,
+                                               getattr(args, "measured_display", None) if shown else None)
                 if runner.cancelled:
                     raise Cancelled()
     except subprocess.CalledProcessError as error:

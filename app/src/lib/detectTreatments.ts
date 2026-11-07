@@ -145,6 +145,11 @@ export interface TreatmentResult {
   nights: number;
   path: string;
   size: number;
+  /** The TIFF in full resolution of a render that leaves as a PNG
+   * (`render_files`): listed under its PNG, ticked only with « Joindre aussi
+   * les TIFF ». `twinOf` is the path of that PNG. */
+  fullResolution?: boolean;
+  twinOf?: string;
 }
 
 /** Why a row of « Images à envoyer » cannot be ticked. */
@@ -173,6 +178,7 @@ export function imageKey(result: Pick<TreatmentResult, "targetId" | "path">) {
  * the night's wizard keeps as the main one of a capture. */
 function isNaturalMaster(result: TreatmentResult): boolean {
   return (
+    !result.fullResolution &&
     result.pipelineId === NATURAL_ID &&
     !hasContrast(result.contrast) &&
     !hasFinish(result)
@@ -198,14 +204,32 @@ export function summaryImages(
   const targets = [...new Set(results.map((item) => item.targetId))];
   const rows: SummaryImage[] = [];
   for (const targetId of targets) {
-    const mine = results.filter((item) => item.targetId === targetId);
+    const all = results.filter((item) => item.targetId === targetId);
+    // The TIFF of a render is never the capture: it is listed right under
+    // its PNG (a TIFF whose PNG is not listed stays an image of its own).
+    const twins = all.filter(
+      (item) =>
+        item.fullResolution && all.some((other) => other.path === item.twinOf),
+    );
+    const mine = all.filter((item) => !twins.includes(item));
     // The capture: the natural render when there is one, else the first
     // image made without a curve, else the first; the others keep their order.
     const capture =
       mine.find(isNaturalMaster) ??
-      mine.find((item) => !hasContrast(item.contrast) && !hasFinish(item)) ??
+      mine.find(
+        (item) =>
+          !item.fullResolution &&
+          !hasContrast(item.contrast) &&
+          !hasFinish(item),
+      ) ??
       mine[0];
-    const sorted = [capture, ...mine.filter((item) => item !== capture)];
+    const sorted = [
+      capture,
+      ...mine.filter((item) => item !== capture),
+    ].flatMap((item) => [
+      item,
+      ...twins.filter((twin) => twin.twinOf === item.path),
+    ]);
     sorted.forEach((item, index) => {
       const role = index === 0 ? "capture" : "variant";
       rows.push({
@@ -289,15 +313,6 @@ export function sendPrimary(
   return ticked.length > 0
     ? { kind: "send", count: ticked.length }
     : { kind: "done" };
-}
-
-/** « TIFF » from the file's name. */
-export function formatOf(path: string): string {
-  const extension = path.split(".").pop() ?? "";
-  return extension
-    .toUpperCase()
-    .replace("TIF", "TIFF")
-    .replace("TIFFF", "TIFF");
 }
 
 /** The folder of each target the treatments prepared: its folder in the

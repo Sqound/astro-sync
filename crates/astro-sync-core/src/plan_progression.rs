@@ -21,6 +21,15 @@
 //! cut the same way, so that the milestones line up with one another and with
 //! the image of the plan.
 //!
+//! **One level**: the display of an image is two measures, the black point of
+//! each channel and the scale of the stretch, and a stack of one night is
+//! noisier than a stack of three: shown with its own measures its sky would
+//! look brighter. The record of the image of the plan gives them too
+//! ([`recorded_display`]) and every other milestone is shown with them
+//! ([`PlanImageJob::display`]); when the image of the plan could not record
+//! them the milestones keep their own measures, and their records say so
+//! (`imposed: false`).
+//!
 //! What leaves ([`plan_progression_results`]): each JPEG as a progression of
 //! the capture of the plan (an existing capture, or the one another image of
 //! the same sending creates), with its frames: the service shows them under
@@ -34,8 +43,8 @@ use serde::{Deserialize, Serialize};
 use crate::local_work::CancelFlag;
 use crate::multi_night::NightProject;
 use crate::plan_image::{
-    PlanCrop, PlanFrameMaster, PlanImageGate, PlanImageJob, PlanImagePlan, PlanLine, PlanMaking,
-    plan_image_job_of, recorded_crop, run_plan_image,
+    PlanCrop, PlanDisplay, PlanFrameMaster, PlanImageGate, PlanImageJob, PlanImagePlan, PlanLine,
+    PlanMaking, plan_image_job_of, recorded_crop, recorded_display, run_plan_image,
 };
 use crate::stacking::{PipelineChoice, StackEvent, StackFailure};
 use crate::upload_queue::{EntryTarget, ResultFile, ResultKind};
@@ -160,7 +169,7 @@ pub struct PlanProgressionRun {
 }
 
 /// Makes the milestones, each into `<plan>/progression/`: the last one (every
-/// night) first, whose frame master and rectangle the others take (see the
+/// night) first, whose frame master, rectangle and display the others take (see the
 /// module documentation), then the others in their order; stops at the first
 /// that fails (the ones made stay made). The steps come back in the order of
 /// the nights. The scratch is gone when this returns.
@@ -203,6 +212,7 @@ pub fn run_plan_progression(
     order.extend(jobs.last().cloned());
     order.extend(jobs[..jobs.len() - 1].iter().cloned());
     let mut framing: Option<(PlanCrop, PlanFrameMaster)> = None;
+    let mut display: Option<PlanDisplay> = None;
     for (rank, mut planned) in order.into_iter().enumerate() {
         if rank > 0
             && let Some((crop, master)) = &framing
@@ -210,9 +220,13 @@ pub fn run_plan_progression(
             planned.job.crop = Some(*crop);
             planned.job.frame_master = Some(master.clone());
         }
+        if rank > 0 {
+            planned.job.display = display;
+        }
         let outcome = run_plan_image(imager, &planned.job, gate, cancel, on_event);
         if rank == 0 {
             framing = recorded_crop(&planned.job);
+            display = recorded_display(&planned.job);
         }
         let made = outcome.and_then(|outcome| {
             let jpeg = outcome

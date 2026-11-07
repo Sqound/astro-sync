@@ -45,6 +45,7 @@ use crate::precheck::{
     check_quotas, check_with_service, plan_images_within, rebind_progressions,
     several_renders_allowed,
 };
+use crate::render_files;
 use crate::scanner::{self, ScanError};
 use crate::sky_solution::{
     SkySolutionTransport, SolveHints, SolveOutcome, SolveSetup, solve_and_send,
@@ -98,16 +99,11 @@ fn is_final_image(name: &str) -> bool {
         })
 }
 
-fn is_stacked_image(name: &str) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "tif" | "tiff"))
-}
-
 /// The final images (`<target>/final/`, the proposed one first) and the
-/// stacked ones (`<target>/stacked/*.tif`) of the night's ticked targets,
-/// each with its SHA-256 (the cache spares the files already read).
+/// renders of `<target>/stacked/` of the night's ticked targets, each with
+/// its SHA-256 (the cache spares the files already read). A render written as
+/// PNG and TIFF gives both, each naming the other (`twin_sha256`): which of
+/// the two leaves is the check's to decide ([`precheck_candidates`]).
 pub fn local_images(
     night_folder: &Path,
     detection: &NightDetection,
@@ -143,23 +139,51 @@ pub fn local_images(
             };
             (rank, f.relative_path.clone())
         });
-        let stacked = walk.files.iter().filter(|f| {
-            f.relative_path
-                .strip_prefix(&format!("{folder}/{STACKED_DIR}/"))
-                .is_some_and(|rest| !rest.contains('/') && is_stacked_image(rest))
-        });
-        for (file, kind) in finals
-            .into_iter()
-            .map(|f| (f, ResultKind::Final))
-            .chain(stacked.map(|f| (f, ResultKind::Stacked)))
-        {
+        // `<target>/final/` is the person's own: it leaves as it is,
+        // whatever its format.
+        for file in finals {
             images.push(LocalImage {
                 target_id: target.target_id.clone(),
                 path: file.path.clone(),
                 sha256: scanner::digest_of(file, cache, cancel)?,
                 size: file.stamp.size,
-                kind,
+                kind: ResultKind::Final,
+                twin_sha256: None,
             });
+        }
+        let stacked: Vec<&scanner::WalkedFile> = walk
+            .files
+            .iter()
+            .filter(|f| {
+                f.relative_path
+                    .strip_prefix(&format!("{folder}/{STACKED_DIR}/"))
+                    .is_some_and(|rest| !rest.contains('/'))
+            })
+            .collect();
+        for (file, twin) in render_files::pair_render_files(stacked, |f| f.path.as_path()) {
+            let sha256 = scanner::digest_of(file, cache, cancel)?;
+            let twin = match twin {
+                Some(tiff) => Some((tiff, scanner::digest_of(tiff, cache, cancel)?)),
+                None => None,
+            };
+            images.push(LocalImage {
+                target_id: target.target_id.clone(),
+                path: file.path.clone(),
+                sha256: sha256.clone(),
+                size: file.stamp.size,
+                kind: ResultKind::Stacked,
+                twin_sha256: twin.as_ref().map(|(_, digest)| digest.clone()),
+            });
+            if let Some((tiff, digest)) = twin {
+                images.push(LocalImage {
+                    target_id: target.target_id.clone(),
+                    path: tiff.path.clone(),
+                    sha256: digest,
+                    size: tiff.stamp.size,
+                    kind: ResultKind::Stacked,
+                    twin_sha256: Some(sha256),
+                });
+            }
         }
     }
     Ok(images)
@@ -168,6 +192,13 @@ pub fn local_images(
 /// The images the "Summary" checks: those the night's folder holds
 /// ([`ResumeLocal::candidates`]) and `extra` (the renders and progression
 /// images this sending just made).
+///
+/// **The TIFF of a render that also leaves as a PNG is kept only when
+/// `include_tiff`** (the box « Joindre aussi les TIFF » of the sending,
+/// [`crate::render_files`]): the gallery shows the PNG, and the TIFF only
+/// serves the download in full resolution, so it is the person's choice,
+/// never the default. A render that exists only as a TIFF (the linear one)
+/// and the person's own `final/` image are never concerned.
 ///
 /// A stacked image an earlier stacking left in `<target>/stacked/` is **never
 /// a final image to send again**: when this sending stacks the target again
@@ -183,6 +214,7 @@ pub fn precheck_candidates(
     local: &ResumeLocal,
     extra: Vec<ImageCandidate>,
     restack: &[String],
+    include_tiff: bool,
 ) -> Vec<ImageCandidate> {
     let replaced = |target: &str| {
         restack.iter().any(|t| t == target)
@@ -196,7 +228,32 @@ pub fn precheck_candidates(
         .filter(|c| !(c.kind == ResultKind::Stacked && replaced(&c.target_id)))
         .collect();
     candidates.extend(extra);
+    candidates.retain(|c| render_files::leaves(c.is_full_resolution_twin(), include_tiff));
     candidates
+}
+
+/// The TIFF of the renders a sending could join (« Joindre aussi les TIFF
+/// (pleine résolution, ≈ 47 Mo chacun) »): how many there are and what they
+/// weigh, whether they are joined or not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FullResolution {
+    /// The box is ticked: they are among the candidates.
+    pub joined: bool,
+    pub count: u64,
+    pub bytes: u64,
+}
+
+/// [`FullResolution`] of a sending: the TIFF twins among the candidates taken
+/// with every TIFF (`precheck_candidates(.., true)`).
+#[must_use]
+pub fn full_resolution_of(with_tiff: &[ImageCandidate], joined: bool) -> FullResolution {
+    let twins = with_tiff.iter().filter(|c| c.is_full_resolution_twin());
+    FullResolution {
+        joined,
+        count: twins.clone().count() as u64,
+        bytes: twins.map(|c| c.size).sum(),
+    }
 }
 
 /// What the resume reads in the night's folder (or `Missing` without one).
@@ -257,6 +314,10 @@ pub struct NightPrecheck {
     pub quota: QuotaCheck,
     /// Several renders of the stacking may be ticked (each a variant).
     pub several_renders_allowed: bool,
+    /// The TIFF of the renders this sending could join (set by the caller,
+    /// [`full_resolution_of`]).
+    #[serde(default)]
+    pub full_resolution: FullResolution,
 }
 
 /// The check before a sending (see [`NightPrecheck`]): nothing is sent.
@@ -281,6 +342,7 @@ pub fn precheck_night<T: PrecheckTransport>(
     quota.allowed = quota.findings.is_empty();
     Ok(NightPrecheck {
         several_renders_allowed: several_renders_allowed(&storage),
+        full_resolution: FullResolution::default(),
         storage,
         plans,
         quota,

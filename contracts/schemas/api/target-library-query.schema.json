@@ -331,6 +331,18 @@
         "favoriteMode": {
           "enum": ["", "photo", "visual"]
         },
+        "done": {
+          "enum": ["", "photo", "visual", "both", "none"],
+          "description": "ALREADY-CAPTURED-FILTER-01, « Déjà faite »: `photo` keeps the targets the reader photographed (observed too or not), `visual` the ones observed, `both` the ones done both ways, `none` the ones done neither way, read from `photoKeys` and `visualKeys`. Like a favorites restriction it narrows the pool every counter describes, and an answer to it is `no-store`. Absent or empty: no filter; any other value is `400 invalid_request`."
+        },
+        "photoKeys": {
+          "type": "string",
+          "description": "With `done`: the targets the reader photographed, as a comma-separated list of identifiers or designations (at most 500, each at most 200 characters), matched by the catalogue's lookup keys exactly as a capture is (`M 31`, `m31` and `NGC 224` all name M31). Only the reader's device or browser knows them (the captures of its space, the history of its plans)."
+        },
+        "visualKeys": {
+          "type": "string",
+          "description": "With `done`: the targets the reader observed, in the form of `photoKeys`."
+        },
         "sort": {
           "enum": ["", "designation", "planner", "notoriety"],
           "description": "Result ordering. Absent or empty means `designation`, the alphabetical catalogue index every client has always received. `notoriety` is the order of the planner's catalogue screens: the editorial selection first (Essentielles, then Étendues, then the rest), then the catalogue's rank (Système solaire, Messier, Caldwell, NGC, IC, Sharpless, Barnard, LBN, Abell, LDN), then the designation; it does not depend on the observer and drops nothing. `planner` applies the web planner's own relevance score (editorial tier, type, brightness, apparent size, and culmination height at `latitude`) and drops targets it cannot rank, so `total` and `counts` describe the ranked set."

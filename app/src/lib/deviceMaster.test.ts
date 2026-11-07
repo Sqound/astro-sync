@@ -678,7 +678,7 @@ test("the render says where it starts from, the image never leaves, the figures 
   });
   const sent = summary.groups.find((group) => group.key === "sent")!;
   const rows = sent.rows.map((row) => text(row.segs));
-  const at = rows.indexOf("Image empilée de M45");
+  const at = rows.indexOf("Image empilée de M45 · PNG");
   assert.ok(at >= 0, rows.join(" | "));
   assert.equal(
     rows[at + 1],

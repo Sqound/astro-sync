@@ -37,7 +37,7 @@ const result = (
   designation: "IC 1805",
   pipelineId,
   nights: 3,
-  path: `${FOLDER}/IC_1805_plan_${pipelineId}.tif`,
+  path: `${FOLDER}/IC_1805_plan_${pipelineId}.png`,
   size,
   ...extra,
 });
@@ -85,10 +85,10 @@ test("every pipeline's image is listed: the first as the capture, the others as 
   );
   assert.equal(capture.title, "IC 1805");
   assert.equal(capture.render, "Rendu naturel");
-  assert.equal(flat(capture.meta), "3 nuits empilées · TIFF · 46,5 Mo");
+  assert.equal(flat(capture.meta), "3 nuits empilées · PNG · 46,5 Mo");
   assert.equal(variant.title, "Variante de la capture de IC 1805");
   assert.equal(variant.render, "Correction bibande");
-  assert.equal(flat(variant.meta), "TIFF · 46,8 Mo");
+  assert.equal(flat(variant.meta), "PNG · 46,8 Mo");
 });
 
 test("the natural render is the capture whatever the order of the pipelines; a render with the curve of presentation is never one", () => {
@@ -313,12 +313,12 @@ test("the Récapitulatif with two pipelines: two rows, each with its box, its pa
   assert.ok(!html.includes("disabled"), "both boxes open");
   assert.ok(!/checked=""/.test(html), "nothing ticked by default");
   assert.match(html, /<strong>IC 1805<\/strong> · Rendu naturel/);
-  assert.match(html, /3 nuits empilées · TIFF · 46,5 Mo/);
+  assert.match(html, /3 nuits empilées · PNG · 46,5 Mo/);
   assert.match(
     html,
     /<strong>Variante de la capture de IC 1805<\/strong> · Correction bibande/,
   );
-  assert.match(html, /TIFF · 46,8 Mo/);
+  assert.match(html, /PNG · 46,8 Mo/);
   // The path is the link that opens the file.
   for (const row of TWO) {
     assert.ok(html.includes(`>${row.path}</button>`), row.path);
@@ -421,5 +421,34 @@ test("every language says the new words of the list", async () => {
     flat(
       "Une capture par cible, ses variantes en dessous ; rien n’est envoyé sans votre case.",
     ),
+  );
+});
+
+test("the row of a render's TIFF says « TIFF pleine résolution », a TIFF alone « TIFF seul »", () => {
+  const png = result("raw", 13_000_000);
+  const rows = summaryImages(
+    [
+      png,
+      {
+        ...result("raw", 47_000_000),
+        path: `${FOLDER}/IC_1805_plan_raw.tif`,
+        fullResolution: true,
+        twinOf: png.path,
+      },
+      {
+        ...result("linear", 20_000_000),
+        path: `${FOLDER}/IC_1805_plan_linear.tif`,
+      },
+    ],
+    storage(),
+  );
+  assert.deepEqual(
+    rows.map((row) => flat(summaryImageView(fr, "fr", row, pipelineName).meta)),
+    [
+      // The nights stacked are said on the capture's row only.
+      "3 nuits empilées · PNG · 13,0 Mo",
+      "TIFF pleine résolution · 47,0 Mo",
+      "TIFF seul · 20,0 Mo",
+    ],
   );
 });

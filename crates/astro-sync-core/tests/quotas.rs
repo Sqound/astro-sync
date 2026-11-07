@@ -57,6 +57,7 @@ fn image(target: &str, path: &str, sha: char, size: u64, kind: ResultKind) -> Im
         contrast: Default::default(),
         retouch: Default::default(),
         frame_count: None,
+        twin_sha256: None,
     }
 }
 

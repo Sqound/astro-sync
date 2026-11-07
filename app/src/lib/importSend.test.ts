@@ -217,3 +217,61 @@ test("the progression of a plan travels with the image that is its capture", () 
   assert.equal(carried[1].variantOfSha256, "a".repeat(64));
   assert.equal(carried[1].progression?.length, 1);
 });
+
+test("the row of a TIFF leaves as the render's TIFF, a variant of the capture its PNG creates", () => {
+  const png = "p".repeat(64);
+  const tiff = "t".repeat(64);
+  const withTiff = {
+    ...render(png),
+    path: "/stacked/raw.png",
+    fullResolution: { sha256: tiff, path: "/stacked/raw.tif", size: 47 },
+  } as StackedRender;
+  const base: TreatmentResult = {
+    targetId: "m31",
+    designation: "M31",
+    pipelineId: "raw",
+    nights: 1,
+    path: "/stacked/raw.png",
+    size: 13,
+  };
+  const send: ImageToSend = {
+    kind: "night",
+    sessionId: "night-1",
+    targetId: "m31",
+    render: withTiff,
+  };
+  const made = [
+    { ...base, send },
+    {
+      ...base,
+      path: "/stacked/raw.tif",
+      size: 47,
+      fullResolution: true,
+      twinOf: "/stacked/raw.png",
+      send: { ...send, fullResolution: true },
+    },
+  ];
+  const rows = summaryImages(made, null);
+  const sends = importSends(
+    rows,
+    made,
+    rows.map((row) => row.key),
+  );
+  assert.deepEqual(
+    sends.map(({ send, variant }) => [renderOf(send).sha256, variant]),
+    [
+      [png, false],
+      [tiff, true],
+    ],
+  );
+  assert.equal(
+    (sends[1].send as { variantOfSha256?: string }).variantOfSha256,
+    png,
+  );
+  // The TIFF alone ticked: it leaves as the capture, its own bytes.
+  const alone = importSends(rows, made, [rows[1].key]);
+  assert.deepEqual(
+    alone.map(({ send, variant }) => [renderOf(send).path, variant]),
+    [["/stacked/raw.tif", false]],
+  );
+});

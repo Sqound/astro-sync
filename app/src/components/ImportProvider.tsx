@@ -131,6 +131,8 @@ export interface ImportApi {
   /** « Continuer sans traitement » / « Continuer avec les images faites ». */
   skipTreatments: () => void;
   toggleImage: (key: string) => void;
+  /** « Joindre aussi les TIFF »: the TIFF rows ticked or unticked. */
+  joinTiff: (on: boolean) => void;
   /** A choice on the list of incidents of a session (a tick, an edit, a line
    * added by hand): kept in the store, written by the primary. */
   changeIncidents: (sessionId: string, action: DraftAction) => void;
@@ -567,13 +569,17 @@ export function ImportProvider({ children }: { children: ReactNode }) {
               }
               if (plans.length > 0) {
                 // One image of the plan per pipeline, as the night's wizard
-                // makes them: the TIFF leaves, the PNG is only to look at.
+                // makes them: its PNG, and beside it its TIFF, ticked only
+                // with « Joindre aussi les TIFF ».
                 for (const plan of plans) {
-                  results.push({
+                  const row = {
                     targetId: card.targetId,
                     designation: card.designation,
                     pipelineId: plan.render.pipelineId,
                     nights: plan.combinedNightIds.length || mineNights.length,
+                  };
+                  results.push({
+                    ...row,
                     path: plan.render.path,
                     size: plan.render.size,
                     send: {
@@ -582,10 +588,25 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                       progression: history,
                     },
                   });
+                  const tiff = plan.render.fullResolution;
+                  if (tiff)
+                    results.push({
+                      ...row,
+                      path: tiff.path,
+                      size: tiff.size,
+                      fullResolution: true,
+                      twinOf: plan.render.path,
+                      send: {
+                        kind: "plan",
+                        outcome: plan,
+                        progression: history,
+                        fullResolution: true,
+                      },
+                    });
                 }
               } else if (first) {
                 for (const render of first.renders) {
-                  results.push({
+                  const row = {
                     targetId: card.targetId,
                     designation: card.designation,
                     pipelineId: render.pipelineId,
@@ -593,15 +614,29 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                     colour: colourOf(render.colour),
                     softStars: softStarsOf(render.softStars),
                     nights: 1,
+                  };
+                  const send = {
+                    kind: "night" as const,
+                    sessionId: first.sessionId,
+                    targetId: card.targetId,
+                    render,
+                  };
+                  results.push({
+                    ...row,
                     path: render.path,
                     size: render.size,
-                    send: {
-                      kind: "night",
-                      sessionId: first.sessionId,
-                      targetId: card.targetId,
-                      render,
-                    },
+                    send,
                   });
+                  const tiff = render.fullResolution;
+                  if (tiff)
+                    results.push({
+                      ...row,
+                      path: tiff.path,
+                      size: tiff.size,
+                      fullResolution: true,
+                      twinOf: render.path,
+                      send: { ...send, fullResolution: true },
+                    });
                 }
               }
             } catch (caught) {
@@ -628,9 +663,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           for (const off of unlisten) off();
         }
         if (!live()) return;
-        // The place left decides which images open ticked.
+        // The place left decides which images open ticked; « Envoi des
+        // rendus » of Réglages whether their TIFF are.
         await refreshStorage();
+        const kept = await localSettingsGet().catch(() => null);
         if (!live()) return;
+        dispatch({ type: "joinTiff", on: kept?.rendersUpload === "both" });
         dispatch({
           type: "treatDone",
           made: results,
@@ -788,6 +826,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       stopTreatments,
       skipTreatments: () => dispatch({ type: "skip" }),
       toggleImage: (key) => dispatch({ type: "toggleImage", key }),
+      joinTiff: (on) => dispatch({ type: "joinTiff", on }),
       changeIncidents: (sessionId, action) =>
         dispatch({ type: "incidents", sessionId, action }),
       tickTidy: (on) => dispatch({ type: "tidyTick", on }),

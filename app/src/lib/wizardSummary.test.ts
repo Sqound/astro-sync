@@ -496,8 +496,8 @@ test("a stacked image left by an earlier run is never listed as a final image to
     const sent = view.groups.find((g) => g.key === "sent")!;
     assert.deepEqual(
       sent.rows.map((r) => text(r.segs)).filter((row) => /^Image/.test(row)),
-      ["Image empilée de M31"],
-      "only the stacking of this sending, « calculé ici »",
+      ["Image empilée de M31 · PNG"],
+      "only the stacking of this sending, « calculé ici », in PNG",
     );
     assert.ok(!sent.rows.some((r) => /Image finale/.test(text(r.segs))));
     assert.equal(
@@ -524,13 +524,15 @@ test("a stacked image of an earlier run, the target not stacked again: said as a
       date: "07/10/2026",
     });
   const sent = view([leftover({ decision: "variant", captureId: "c" })]).groups;
-  assert.ok(
-    text(sent[0].rows[0].segs).startsWith("Variante de la capture de M31"),
-  );
+  assert.equal(text(sent[0].rows[0].segs), "Variante de la capture de M31");
   const fresh = view([leftover({ decision: "new_capture" })]).groups;
-  assert.equal(
-    text(fresh[0].rows[0].segs),
-    "Image empilée de M31 · M31_2026-08-10_raw.tif · SHA-256 32a2…9dcf",
+  // The target, then its file: a TIFF without a PNG beside it is « TIFF seul ».
+  assert.deepEqual(
+    fresh[0].rows.slice(0, 2).map((r) => [text(r.segs), r.value]),
+    [
+      ["Image empilée de M31", "1 image · 47,9 Mo"],
+      ["M31_2026-08-10_raw.tif · TIFF seul · SHA-256 32a2…9dcf", "47,9 Mo"],
+    ],
   );
   const same = view([
     leftover({ decision: "already_online", captureId: "c", imageId: "i" }),
@@ -629,28 +631,28 @@ test("under a stacked image, one line says the quality Astro Sync measured, once
       date: "07/10/2026",
     }).groups.find((g) => g.key === "sent")!.rows;
   const measured = rows([render("raw", MEASURED), render("linear", MEASURED)]);
-  // The first image, its quality, the second image: the line is said once.
+  // The target, its two images, then their quality: the line is said once.
   assert.deepEqual(
-    measured.slice(0, 3).map((r) => r.note === true),
-    [false, true, false],
+    measured.slice(0, 4).map((r) => r.note === true),
+    [false, false, false, true],
   );
   assert.equal(measured.filter((r) => r.note).length, 1);
   assert.equal(
-    text(measured[1].segs),
+    text(measured[3].segs),
     "Qualité de l’image empilée\u00a0: FWHM 2,1″ · excentricité 0,31 · 212 étoiles",
   );
-  assert.equal(measured[1].value, "");
+  assert.equal(measured[3].value, "");
   // Without the arc seconds the pixels; without an eccentricity, without it.
   const pixels = rows([
     render("raw", { ...MEASURED, fwhmArcsec: null, eccentricity: null }),
   ]);
   assert.equal(
-    text(pixels[1].segs),
+    text(pixels[2].segs),
     "Qualité de l’image empilée\u00a0: FWHM 3,8\u00a0px · 212 étoiles",
   );
   // The decimal mark follows the language; no key is left bare.
   for (const locale of ["en", "ja"] as const) {
-    const said = text(rows([render("raw", MEASURED)], locale)[1].segs);
+    const said = text(rows([render("raw", MEASURED)], locale)[2].segs);
     assert.match(said, /FWHM 2\.1″/u, locale);
     assert.ok(!said.includes("wizard."), said);
   }
@@ -737,7 +739,7 @@ test("under a final image the quality is said as measured on the person's master
   );
   // A stacked image keeps the stacking's sentence.
   assert.match(
-    text(rows([render("raw", MEASURED)])[1].segs),
+    text(rows([render("raw", MEASURED)])[2].segs),
     /^Qualité de l’image empilée/,
   );
   // No measure, no line.

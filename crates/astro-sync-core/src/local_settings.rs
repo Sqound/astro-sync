@@ -110,6 +110,12 @@ pub struct LocalSettings {
     /// every night covers, or the whole field (`plan_image::PlanField`).
     #[serde(default)]
     pub plan_field: PlanField,
+    /// « Envoi des rendus » (Settings › General): the starting value of the
+    /// box « Joindre aussi les TIFF » of each sending -- the PNG of the
+    /// renders alone (the default) or the PNG and the TIFF. The box of a
+    /// sending starts from it and never changes it ([`crate::render_files`]).
+    #[serde(default)]
+    pub renders_upload: RendersUpload,
     /// The last folders chosen: the window of
     /// "Detect sessions" and the two boxes of the sending's step 2
     /// open on them.
@@ -129,6 +135,28 @@ pub struct LocalSettings {
     /// same change.
     #[serde(default = "report_errors_default")]
     pub report_errors: bool,
+}
+
+/// What leaves of the renders of a stacking, by default
+/// ([`LocalSettings::renders_upload`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RendersUpload {
+    /// The PNG of each render; the TIFF stay on this computer unless the
+    /// person joins them to a sending. A TIFF fills the space about four
+    /// times faster and only serves the download in full resolution.
+    #[default]
+    Png,
+    /// The PNG and the TIFF of each render.
+    Both,
+}
+
+impl RendersUpload {
+    /// Whether the TIFF of the renders are joined to a sending.
+    #[must_use]
+    pub fn includes_tiff(self) -> bool {
+        self == RendersUpload::Both
+    }
 }
 
 /// The value of [`LocalSettings::report_errors`] for an installation that
@@ -181,6 +209,7 @@ impl Default for LocalSettings {
             soft_stars: SoftStars::None,
             polished_engine: PolishedEngine::default(),
             plan_field: PlanField::default(),
+            renders_upload: RendersUpload::default(),
             last_folders: LastFolders::default(),
             report_errors: REPORT_ERRORS_DEFAULT,
         }
@@ -398,6 +427,26 @@ mod tests {
             load(&path).is_err(),
             "an unknown word is not read as a choice"
         );
+    }
+
+    /// « Envoi des rendus »: the PNG alone until the person chooses, a file
+    /// written before the setting still loads, and the choice is kept.
+    #[test]
+    fn the_renders_leave_as_png_until_the_person_chooses_both() {
+        let dir = TempDir::new("local-settings-renders-upload");
+        let path = dir.path().join("local-settings.json");
+        assert_eq!(LocalSettings::default().renders_upload, RendersUpload::Png);
+        assert!(!RendersUpload::Png.includes_tiff());
+        fs::write(&path, r#"{"phd2UtcOffset":"+09:00"}"#).unwrap();
+        let mut settings = load(&path).unwrap();
+        assert_eq!(settings.renders_upload, RendersUpload::Png);
+        settings.renders_upload = RendersUpload::Both;
+        save(&path, &settings).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("\"rendersUpload\": \"both\""), "{written}");
+        assert!(load(&path).unwrap().renders_upload.includes_tiff());
+        fs::write(&path, r#"{"rendersUpload":"tiff"}"#).unwrap();
+        assert!(load(&path).is_err(), "an unknown word is not a choice");
     }
 
     #[test]

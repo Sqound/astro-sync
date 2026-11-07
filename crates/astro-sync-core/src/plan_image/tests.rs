@@ -399,9 +399,18 @@ fn the_image_of_a_plan_with_a_contrast_stays_the_plain_one_and_keeps_the_curve_b
         calls: Cell::new(0),
     };
     let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
+    // The PNG leaves; its TIFF is kept beside it, for the person to join.
     assert_eq!(
         outcome.render.path,
-        plan_dir.join("stacked/IC_1805_plan_raw.tif")
+        plan_dir.join("stacked/IC_1805_plan_raw.png")
+    );
+    assert_eq!(
+        outcome
+            .render
+            .full_resolution
+            .as_ref()
+            .map(|f| f.path.clone()),
+        Some(plan_dir.join("stacked/IC_1805_plan_raw.tif"))
     );
     assert_eq!(outcome.render.contrast, crate::stacking::Contrast::None);
     assert_eq!(outcome.plan_render.as_deref(), Some("natural"));
@@ -420,7 +429,20 @@ fn the_image_of_a_plan_with_a_contrast_stays_the_plain_one_and_keeps_the_curve_b
             .other_files
             .contains(&plan_dir.join("stacked/IC_1805_plan_raw_strong.tif"))
     );
-    assert_eq!(plan_results(&outcome).len(), 2, "the capture and its curve");
+    assert_eq!(
+        plan_results(&outcome, false).len(),
+        2,
+        "the capture and its curve"
+    );
+    // Joined, the TIFF of the render follows as an image of the same capture
+    // (the curve was written as a TIFF only: it has no twin to add).
+    let joined = plan_results(&outcome, true);
+    assert_eq!(joined.len(), 3);
+    assert!(joined[2].path.ends_with("IC_1805_plan_raw.tif"));
+    assert_eq!(
+        joined[2].target.variant_of,
+        Some(format!("sha256:{}", joined[0].sha256))
+    );
 }
 
 /// The finishes (contrast, colours, softened stars) of a plan's image leave
@@ -464,11 +486,11 @@ fn the_finishes_of_a_plan_image_leave_as_images_of_the_one_capture_named_after_t
         calls: Cell::new(0),
     };
     let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
-    let results = plan_results(&outcome);
+    let results = plan_results(&outcome, false);
     assert_eq!(results.len(), 2);
     let (capture, finish) = (&results[0], &results[1]);
     assert_eq!(capture.target.variant_of, None);
-    assert!(capture.path.ends_with("IC_1805_plan_raw.tif"));
+    assert!(capture.path.ends_with("IC_1805_plan_raw.png"));
     assert!(
         finish
             .path
@@ -538,7 +560,7 @@ fn the_images_of_a_plan_whose_capture_is_online_join_that_capture() {
         processing: None,
     });
     let outcomes = [raw, outcome_of("hoo", false)];
-    let results = plan_results_of(&outcomes, None, Some("capture-7"));
+    let results = plan_results_of(&outcomes, None, Some("capture-7"), false);
     assert_eq!(results.len(), 3);
     assert!(
         results
@@ -659,9 +681,12 @@ fn the_image_of_the_plan_is_made_here_and_leaves_as_a_capture_of_the_plan() {
     assert_eq!(steps, vec!["alignment", "combination", "render"]);
     assert_eq!(
         outcome.render.path,
-        plan_dir.join("stacked/IC_1805_plan_dualband-correction.tif")
+        plan_dir.join("stacked/IC_1805_plan_dualband-correction.png")
     );
-    assert_eq!(outcome.other_files.len(), 1);
+    assert!(
+        outcome.other_files.is_empty(),
+        "the TIFF is the render's twin"
+    );
     assert_eq!(outcome.combined_night_ids, vec!["n-09", "n-12"]);
     assert_eq!(outcome.plan_render.as_deref(), Some("dualband"));
     let totals: Vec<(Option<&str>, u64)> = outcome
@@ -678,7 +703,9 @@ fn the_image_of_the_plan_is_made_here_and_leaves_as_a_capture_of_the_plan() {
 
     // It leaves as the capture of the plan, never of a night.
     let queue = UploadQueue::open(&dir.path().join("queue.sqlite")).unwrap();
-    queue.enqueue_results(&plan_results(&outcome)).unwrap();
+    queue
+        .enqueue_results(&plan_results(&outcome, false))
+        .unwrap();
     let entry = queue.list().unwrap().remove(0);
     assert_eq!(entry.kind, ResultKind::Plan);
     let metadata = build_metadata(
@@ -751,7 +778,11 @@ fn the_image_of_a_plan_has_no_quality_without_analysis_logs_or_without_a_measure
         run_plan_image(&imager, &job, gate(false), &CancelFlag::new(), &mut |_| {}).unwrap();
     assert_eq!(without.image_quality, None);
     // ... except what made it: the image always says so.
-    let metadata = plan_results(&without)[0].target.metadata.clone().unwrap();
+    let metadata = plan_results(&without, false)[0]
+        .target
+        .metadata
+        .clone()
+        .unwrap();
     assert_eq!(metadata.image_quality, None);
     assert!(metadata.processing.is_some());
     // With the right, but fewer than twenty stars (`quality: null`).
@@ -772,10 +803,13 @@ fn the_image_of_a_plan_has_no_quality_without_analysis_logs_or_without_a_measure
         (pixels.fwhm_pixels, pixels.fwhm_arcsec, pixels.eccentricity),
         (4.2, None, None)
     );
-    let sent = plan_results(&PlanImageOutcome {
-        image_quality: Some(pixels),
-        ..without
-    });
+    let sent = plan_results(
+        &PlanImageOutcome {
+            image_quality: Some(pixels),
+            ..without
+        },
+        false,
+    );
     let metadata = sent[0].target.metadata.as_ref().unwrap();
     // The quality is the image's part; what made it, the capture's.
     assert!(metadata.has_image_part() && metadata.has_capture_part());
@@ -947,7 +981,7 @@ fn the_image_of_a_plan_takes_the_pipelines_chosen_for_its_target() {
         .map(|outcome| outcome.plan_render.as_deref())
         .collect();
     assert_eq!(renders, vec![Some("hoo"), Some("none")]);
-    let results = plan_results_of(&run.outcomes, None, None);
+    let results = plan_results_of(&run.outcomes, None, None, false);
     assert_eq!(results.len(), 2);
     assert!(results.iter().all(|r| r.kind == ResultKind::Plan));
     assert_ne!(results[0].path, results[1].path);
@@ -1578,6 +1612,76 @@ fn the_crop_of_the_frame_is_a_step_of_the_image_and_its_kind_a_word_of_the_job()
     let (rectangle, master) = recorded_crop(&job).unwrap();
     assert_eq!(rectangle, milestone.crop.unwrap());
     assert_eq!(master, milestone.frame_master.unwrap());
+    // The display the image was shown with: the black point per channel and the scale, as the script records them.
+    assert_eq!(recorded_display(&job), None, "no display in this record");
+    let mut with_display = job.clone();
+    with_display.display = Some(PlanDisplay {
+        black: [0.0125, 0.0131, 0.0128],
+        scale: 0.4375,
+        sky: None,
+        final_with_stars: None,
+    });
+    assert_eq!(
+        serde_json::to_value(&with_display).unwrap()["display"],
+        serde_json::json!({"black": [0.0125, 0.0131, 0.0128], "scale": 0.4375})
+    );
+    assert!(serde_json::to_value(&job).unwrap().get("display").is_none());
+    let record = |display: serde_json::Value| {
+        fs::write(
+            job.out.join(record_file_name(&job.name)),
+            serde_json::json!({"display": display}).to_string(),
+        )
+        .unwrap();
+    };
+    record(
+        serde_json::json!({"black": [0.0125, 0.0131, 0.0128], "scale": 0.4375, "imposed": false}),
+    );
+    assert_eq!(recorded_display(&job), with_display.display);
+    // The polished render records the sky levels its matches aim at.
+    record(
+        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "sky": {"displayed": 0.16, "final": 0.275}, "finalWithStars": 0.3, "imposed": false}),
+    );
+    let polished = recorded_display(&job).unwrap();
+    assert_eq!(polished.sky.unwrap().final_level, 0.275);
+    assert_eq!(polished.final_with_stars, Some(0.3));
+    let json = serde_json::to_value(polished).unwrap();
+    assert_eq!(
+        json["sky"],
+        serde_json::json!({"displayed": 0.16, "final": 0.275})
+    );
+    assert_eq!(json["finalWithStars"], 0.3);
+    record(
+        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "sky": {"displayed": 0.16}}),
+    );
+    assert_eq!(recorded_display(&job), None, "half a sky is not a display");
+    record(serde_json::Value::Null);
+    assert_eq!(
+        recorded_display(&job),
+        None,
+        "\"No processing\" has no display"
+    );
+    record(serde_json::json!({"black": [0.01, 0.02], "scale": 0.5}));
+    assert_eq!(
+        recorded_display(&job),
+        None,
+        "two black points are not a display"
+    );
+    record(serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.0}));
+    assert_eq!(
+        recorded_display(&job),
+        None,
+        "a scale of zero is not a display"
+    );
+    // Rewritten: the record of the crop below.
+    fs::write(
+        job.out.join(record_file_name(&job.name)),
+        serde_json::json!({
+            "crop": crop,
+            "frameMaster": {"path": "/n/Dual-band_180s_g100_integration.fit", "source": "master", "nightId": "n-07"}
+        })
+        .to_string(),
+    )
+    .unwrap();
     // Nothing cut: no step, and the whole frame is what a milestone is given.
     fs::write(
         job.out.join(record_file_name(&job.name)),
@@ -1659,7 +1763,9 @@ fn the_image_of_a_plan_says_what_made_it_and_never_the_tiff_library() {
 
     // It leaves with the image, as the capture's processing.
     let queue = UploadQueue::open(&dir.path().join("queue.sqlite")).unwrap();
-    queue.enqueue_results(&plan_results(&outcome)).unwrap();
+    queue
+        .enqueue_results(&plan_results(&outcome, false))
+        .unwrap();
     let entry = queue.list().unwrap().remove(0);
     let json = serde_json::to_value(build_metadata(&entry, &UploadTarget::default())).unwrap();
     assert_eq!(
@@ -1864,6 +1970,7 @@ fn outcome_of(pipeline: &str, quality: bool) -> PlanImageOutcome {
             path: PathBuf::from(format!("/x/stacked/Veil_plan_{pipeline}.tif")),
             sha256: format!("{pipeline:0<64}"),
             size: 10,
+            full_resolution: None,
             family: None,
         },
         finishes: Vec::new(),
@@ -1906,7 +2013,7 @@ fn the_renders_of_a_plan_are_one_capture_and_its_variants_named_after_their_trea
         outcome_of("hoo", false),
     ];
     // The pipeline asked as the main one becomes the capture, whatever its place.
-    let results = plan_results_of(&outcomes, Some("dualband-correction"), None);
+    let results = plan_results_of(&outcomes, Some("dualband-correction"), None, false);
     assert_eq!(results.len(), 3);
     let main = &results[0];
     assert_eq!(main.target.variant_of, None);
@@ -1938,12 +2045,12 @@ fn the_renders_of_a_plan_are_one_capture_and_its_variants_named_after_their_trea
         assert!(!metadata.has_capture_part());
     }
     // Without a main named: the first render made.
-    let by_default = plan_results_of(&outcomes, None, None);
+    let by_default = plan_results_of(&outcomes, None, None, false);
     assert_eq!(by_default[0].path, outcomes[0].render.path);
     // A main that was not made: the first one.
-    let unknown = plan_results_of(&outcomes, Some("polished"), None);
+    let unknown = plan_results_of(&outcomes, Some("polished"), None, false);
     assert_eq!(unknown[0].path, outcomes[0].render.path);
-    assert!(plan_results_of(&[], None, None).is_empty());
+    assert!(plan_results_of(&[], None, None, false).is_empty());
 }
 
 #[test]
@@ -1952,7 +2059,7 @@ fn the_variants_of_a_plan_leave_through_the_queue_as_images_of_one_capture() {
     let queue = UploadQueue::open(&dir.path().join("queue.sqlite")).unwrap();
     let outcomes = [outcome_of("raw", false), outcome_of("hoo", false)];
     queue
-        .enqueue_results(&plan_results_of(&outcomes, None, None))
+        .enqueue_results(&plan_results_of(&outcomes, None, None, false))
         .unwrap();
     let rows = queue.list().unwrap();
     assert_eq!(rows.len(), 2);

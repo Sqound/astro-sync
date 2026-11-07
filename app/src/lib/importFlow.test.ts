@@ -722,3 +722,69 @@ test("the finish of a pipeline chosen in « Traitements » of the import is held
     finishes,
   );
 });
+
+/** A render of « Images à envoyer » as the treatments now list it: its PNG,
+ * and under it its TIFF in full resolution. */
+const pngAndTiff = (pipelineId: string): Made[] => {
+  const png = `/w/NGC 7000/stacked/${pipelineId}.png`;
+  return [
+    { ...made(pipelineId, 13), path: png },
+    {
+      ...made(pipelineId, 47),
+      path: `/w/NGC 7000/stacked/${pipelineId}.tif`,
+      fullResolution: true,
+      twinOf: png,
+      send: { kind: "plan", outcome: {} as never, fullResolution: true },
+    },
+  ];
+};
+
+test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows listed unticked under their PNG; « Joindre aussi les TIFF » ticks and unticks them", () => {
+  const results = [...pngAndTiff("dualband-correction"), ...pngAndTiff("raw")];
+  const rows = summaryImages(results, storage());
+  // The natural PNG is the capture, each TIFF right under its PNG.
+  assert.deepEqual(
+    rows.map((row) => [row.path.split("/").pop(), row.role]),
+    [
+      ["raw.png", "capture"],
+      ["raw.tif", "variant"],
+      ["dualband-correction.png", "variant"],
+      ["dualband-correction.tif", "variant"],
+    ],
+  );
+  const name = (key: string) => key.split("/").pop();
+  assert.deepEqual(preTickedImages(rows, null).map(name), [
+    "raw.png",
+    "dualband-correction.png",
+  ]);
+  // « Envoi des rendus : PNG + TIFF »: everything ticked from the start.
+  assert.equal(preTickedImages(rows, null, true).length, 4);
+
+  // The reducer: the box is read with the settings before the run ends.
+  const done = play(
+    [
+      { type: "storage", storage: storage() },
+      { type: "treatStart", target: "NGC 7000" },
+      { type: "joinTiff", on: false },
+      { type: "treatDone", made: results, errors: [] },
+    ],
+    play(planned),
+  );
+  assert.deepEqual(done.ticked.map(name), [
+    "raw.png",
+    "dualband-correction.png",
+  ]);
+  const joined = importReducer(done, { type: "joinTiff", on: true });
+  assert.equal(joined.joinTiff, true);
+  assert.equal(joined.ticked.length, 4);
+  // A PNG unticked by hand stays unticked when the TIFF go.
+  const without = importReducer(
+    importReducer(joined, {
+      type: "toggleImage",
+      key: rows.find((row) => row.path.endsWith("dualband-correction.png"))!
+        .key,
+    }),
+    { type: "joinTiff", on: false },
+  );
+  assert.deepEqual(without.ticked.map(name), ["raw.png"]);
+});

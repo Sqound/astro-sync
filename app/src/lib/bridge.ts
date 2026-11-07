@@ -313,6 +313,20 @@ export function localSettingsSetPlanField(
   return invoke<LocalSettings>("local_settings_set_plan_field", { field });
 }
 
+/** « Envoi des rendus »: the starting value of the box « Joindre aussi les
+ * TIFF » of each sending. */
+export function localSettingsSetRendersUpload(
+  renders: RendersUpload,
+): Promise<LocalSettings> {
+  return invoke<LocalSettings>("local_settings_set_renders_upload", {
+    renders,
+  });
+}
+
+/** `local_settings::RendersUpload`: « PNG seul » (the default) or « PNG +
+ * TIFF ». */
+export type RendersUpload = "png" | "both";
+
 /** `plan_image::PlanField`: « Bords nets » (the largest rectangle without a
  * pixel no night covers, the default), « Zone commune à toutes les nuits »,
  * « Tout le champ ». */
@@ -1125,6 +1139,9 @@ export interface LocalSettings {
   /** « Image du plan multi-nuits » (Réglages › Général): the frame the image
    * of a plan is cut to; `clean` by default. */
   planField?: PlanField;
+  /** « Envoi des rendus » (Réglages › Général): whether the TIFF of the
+   * renders are joined by default; `png` by default. */
+  rendersUpload?: RendersUpload;
   /** The last folders chosen. */
   lastFolders?: LastFolders;
   /** Whether this installation reports its errors to the hosted service
@@ -1624,6 +1641,10 @@ export interface ImageCandidate {
   render: string | null;
   /** A progression image: the light frames its milestone stacks. */
   frameCount?: number | null;
+  /** The digest of the same render in its other format, when the stacker
+   * wrote it as PNG and TIFF (`render_files`): a TIFF with a twin is the
+   * render in full resolution, sent only when the TIFF are joined. */
+  twinSha256?: string | null;
 }
 
 /** `precheck::Decision` (tag `decision`). A progression image is the
@@ -1727,6 +1748,9 @@ export type QuotaFinding =
 export interface QuotaCheck {
   allowed: boolean;
   toSendBytes: number;
+  /** The part of `toSendBytes` that is the TIFF of renders also sent as PNG
+   * (« Sans les TIFF : … »). */
+  fullResolutionBytes?: number;
   toSendFiles: number;
   newCaptures: number;
   findings: QuotaFinding[];
@@ -1750,6 +1774,10 @@ export interface NightPrecheck {
   plans: ImagePlan[];
   quota: QuotaCheck;
   severalRendersAllowed: boolean;
+  /** The TIFF of the renders this sending could join (« Joindre aussi les
+   * TIFF (pleine résolution, ≈ 47 Mo chacun) »): joined or not, how many,
+   * their weight. */
+  fullResolution?: { joined: boolean; count: number; bytes: number };
 }
 
 export function nightPrecheck(
@@ -1761,6 +1789,9 @@ export function nightPrecheck(
   /** The targets about to be stacked again: the stacked images an earlier
    * stacking left in `stacked/` are replaced by it. */
   restack?: string[],
+  /** « Joindre aussi les TIFF »: the TIFF of the renders written as PNG too
+   * leave beside them; absent: « Envoi des rendus » of Réglages. */
+  includeTiff?: boolean,
 ): Promise<NightPrecheck> {
   return invoke<NightPrecheck>("night_precheck", {
     sessionId,
@@ -1768,6 +1799,7 @@ export function nightPrecheck(
     extra,
     language: language ?? null,
     restack: restack ?? [],
+    includeTiff: includeTiff ?? null,
   }).then((check) => ({
     ...check,
     // The core flattens each decision into its plan.
@@ -2239,10 +2271,22 @@ export interface StackedRender {
   contrast?: number | string;
   colour?: number | string;
   softStars?: number | string;
+  /** The file that leaves: the render's PNG, else its only file (the linear
+   * TIFF). */
   path: string;
   sha256: string;
   size: number;
+  /** The TIFF of the same render beside its PNG: it leaves only when the
+   * TIFF are joined. */
+  fullResolution?: RenderFile | null;
   family?: string | null;
+}
+
+/** `render_files::RenderFile`. */
+export interface RenderFile {
+  path: string;
+  sha256: string;
+  size: number;
 }
 
 /** `commands_night::StackRun`. */
@@ -2972,11 +3016,24 @@ export type IntegrationsSent =
 export interface PlanImageOutcome {
   projectId: string;
   targetId: string;
-  render: { pipelineId: string; path: string; sha256: string; size: number };
+  /** The render that leaves (its PNG; its TIFF in `fullResolution`). */
+  render: {
+    pipelineId: string;
+    path: string;
+    sha256: string;
+    size: number;
+    fullResolution?: RenderFile | null;
+  };
   /** The other treatments of the same render (contrast, colours, softened
    * stars): they leave with it as images of the plan's capture. */
   finishes?: {
-    render: { pipelineId: string; path: string; sha256: string; size: number };
+    render: {
+      pipelineId: string;
+      path: string;
+      sha256: string;
+      size: number;
+      fullResolution?: RenderFile | null;
+    };
     processing?: { software?: string | null; steps?: string | null } | null;
   }[];
   otherFiles: string[];
@@ -3090,6 +3147,9 @@ export function planImageRun(args: {
   /** Also make the image of the plan after each night (the history of the
    * capture), with the main image's pipeline. */
   progression?: boolean;
+  /** « Joindre aussi les TIFF »: the TIFF of each image leaves beside its
+   * PNG; absent: « Envoi des rendus » of Réglages. */
+  includeTiff?: boolean;
 }): Promise<PlanImageRun> {
   return invoke<PlanImageRun>("plan_image_run", args);
 }
@@ -3989,6 +4049,9 @@ export type ImageToSend =
        * capture this render is a variant of; `null`: this render is the
        * capture. */
       variantOfSha256?: string | null;
+      /** The row of the render's TIFF (`render.fullResolution`); else its
+       * PNG. */
+      fullResolution?: boolean;
     }
   | {
       kind: "plan";
@@ -4000,6 +4063,9 @@ export type ImageToSend =
       /** The image of the plan after each night, made with this image: it
        * leaves as the history of the capture when this image is that capture. */
       progression?: PlanProgressionStep[];
+      /** The row of the plan's TIFF (its render's and finishes'); else
+       * their PNG. */
+      fullResolution?: boolean;
     };
 
 /** « Envoyer N images »: the images ticked, queued for the sending. */

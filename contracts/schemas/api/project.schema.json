@@ -46,6 +46,16 @@
         "timeZone": { "type": "string", "minLength": 1, "maxLength": 100 },
         "horizonMask": {
           "$ref": "../planner/horizon-mask.schema.json#/$defs/mask"
+        },
+        "horizon": {
+          "description": "Additive (HORIZONS-01-MODEL): the one horizon of the place the project observes from, `horizonMask` being that horizon's; absent on a project written before the field.",
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$" },
+            "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

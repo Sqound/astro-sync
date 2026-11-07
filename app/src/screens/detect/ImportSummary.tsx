@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { useImport } from "../../components/ImportProvider";
 import { InfoLine } from "../../components/InfoLine";
+import { JoinTiffBox } from "../../components/JoinTiffBox";
 import { Notice } from "../../components/Notice";
 import { PaymentFailedNotice } from "../../components/PaymentFailedNotice";
 import { useSnackbar } from "../../components/Snackbar";
@@ -419,6 +420,21 @@ export function ImportSummary({
           }
           details={<p>{t("detect.send.details")}</p>}
         />
+        {/* « Joindre aussi les TIFF »: the same box as the night's
+            « Récapitulatif », over the list, when a render has a TIFF. */}
+        {images.some((row) => row.fullResolution) && (
+          <JoinTiffBox
+            checked={state.joinTiff}
+            disabled={state.sending}
+            fullResolution={{
+              count: images.filter((row) => row.fullResolution).length,
+              bytes: images
+                .filter((row) => row.fullResolution)
+                .reduce((sum, row) => sum + row.size, 0),
+            }}
+            onChange={imp.joinTiff}
+          />
+        )}
         {images.length === 0 && (
           <p className={helpTextClassName}>
             {state.treated

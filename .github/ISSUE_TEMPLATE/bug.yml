@@ -13,7 +13,7 @@ body:
     attributes:
       label: Version of Astro Sync
       description: Shown at the bottom of the application, or by `astro-sync --version`.
-      placeholder: "1.0.1"
+      placeholder: "1.0.2"
     validations:
       required: true
   - type: dropdown

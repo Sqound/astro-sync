@@ -41,7 +41,7 @@ use astro_sync_core::space::{
 };
 use astro_sync_core::standing::Standing;
 use astro_sync_core::upload_queue::{EnqueueOutcome, QueueEntry};
-use astro_sync_core::uploader::{upload_entry, HttpUploadTransport, UploadTarget};
+use astro_sync_core::uploader::{HttpUploadTransport, UploadTarget, upload_entry};
 
 use crate::dialogs;
 use crate::error::CommandError;
@@ -545,6 +545,21 @@ pub fn local_settings_set_plan_field<R: Runtime>(
     let paths = paths::resolve(&app)?;
     let mut settings = local_settings::load(&paths.local_settings)?;
     settings.plan_field = field;
+    local_settings::save(&paths.local_settings, &settings)?;
+    Ok(settings)
+}
+
+/// « Envoi des rendus » (Réglages › Général): `png` (« PNG seul », the
+/// default) or `both` (« PNG + TIFF »). The starting value of the box
+/// « Joindre aussi les TIFF » of each sending, which never changes it.
+#[tauri::command]
+pub fn local_settings_set_renders_upload<R: Runtime>(
+    app: AppHandle<R>,
+    renders: astro_sync_core::local_settings::RendersUpload,
+) -> Result<LocalSettings, CommandError> {
+    let paths = paths::resolve(&app)?;
+    let mut settings = local_settings::load(&paths.local_settings)?;
+    settings.renders_upload = renders;
     local_settings::save(&paths.local_settings, &settings)?;
     Ok(settings)
 }

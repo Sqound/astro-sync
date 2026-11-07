@@ -58,6 +58,16 @@
         "timeZone": { "type": "string" },
         "timeZoneSource": { "enum": ["chosen"] },
         "horizonStatus": { "enum": ["verified", "unverified"] },
+        "horizon": {
+          "description": "Additive (HORIZONS-01-MODEL): the one horizon of its place the plan observes from, as in planner/planner-document.schema.json `planHorizon`; the copy's `horizonMask` is that horizon's. A plan's copy never carries the place's `horizons`: the service writes a place given with them as the copy of its first horizon (or of the one `horizon` names).",
+          "type": "object",
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$" },
+            "name": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        },
         "knownPlace": {
           "description": "Additive: the link to the known place this place was added from, as in planner/planner-document.schema.json. The known place's details are never stored here.",
           "type": "object",

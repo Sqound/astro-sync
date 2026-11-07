@@ -81,6 +81,29 @@ its main image by itself — its owner chooses the main one from the web
 (`api/v1.md`, « Images of a capture »). Its `source` (`phone`, `astro-sync`,
 `stacking`; never `web` from a device) is recorded with it.
 
+**Choosing where the image goes (`placement`)**: an image that falls into a
+capture the space already holds (the one of the same night and target, or the
+one `captureId` names) is placed by the service's own rule unless the create
+body (or the multipart metadata, or the pre-check body) carries
+`placement: "replace" | "add"`:
+
+- `replace` takes the place of the capture's **main image**, whatever
+  `capture.variant_limit`. The old image is retired **only when the new one is
+  finalized**: an upload that is never finalized leaves the capture untouched.
+  The old bytes are released from the quota at that moment; the capture keeps
+  its other images.
+- `add` makes the image a new **variant**, within `capture.variant_limit`.
+  When the capture already holds as many as allowed (or the limit is `0`):
+  `409` `capture_variant_limit_reached` (with `storage.variantLimit` and
+  `storage.variantCount`), at creation, never a replacement.
+- Absent or `null`: unchanged (`capture.variant_limit` `0` replaces, above `0`
+  adds, the main one when it comes from Astro Sync). With no capture to place
+  into, the image is a new capture and `placement` changes nothing.
+- Any other value, or `placement` with a `role`: `400` `invalid_placement`.
+
+A resumable upload keeps its `placement` from the create step until it
+completes.
+
 **A progression image of a capture**: `captureId` with `role: "progression"` (and, optionally,
 `progressionFrames`, the light frames the milestone stacks) adds a milestone
 of the night Astro Sync stacked to that capture as its **history**

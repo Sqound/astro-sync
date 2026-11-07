@@ -359,10 +359,17 @@ pub async fn plan_image_run<R: Runtime>(
     sources: Option<BTreeMap<String, PlanSource>>,
     frame: Option<PlanFrame>,
     progression: Option<bool>,
+    include_tiff: Option<bool>,
 ) -> Result<PlanImageRun, CommandError> {
     let (cancel, _) = local_work_of(&app, Some(WorkKind::Stacking));
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
+        // « Joindre aussi les TIFF » of the sending; without the window's
+        // word, « Envoi des rendus » of Réglages.
+        let include_tiff = match include_tiff {
+            Some(joined) => joined,
+            None => settings(&paths)?.renders_upload.includes_tiff(),
+        };
         let (portal_url, token) = require_portal_and_token(&app)?;
         let (gate, _) = gate_of(&paths)?;
         let transport = transport(&app)?;
@@ -393,6 +400,7 @@ pub async fn plan_image_run<R: Runtime>(
                 plan_field: PlanField::default(),
             },
             progression.unwrap_or(false),
+            include_tiff,
             &cancel,
         )
     })
@@ -455,6 +463,9 @@ pub async fn plan_image_run_local<R: Runtime>(
             Some(false),
             PlanMaking::default(),
             progression.unwrap_or(false),
+            // Nothing is queued here: « Images à envoyer » lists each
+            // render's PNG and TIFF, and queues what the person ticks.
+            false,
             &cancel,
         )
     })
@@ -474,6 +485,7 @@ fn make_plan_images<R: Runtime>(
     queue: Option<bool>,
     making: PlanMaking,
     progression: bool,
+    include_tiff: bool,
     cancel: &astro_sync_core::local_work::CancelFlag,
 ) -> Result<PlanImageRun, CommandError> {
     let root = root_of(&settings(paths)?)?;
@@ -580,7 +592,7 @@ fn make_plan_images<R: Runtime>(
         .plan_capture
         .as_ref()
         .and_then(|c| c["id"].as_str());
-    let results = plan_image::plan_results_of(&run.outcomes, None, held);
+    let results = plan_image::plan_results_of(&run.outcomes, None, held, include_tiff);
     let enqueued = if run.outcomes.is_empty() || queue == Some(false) {
         EnqueueOutcome::default()
     } else {

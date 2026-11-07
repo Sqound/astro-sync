@@ -54,6 +54,27 @@
       },
       "additionalProperties": false
     },
+    "horizonId": {
+      "description": "A horizon's id, chosen by the client and never changed: a UUID for a new horizon; « <place id>:horizon » for the one horizon a place stored before the field is read with.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,160}$"
+    },
+    "placeHorizon": {
+      "description": "One observing post of the place (« Balcon », « Jardin »): its stable `id`, its `name` (kept as typed; « Horizon » for the one a place stored before the field is read with, shown translated by the screens) and its `mask`, whose points carry their own `surveyedAt`.",
+      "type": "object",
+      "required": ["id", "name", "mask"],
+      "properties": {
+        "id": { "$ref": "#/$defs/horizonId" },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "\\S"
+        },
+        "mask": { "$ref": "#/$defs/horizonMask" }
+      },
+      "additionalProperties": false
+    },
     "knownPlace": {
       "description": "The link to the known place the place was added from; never the known place's details.",
       "type": "object",
@@ -129,7 +150,14 @@
         },
         "timeZone": { "type": "string", "minLength": 1 },
         "timeZoneSource": { "enum": ["chosen"] },
+        "horizons": {
+          "description": "The place's horizons, one per observing post, at most 6, each id once. In a write, given: `horizonMask` is ignored and derived from them; absent (an application older than the field): the service keeps the horizons it holds when the written `horizonMask` is the same sky as their combined mask, otherwise the written mask replaces the first horizon's (with one horizon or none, the place is read from that mask, as before the field).",
+          "type": "array",
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/placeHorizon" }
+        },
         "horizonMask": {
+          "description": "The combined (permissive) mask of `horizons`, derived by the service: at each 10° the lowest of them, the sky seen from at least one post (what « Ce soir » reads without a plan). One horizon: that horizon's mask. No horizon: the mask the place was written with, or `null`.",
           "anyOf": [{ "$ref": "#/$defs/horizonMask" }, { "type": "null" }]
         },
         "horizonStatus": { "enum": ["verified", "unverified"] },
@@ -157,6 +185,7 @@
         "name",
         "latitude",
         "longitude",
+        "horizons",
         "horizonMask",
         "editedAt",
         "createdAt",
@@ -173,6 +202,7 @@
         "elevation": {},
         "timeZone": {},
         "timeZoneSource": {},
+        "horizons": {},
         "horizonMask": {},
         "horizonStatus": {},
         "skyEntered": {},
@@ -201,6 +231,20 @@
         },
         "defaultPlaceEditedAt": {
           "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+        },
+        "merged": {
+          "description": "The places of the space merged into another (`POST /v1/places/{placeId}/merge`), each with the live place it now is, the oldest merge first; absent when there is none. The Journal and the statistics read the nights done at a merged place under the kept one.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["placeId", "mergedInto", "mergedAt"],
+            "properties": {
+              "placeId": { "$ref": "#/$defs/placeId" },
+              "mergedInto": { "$ref": "#/$defs/placeId" },
+              "mergedAt": { "$ref": "#/$defs/timestamp" }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
@@ -306,8 +350,54 @@
       },
       "additionalProperties": false
     },
+    "mergeRequest": {
+      "description": "The body of `POST /v1/places/{placeId}/merge`: the place absorbed into `placeId` (which keeps its id, name and settings) and the instant of the gesture.",
+      "type": "object",
+      "required": ["absorbedPlaceId", "editedAt"],
+      "properties": {
+        "absorbedPlaceId": { "$ref": "#/$defs/placeId" },
+        "editedAt": { "$ref": "#/$defs/timestamp" }
+      },
+      "additionalProperties": false
+    },
+    "mergeAnswer": {
+      "description": "`POST /v1/places/{placeId}/merge`: the kept place after the merge, whether it was applied (`false`: a replay of a merge already done), what was repointed to it, and the horizons left out beyond six.",
+      "type": "object",
+      "required": ["place", "applied", "repointed", "droppedHorizons"],
+      "properties": {
+        "place": { "$ref": "#/$defs/place" },
+        "applied": { "type": "boolean" },
+        "repointed": {
+          "type": "object",
+          "required": ["defaultPlace", "pendingPlans", "skyMeasures"],
+          "properties": {
+            "defaultPlace": { "type": "boolean" },
+            "pendingPlans": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/planRef" }
+            },
+            "skyMeasures": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "droppedHorizons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["placeId", "id", "name"],
+            "properties": {
+              "placeId": { "$ref": "#/$defs/placeId" },
+              "id": { "$ref": "#/$defs/horizonId" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 100 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "error": {
-      "description": "The v1 error envelope. `409 place_in_use` carries the `pendingPlans` that refuse the deletion; `409 place_limit_reached` carries the `limit` (200).",
+      "description": "The v1 error envelope. `409 place_in_use` carries the `pendingPlans` that refuse the deletion; `409 place_limit_reached` carries the `limit` (200); `409 place_already_merged` carries `mergedInto`, the place it was merged into.",
       "type": "object",
       "required": ["error"],
       "properties": {
@@ -325,6 +415,7 @@
                 "place_not_found",
                 "place_in_use",
                 "place_limit_reached",
+                "place_already_merged",
                 "place_storage_unavailable"
               ]
             },
@@ -336,7 +427,8 @@
           "type": "array",
           "items": { "$ref": "#/$defs/planRef" }
         },
-        "limit": { "const": 200 }
+        "limit": { "const": 200 },
+        "mergedInto": { "$ref": "#/$defs/placeId" }
       },
       "additionalProperties": false
     }
@@ -348,6 +440,7 @@
     { "$ref": "#/$defs/deleteAnswer" },
     { "$ref": "#/$defs/defaultAnswer" },
     { "$ref": "#/$defs/importAnswer" },
+    { "$ref": "#/$defs/mergeAnswer" },
     { "$ref": "#/$defs/error" }
   ]
 }

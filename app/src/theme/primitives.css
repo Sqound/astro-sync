@@ -1956,6 +1956,36 @@ body {
   color: var(--as-color-destructive-text);
 }
 
+/* One file of a render, under the line of its target (« Rendu naturel ·
+   PNG »). */
+.as-summary-rows li.is-render {
+  padding-left: var(--as-space-lg);
+  color: var(--as-color-muted-text);
+}
+
+.as-summary-rows li.is-render strong {
+  color: var(--as-color-primary-text);
+}
+
+/* The TIFF of a render, in full resolution: its format said in the accent. */
+.as-summary-rows li.is-full-resolution strong {
+  color: var(--as-color-gold-accent);
+}
+
+/* « Joindre aussi les TIFF »: the box and, under its words, why it is a
+   choice. */
+.as-join-tiff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+}
+
+.as-join-tiff__help {
+  margin: 0;
+  /* Under the words, past the box: the box and the gap after it. */
+  margin-left: calc(1rem + var(--as-space-sm));
+}
+
 .as-summary-rows__value {
   flex: none;
   color: var(--as-color-muted-text);

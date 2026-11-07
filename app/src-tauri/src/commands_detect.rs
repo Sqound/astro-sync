@@ -12,8 +12,8 @@ use tauri::{AppHandle, Emitter, Runtime};
 use astro_sync_core::catalogue_targets::{self, CatalogueTarget};
 use astro_sync_core::local_work::WorkKind;
 use astro_sync_core::session_detection::{
-    self, service, AccountRights, DetectOptions, DetectRequest, FoundSoFar, NightNaming,
-    OrganiseMode, OrganiseOptions, OrganiseOutcome, OrganisePlan, Proposal, UserData,
+    self, AccountRights, DetectOptions, DetectRequest, FoundSoFar, NightNaming, OrganiseMode,
+    OrganiseOptions, OrganiseOutcome, OrganisePlan, Proposal, UserData, service,
 };
 use astro_sync_core::sky_solution::{self, SolveHints, SolveJob, SolverChoice};
 use astro_sync_core::tools::{self, DetectContext};
@@ -481,6 +481,10 @@ pub enum ImageToSend {
         /// the capture). The image it names goes first.
         #[serde(default)]
         variant_of_sha256: Option<String>,
+        /// The row of the render's TIFF (`render.full_resolution`), which
+        /// « Joindre aussi les TIFF » ticks; else its PNG.
+        #[serde(default)]
+        full_resolution: bool,
     },
     /// The image of a multi-night plan (`plan_image_run` with `queue: false`).
     #[serde(rename_all = "camelCase")]
@@ -497,6 +501,10 @@ pub enum ImageToSend {
         /// is that capture.
         #[serde(default)]
         progression: Vec<astro_sync_core::plan_progression::PlanProgressionStep>,
+        /// The row of the plan's TIFF ([`PlanImageOutcome::full_resolution`]):
+        /// the TIFF of the render and of its finishes; else their PNG.
+        #[serde(default)]
+        full_resolution: bool,
     },
 }
 
@@ -518,35 +526,66 @@ pub async fn detect_images_send<R: Runtime>(
                     target_id,
                     render,
                     variant_of_sha256,
-                } => files.push(ResultFile {
-                    path: render.path,
-                    sha256: render.sha256,
-                    size: render.size,
-                    kind: ResultKind::Stacked,
-                    target: EntryTarget {
-                        session_id: Some(session_id),
-                        target_ids: vec![target_id],
-                        variant_of: variant_of_sha256.map(|digest| {
-                            format!("{}{digest}", astro_sync_core::uploader::VARIANT_OF_SHA256)
-                        }),
-                        source: Some("stacking".to_string()),
-                        ..EntryTarget::default()
-                    },
-                }),
+                    full_resolution,
+                } => {
+                    let file = match (full_resolution, render.full_resolution) {
+                        (true, Some(tiff)) => tiff,
+                        (true, None) => {
+                            return Err(CommandError::new(
+                                "file_missing",
+                                format!("{} has no TIFF beside it", render.path.display()),
+                            ));
+                        }
+                        (false, _) => astro_sync_core::render_files::RenderFile {
+                            path: render.path,
+                            sha256: render.sha256,
+                            size: render.size,
+                        },
+                    };
+                    files.push(ResultFile {
+                        path: file.path,
+                        sha256: file.sha256,
+                        size: file.size,
+                        kind: ResultKind::Stacked,
+                        target: EntryTarget {
+                            session_id: Some(session_id),
+                            target_ids: vec![target_id],
+                            variant_of: variant_of_sha256.map(|digest| {
+                                format!("{}{digest}", astro_sync_core::uploader::VARIANT_OF_SHA256)
+                            }),
+                            source: Some("stacking".to_string()),
+                            ..EntryTarget::default()
+                        },
+                    });
+                }
                 ImageToSend::Plan {
                     outcome,
                     variant_of_sha256,
                     progression,
+                    full_resolution,
                 } => {
+                    let outcome = if full_resolution {
+                        Box::new(outcome.full_resolution().ok_or_else(|| {
+                            CommandError::new(
+                                "file_missing",
+                                format!("{} has no TIFF beside it", outcome.render.path.display()),
+                            )
+                        })?)
+                    } else {
+                        outcome
+                    };
                     // A render that is not the capture is an image of the
                     // capture the first one creates: its own title, and
                     // nothing of how the capture was made.
                     match variant_of_sha256 {
-                        Some(digest) => files.extend(
-                            astro_sync_core::plan_image::plan_variant_results(&outcome, &digest),
-                        ),
+                        Some(digest) => {
+                            files.extend(astro_sync_core::plan_image::plan_variant_results(
+                                &outcome, &digest, false,
+                            ))
+                        }
                         None => {
-                            files.extend(astro_sync_core::plan_image::plan_results(&outcome));
+                            files
+                                .extend(astro_sync_core::plan_image::plan_results(&outcome, false));
                             files.extend(
                                 astro_sync_core::plan_progression::plan_progression_results(
                                     &progression,
@@ -616,9 +655,9 @@ pub fn result_file_reveal<R: Runtime>(app: AppHandle<R>, path: String) -> Result
 /// The largest picture read for a preview: a PNG beyond it is not shown.
 const PREVIEW_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
-/// The PNG written beside a TIFF render to look at: the one with the curve of
-/// presentation when there is one, else the render's own. The TIFF is what
-/// leaves; the PNG is never sent.
+/// The PNG of a render to look at: the one with the curve of presentation
+/// when there is one, else the render's own (the file itself for the PNG
+/// that leaves, the PNG beside it for its TIFF).
 fn preview_png(tiff: &Path) -> Option<PathBuf> {
     let stem = tiff.file_stem()?.to_str()?;
     let folder = tiff.parent()?;

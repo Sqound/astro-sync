@@ -160,7 +160,14 @@ fn the_stacked_images_go_to_stacked_and_leave_as_stacked_results() {
         .map(|r| r.pipeline_id.as_str())
         .collect();
     assert_eq!(ids, vec!["raw", "dualband-correction"]);
-    assert_eq!(outcome.other_files.len(), 2);
+    // Each render once: its PNG leaves, its TIFF is its twin in full
+    // resolution; nothing else was written.
+    assert!(outcome.other_files.is_empty());
+    let raw = &outcome.renders[0];
+    assert_eq!(raw.path, night.join("M31/stacked/M31_2026-10-07_raw.png"));
+    let full = raw.full_resolution.as_ref().unwrap();
+    assert_eq!(full.path, night.join("M31/stacked/M31_2026-10-07_raw.tif"));
+    assert_eq!(full.size, 7);
     assert!(
         outcome
             .renders
@@ -174,10 +181,34 @@ fn the_stacked_images_go_to_stacked_and_leave_as_stacked_results() {
             .is_none()
     );
 
+    // The PNG of each render, its TIFF right after it, each naming the other.
     let candidates = stacked_candidates(&outcome, "t-m31");
     assert!(candidates.iter().all(|c| c.kind == ResultKind::Stacked));
-    assert_eq!(candidates[1].render.as_deref(), Some("dualband-correction"));
+    let names: Vec<String> = candidates
+        .iter()
+        .map(|c| c.path.file_name().unwrap().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "M31_2026-10-07_raw.png",
+            "M31_2026-10-07_raw.tif",
+            "M31_2026-10-07_dualband-correction.png",
+            "M31_2026-10-07_dualband-correction.tif"
+        ]
+    );
+    assert_eq!(candidates[2].render.as_deref(), Some("dualband-correction"));
     assert_eq!(candidates[0].size, 7);
+    assert!(!candidates[0].is_full_resolution_twin());
+    assert!(candidates[1].is_full_resolution_twin());
+    assert_eq!(
+        candidates[0].twin_sha256.as_ref(),
+        Some(&candidates[1].sha256)
+    );
+    assert_eq!(
+        candidates[1].twin_sha256.as_ref(),
+        Some(&candidates[0].sha256)
+    );
 
     // A second stacking never replaces the first one's files.
     let again = plan_stack(&night, "M31", "2026-10-07", &choices);
@@ -1092,8 +1123,8 @@ fn one_stacking_per_family_and_one_family_only_without_variants() {
     assert_eq!(
         files,
         vec![
-            "M31_2026-10-07_Ha_300s_g100_raw.tif",
-            "M31_2026-10-07_OIII_300s_g100_raw.tif"
+            "M31_2026-10-07_Ha_300s_g100_raw.png",
+            "M31_2026-10-07_OIII_300s_g100_raw.png"
         ]
     );
     assert_eq!(outcome.renders[1].family.as_deref(), Some("OIII_300s_g100"));
@@ -1159,7 +1190,12 @@ fn the_stacked_image_of_a_target_online_is_a_variant_never_the_main_image() {
         "../../tests/fixtures/online/night_in_progress.json"
     ))
     .unwrap();
-    let plans = plan_images(&online, &stacked_candidates(&outcome, "m31"), 12);
+    // The PNG of each render, the TIFF not joined.
+    let pngs: Vec<_> = stacked_candidates(&outcome, "m31")
+        .into_iter()
+        .filter(|c| !c.is_full_resolution_twin())
+        .collect();
+    let plans = plan_images(&online, &pngs, 12);
     assert_eq!(plans.len(), 2);
     for plan in &plans {
         assert!(

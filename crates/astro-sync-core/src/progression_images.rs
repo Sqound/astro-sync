@@ -939,6 +939,7 @@ pub fn recorded_candidates(
                 contrast: crate::stacking::Contrast::None,
                 retouch: crate::stacking::Retouch::default(),
                 frame_count: Some(image.frames),
+                twin_sha256: None,
             })
         })
         .collect()
@@ -987,6 +988,7 @@ pub fn progression_candidates(images: &ProgressionImages, target_id: &str) -> Ve
             contrast: crate::stacking::Contrast::None,
             retouch: crate::stacking::Retouch::default(),
             frame_count: Some(image.frame_count as u64),
+            twin_sha256: None,
         })
         .collect()
 }

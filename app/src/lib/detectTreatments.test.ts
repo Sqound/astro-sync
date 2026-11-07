@@ -5,7 +5,6 @@ import type { BulkCreateOutcome, Proposal, SpaceStorage } from "./bridge.ts";
 import {
   bandOfFilters,
   folderToOpen,
-  formatOf,
   imageRoom,
   sendPrimary,
   treatmentCards,
@@ -97,8 +96,6 @@ test("« 2 images sur 3 »: the place left, none when nothing caps it", () => {
   assert.equal(imageRoom(null), null);
   assert.deepEqual(sendPrimary([]), { kind: "done" });
   assert.deepEqual(sendPrimary(["a", "b"]), { kind: "send", count: 2 });
-  assert.equal(formatOf("/x/M31_natural.tif"), "TIFF");
-  assert.equal(formatOf("/x/M31.png"), "PNG");
 });
 
 test("the folder « Ouvrir le dossier de travail » opens is the target's, else the working folder", () => {

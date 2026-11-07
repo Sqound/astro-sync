@@ -242,6 +242,7 @@ fn local_of(root: &Path, night: &Night) -> ResumeLocal {
             sha256: format!("{:x}", Sha256::digest(&bytes)),
             size: bytes.len() as u64,
             kind: ResultKind::Final,
+            twin_sha256: None,
         }],
         analysis_inputs: None,
     }

@@ -200,6 +200,9 @@ export interface ImportState {
   treatRefused: number;
   /** The images ticked in « Images à envoyer » (`imageKey`). */
   ticked: string[];
+  /** « Joindre aussi les TIFF » above the images: their TIFF rows ticked
+   * with it. It starts from « Envoi des rendus » of Réglages. */
+  joinTiff: boolean;
   sending: boolean;
   /** « Terminé »: the images that left (0 when none did). */
   sent: number | null;
@@ -249,6 +252,7 @@ export const NO_IMPORT: ImportState = {
   treatErrors: [],
   treatRefused: 0,
   ticked: [],
+  joinTiff: false,
   sending: false,
   sent: null,
   sentVariants: 0,
@@ -318,6 +322,9 @@ export type ImportAction =
   /** « Continuer sans traitement » / « Continuer avec les images faites ». */
   | { type: "skip" }
   | { type: "toggleImage"; key: string }
+  /** « Joindre aussi les TIFF »: every TIFF row ticked (as the place left
+   * allows) or unticked. */
+  | { type: "joinTiff"; on: boolean }
   /** A choice on the list of a session's incidents. */
   | { type: "incidents"; sessionId: string; action: DraftAction }
   | { type: "tidyTick"; on: boolean }
@@ -490,6 +497,7 @@ export function importReducer(
       const ticked = preTickedImages(
         summaryImages(action.made, state.storage),
         imageRoom(state.storage),
+        state.joinTiff,
       );
       return {
         ...state,
@@ -517,6 +525,18 @@ export function importReducer(
         ticked: state.treated ? state.ticked : [],
         error: null,
       };
+    case "joinTiff": {
+      const rows = summaryImages(state.made, state.storage);
+      const room = imageRoom(state.storage);
+      const others = state.ticked.filter(
+        (key) => !rows.some((row) => row.key === key && row.fullResolution),
+      );
+      return {
+        ...state,
+        joinTiff: action.on,
+        ticked: action.on ? withTiffTicked(rows, others, room) : others,
+      };
+    }
     case "toggleImage":
       return {
         ...state,
@@ -1065,16 +1085,38 @@ export function preChosenTargets(
 
 /** The images « Récapitulatif » opens with ticked: every image made, in the
  * order of the list, unless the space cannot take it -- too heavy, a variant in
- * a space that keeps none, or past the place left (the guard `canTickImage`). */
+ * a space that keeps none, or past the place left (the guard `canTickImage`).
+ * The TIFF of a render is ticked only with « Joindre aussi les TIFF »
+ * (`joinTiff`): it serves the download in full resolution, never the gallery. */
 export function preTickedImages(
   rows: readonly SummaryImage[],
   room: { remaining: number } | null,
+  joinTiff = false,
 ): string[] {
   const ticked: string[] = [];
   for (const row of rows) {
+    if (row.fullResolution && !joinTiff) continue;
     if (canTickImage(row, rows, ticked, room)) ticked.push(row.key);
   }
   return ticked;
+}
+
+/** `ticked` and every TIFF row the space can take beside it. */
+export function withTiffTicked(
+  rows: readonly SummaryImage[],
+  ticked: readonly string[],
+  room: { remaining: number } | null,
+): string[] {
+  const next = [...ticked];
+  for (const row of rows) {
+    if (
+      row.fullResolution &&
+      !next.includes(row.key) &&
+      canTickImage(row, rows, next, room)
+    )
+      next.push(row.key);
+  }
+  return next;
 }
 
 /* ------------------------- The menu and « Sessions » ---------------------- */

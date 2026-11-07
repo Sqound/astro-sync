@@ -706,6 +706,38 @@ pub struct PlanFrameMaster {
     pub night_id: Option<String>,
 }
 
+/// The display of the image of a plan (`display` of the record, `renders.py`): the
+/// black point subtracted from each channel and the scale of the stretch,
+/// measured on the image -- and, for the polished render, the sky levels its
+/// two matches aim at. A milestone of the progression is given it, so that
+/// it is shown at the level of the image of the plan -- a stack of one night
+/// is noisier, and its own measures would show its sky brighter.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanDisplay {
+    /// The level subtracted, red, green, blue (absolute, in the units of the master).
+    pub black: [f64; 3],
+    /// The luminance the stretch maps to white.
+    pub scale: f64,
+    /// The polished render: the sky level of the natural render the linear match aims at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sky: Option<PlanSky>,
+    /// The polished render: the sky level, stars included, the final match aims at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_with_stars: Option<f64>,
+}
+
+/// The sky levels of the natural render that the polished render's linear match aims at
+/// (`sky` of the display: `natural_sky_levels` of `renders.py`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PlanSky {
+    /// The median luminance of the natural display image.
+    pub displayed: f64,
+    /// The same once the natural tone is applied.
+    #[serde(rename = "final")]
+    pub final_level: f64,
+}
+
 /// The frame the image of a plan is cut to (« Image du plan multi-nuits »,
 /// Settings › General; `planField` of the job, `plan_crop.py`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -774,6 +806,12 @@ pub struct PlanImageJob {
     /// the plan is on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_master: Option<PlanFrameMaster>,
+    /// A milestone of the progression: the display of the image of the plan
+    /// ([`PlanDisplay`]), which it is shown with instead of its own. `None`:
+    /// the render measures its own (the image of the plan; a milestone whose
+    /// image of the plan could not record it).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display: Option<PlanDisplay>,
     /// The render chosen: one pipeline, or "No processing" ([`LINEAR_PIPELINE`]).
     pub pipeline: PipelineChoice,
     /// The contrast of presentation: the image is also written with
@@ -990,6 +1028,7 @@ fn plan_image_job_in_run(
         plan_field: making.plan_field,
         crop: None,
         frame_master: None,
+        display: None,
         masters: picked
             .iter()
             .map(|(line, path)| PlanJobMaster {
@@ -1166,11 +1205,10 @@ pub const FRAMED_SUFFIX: &str = "_framed";
 /// choice of a frame is offered ("nothing under 1 %").
 pub const FRAMING_OFFERED_FROM: f64 = 0.01;
 
-fn is_framed_tiff(file: &str) -> bool {
+/// A render cut to the frame kept (`<file>_framed.tif` or `.png`).
+fn is_framed_render(file: &str) -> bool {
     let path = Path::new(file);
-    path.extension()
-        .and_then(|e| e.to_str())
-        .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "tif" | "tiff"))
+    crate::render_files::is_render_file(path)
         && path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -1503,10 +1541,10 @@ pub struct PlanFinish {
 pub struct PlanImageOutcome {
     pub project_id: String,
     pub target_id: String,
-    /// The render (a 16-bit TIFF) that leaves as the capture of the plan: the
-    /// job's image without a finish.
+    /// The render that leaves as the capture of the plan (its PNG, its 16-bit
+    /// TIFF beside it in `full_resolution`): the job's image without a finish.
     pub render: StackedRender,
-    /// The other 16-bit TIFFs the job wrote: the same render with its contrast
+    /// The other renders the job wrote: the same render with its contrast
     /// and its finish (colours, softened stars). Each leaves as an image of
     /// the capture, named after its treatment.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1566,6 +1604,30 @@ pub fn recorded_crop(job: &PlanImageJob) -> Option<(PlanCrop, PlanFrameMaster)> 
     let text = fs::read_to_string(job.out.join(record_file_name(&job.name))).ok()?;
     let record = serde_json::from_str::<Record>(&text).ok()?;
     Some((record.crop?, record.frame_master?))
+}
+
+/// The display the image a job made was shown with, read from its record
+/// (`display` of `<name>_plan.json` in the job's `out`). `None` before the
+/// image is made, for a record without one ("No processing", a record
+/// written before the display), or when the display in it
+/// cannot be used (a number that is not finite): the milestones then keep
+/// their own.
+#[must_use]
+pub fn recorded_display(job: &PlanImageJob) -> Option<PlanDisplay> {
+    #[derive(Deserialize)]
+    struct Record {
+        display: Option<PlanDisplay>,
+    }
+    let text = fs::read_to_string(job.out.join(record_file_name(&job.name))).ok()?;
+    let display = serde_json::from_str::<Record>(&text).ok()?.display?;
+    let usable = display.scale.is_finite()
+        && display.scale > 0.0
+        && display.black.iter().all(|b| b.is_finite())
+        && display
+            .sky
+            .is_none_or(|s| s.displayed.is_finite() && s.final_level.is_finite())
+        && display.final_with_stars.is_none_or(f64::is_finite);
+    usable.then_some(display)
 }
 
 /// The quality of the image of a plan: what `plan_stack.py` measured on the
@@ -1791,9 +1853,10 @@ pub fn run_plan_image(
     let stacked = fs::canonicalize(&job.out).map_err(|e| failed("io_error", e.to_string()))?;
     let mut renders: Vec<StackedRender> = Vec::new();
     let mut other_files = Vec::new();
-    // With a frame kept, the image that leaves is the cut one (`<file>_framed.tif`); the whole image stays in
-    // `stacked/`.
-    let framed = job.frame.is_some() && outputs.iter().any(|o| is_framed_tiff(&o.file));
+    let mut written = Vec::new();
+    // With a frame kept, the image that leaves is the cut one (`<file>_framed.png`, its TIFF beside it); the
+    // whole image stays in `stacked/`.
+    let framed = job.frame.is_some() && outputs.iter().any(|o| is_framed_render(&o.file));
     for output in outputs {
         let path = job.out.join(&output.file);
         let inside = !output.file.contains(['/', '\\'])
@@ -1801,16 +1864,31 @@ pub fn run_plan_image(
         if !inside {
             return Err(StackFailure::OutsideStacked { file: output.file });
         }
-        let is_tiff = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "tif" | "tiff"));
-        if !is_tiff || (framed && !is_framed_tiff(&output.file)) {
+        if !crate::render_files::is_render_file(&path)
+            || (framed && !is_framed_render(&output.file))
+        {
             other_files.push(path);
             continue;
         }
+        written.push((output, path));
+    }
+    // Each render once: its PNG leaves, its TIFF is the twin in full
+    // resolution (`render_files`).
+    for ((output, path), twin) in crate::render_files::pair_render_files(written, |(_, p)| p) {
         let (sha256, size) = crate::stacking::sha256_and_size(&path)
             .map_err(|e| failed("io_error", e.to_string()))?;
+        let full_resolution = match twin {
+            Some((_, tiff)) => {
+                let (sha256, size) = crate::stacking::sha256_and_size(&tiff)
+                    .map_err(|e| failed("io_error", e.to_string()))?;
+                Some(crate::render_files::RenderFile {
+                    path: tiff,
+                    sha256,
+                    size,
+                })
+            }
+            None => None,
+        };
         renders.push(StackedRender {
             pipeline_id: output.pipeline,
             contrast: output.contrast,
@@ -1818,6 +1896,7 @@ pub fn run_plan_image(
             path,
             sha256,
             size,
+            full_resolution,
             family: None,
         });
     }
@@ -1884,14 +1963,51 @@ pub fn run_plan_image(
     })
 }
 
+impl PlanImageOutcome {
+    /// The same image in full resolution: its render and its finishes
+    /// replaced by their TIFF ([`StackedRender::full_resolution`]), those
+    /// without one left out; `None` when the render itself has none (the
+    /// linear one already is its TIFF).
+    #[must_use]
+    pub fn full_resolution(&self) -> Option<PlanImageOutcome> {
+        let tiff = |render: &StackedRender| {
+            render.full_resolution.as_ref().map(|file| StackedRender {
+                path: file.path.clone(),
+                sha256: file.sha256.clone(),
+                size: file.size,
+                full_resolution: None,
+                ..render.clone()
+            })
+        };
+        Some(PlanImageOutcome {
+            render: tiff(&self.render)?,
+            finishes: self
+                .finishes
+                .iter()
+                .filter_map(|finish| {
+                    tiff(&finish.render).map(|render| PlanFinish {
+                        render,
+                        processing: finish.processing.clone(),
+                    })
+                })
+                .collect(),
+            ..self.clone()
+        })
+    }
+}
+
 /// The image of the plan as results to enqueue: the capture of the plan
 /// (`role: "plan"`, [`ResultKind::Plan`]), never of a night, and its other
 /// treatments (contrast, finish) as images of that capture. The capture
 /// carries everything Astro Sync proposes for it (quality, how it was made)
 /// and the title of its render; every image carries its own title, named
 /// after its treatment, and its own steps.
+///
+/// The capture is the render's PNG; with `include_tiff` (the person joined
+/// the TIFF, [`crate::render_files`]) the TIFF of each render follows as an
+/// image of the same capture.
 #[must_use]
-pub fn plan_results(outcome: &PlanImageOutcome) -> Vec<ResultFile> {
+pub fn plan_results(outcome: &PlanImageOutcome, include_tiff: bool) -> Vec<ResultFile> {
     let mut results = vec![plan_result(
         outcome,
         &outcome.render,
@@ -1899,14 +2015,15 @@ pub fn plan_results(outcome: &PlanImageOutcome) -> Vec<ResultFile> {
         true,
         None,
     )];
-    results.extend(plan_finish_results(
-        outcome,
-        &format!(
-            "{}{}",
-            crate::uploader::VARIANT_OF_SHA256,
-            outcome.render.sha256
-        ),
-    ));
+    let of_capture = format!(
+        "{}{}",
+        crate::uploader::VARIANT_OF_SHA256,
+        outcome.render.sha256
+    );
+    results.extend(plan_finish_results(outcome, &of_capture));
+    if include_tiff && let Some(full) = outcome.full_resolution() {
+        results.extend(plan_images_of(&full, &of_capture));
+    }
     results
 }
 
@@ -1915,13 +2032,32 @@ pub fn plan_results(outcome: &PlanImageOutcome) -> Vec<ResultFile> {
 /// upload): the render itself and each of its treatments, with their title,
 /// description, quality and steps, and nothing of the capture -- how the
 /// *capture* was made is the main image's to say, and the service keeps each
-/// image's own steps to show them when it becomes the main one.
+/// image's own steps to show them when it becomes the main one. Their TIFF
+/// follow with `include_tiff`.
 #[must_use]
-pub fn plan_variant_results(outcome: &PlanImageOutcome, first_sha256: &str) -> Vec<ResultFile> {
-    plan_images_of(
+pub fn plan_variant_results(
+    outcome: &PlanImageOutcome,
+    first_sha256: &str,
+    include_tiff: bool,
+) -> Vec<ResultFile> {
+    plan_images_with(
         outcome,
         &format!("{}{first_sha256}", crate::uploader::VARIANT_OF_SHA256),
+        include_tiff,
     )
+}
+
+/// [`plan_images_of`], and the TIFF of the same images with `include_tiff`.
+fn plan_images_with(
+    outcome: &PlanImageOutcome,
+    variant_of: &str,
+    include_tiff: bool,
+) -> Vec<ResultFile> {
+    let mut results = plan_images_of(outcome, variant_of);
+    if include_tiff && let Some(full) = outcome.full_resolution() {
+        results.extend(plan_images_of(&full, variant_of));
+    }
+    results
 }
 
 /// Every image of `outcome` as an image of the capture `variant_of` names
@@ -2042,11 +2178,15 @@ pub fn run_plan_images(
 /// `capture`: the capture of the plan the service already holds (its
 /// identifier). Then nothing creates a capture: every image is added to it
 /// as a variant, the main image included.
+///
+/// `include_tiff`: the person joined the TIFF to the sending; each image's
+/// TIFF follows it as an image of the same capture ([`crate::render_files`]).
 #[must_use]
 pub fn plan_results_of(
     outcomes: &[PlanImageOutcome],
     main: Option<&str>,
     capture: Option<&str>,
+    include_tiff: bool,
 ) -> Vec<ResultFile> {
     if let Some(capture) = capture {
         // The main render goes first: it is the one that would be the capture.
@@ -2058,18 +2198,18 @@ pub fn plan_results_of(
                     .iter()
                     .filter(|o| first.is_none_or(|f| !std::ptr::eq(*o, f))),
             )
-            .flat_map(|outcome| plan_images_of(outcome, capture))
+            .flat_map(|outcome| plan_images_with(outcome, capture, include_tiff))
             .collect();
     }
     let Some(first) = main_outcome(outcomes, main) else {
         return Vec::new();
     };
-    let mut results = plan_results(first);
+    let mut results = plan_results(first, include_tiff);
     results.extend(
         outcomes
             .iter()
             .filter(|outcome| !std::ptr::eq(*outcome, first))
-            .flat_map(|outcome| plan_variant_results(outcome, &first.render.sha256)),
+            .flat_map(|outcome| plan_variant_results(outcome, &first.render.sha256, include_tiff)),
     );
     results
 }

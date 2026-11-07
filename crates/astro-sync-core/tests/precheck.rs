@@ -61,6 +61,7 @@ fn image(target: &str, path: &str, sha: char, size: u64, kind: ResultKind) -> Im
         contrast: Default::default(),
         retouch: Default::default(),
         frame_count: None,
+        twin_sha256: None,
     }
 }
 
@@ -766,6 +767,7 @@ fn milestone(target: &str, path: PathBuf, sha: char, frames: u64) -> ImageCandid
         render_rank: None,
         path,
         frame_count: Some(frames),
+        twin_sha256: None,
         ..image(target, "", sha, 8, ResultKind::Progression)
     }
 }

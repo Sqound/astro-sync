@@ -24,9 +24,15 @@ export interface ImportSend {
   variant: boolean;
 }
 
-/** The file of an image, whatever it is (a night's render or a plan's). */
-export function renderOf(send: ImageToSend) {
-  return send.kind === "night" ? send.render : send.outcome.render;
+/** The file that leaves for an image, whatever it is (a night's render or a
+ * plan's): its PNG, or its TIFF for the row of the TIFF. */
+export function renderOf(send: ImageToSend): {
+  path: string;
+  sha256: string;
+  size: number;
+} {
+  const render = send.kind === "night" ? send.render : send.outcome.render;
+  return (send.fullResolution && render.fullResolution) || render;
 }
 
 /**

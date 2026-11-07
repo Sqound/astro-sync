@@ -4,6 +4,7 @@ import { Icon } from "../../components/Icon";
 import { ProgressFrame } from "../../components/ProgressFrame";
 import { Waiting } from "../../components/Waiting";
 import { InfoLine } from "../../components/InfoLine";
+import { JoinTiffBox } from "../../components/JoinTiffBox";
 import { Notice } from "../../components/Notice";
 import { PaymentFailedNotice } from "../../components/PaymentFailedNotice";
 import type { DraftStore } from "../../hooks/useIncidents";
@@ -16,6 +17,7 @@ import {
   nightRecordSending,
   nightSendLogs,
   nightSolve,
+  localSettingsGet,
   localWorkCancelKind,
   masterMeasureCurrent,
   onLocalWork,
@@ -190,6 +192,19 @@ export function SummaryStep({
 }) {
   const { t, locale } = useI18n();
   const [precheck, setPrecheck] = useState<NightPrecheck | null>(null);
+  // « Joindre aussi les TIFF »: the renders leave as PNG unless the person
+  // joins their TIFF to this sending. It starts from « Envoi des rendus » of
+  // Réglages (`null` until read) and never changes it.
+  const [includeTiff, setIncludeTiff] = useState<boolean | null>(null);
+  useEffect(() => {
+    let gone = false;
+    localSettingsGet()
+      .then((kept) => !gone && setIncludeTiff(kept.rendersUpload === "both"))
+      .catch(() => !gone && setIncludeTiff(false));
+    return () => {
+      gone = true;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   // What « Envoyer » adds to the session before it sends: the incidents
   // ticked, once their list is read.
@@ -295,9 +310,9 @@ export function SummaryStep({
   );
 
   useEffect(() => {
-    if (phase !== "recapitulatif") return;
+    if (phase !== "recapitulatif" || includeTiff === null) return;
     let cancelled = false;
-    nightPrecheck(context.sessionId, input, [], locale, restack)
+    nightPrecheck(context.sessionId, input, [], locale, restack, includeTiff)
       .then((next) => {
         if (!cancelled) setPrecheck(next);
       })
@@ -307,7 +322,7 @@ export function SummaryStep({
     return () => {
       cancelled = true;
     };
-  }, [phase, context.sessionId, input, t, locale, restack]);
+  }, [phase, context.sessionId, input, t, locale, restack, includeTiff]);
 
   // The figures the person measured on the image of a device (« Mesurer cette
   // image »), by target: the render of that image leaves with them.
@@ -709,6 +724,8 @@ export function SummaryStep({
           // The history of the plan's capture follows the night's: its image
           // after each night, when the progression is ticked.
           progression: treatments.has("progression"),
+          // The TIFF of each image only when the person joined them.
+          includeTiff: includeTiff ?? false,
         });
       } catch (caught) {
         mark(key, { state: "failed", detail: null });
@@ -797,7 +814,14 @@ export function SummaryStep({
             }
           : null,
         precheck: (extra) =>
-          nightPrecheck(context.sessionId, input, extra, locale),
+          nightPrecheck(
+            context.sessionId,
+            input,
+            extra,
+            locale,
+            undefined,
+            includeTiff ?? false,
+          ),
         keep: (plan) =>
           plan.image.kind !== "final" || treatments.has("final_image"),
         enqueue: (plans, quota) =>
@@ -1146,6 +1170,16 @@ export function SummaryStep({
     deviceQuality,
     resume,
     privateServer: privateServer !== null,
+    renderName: (id) => {
+      const pipeline = context.pipelines.find((item) => item.id === id);
+      return (
+        pipeline?.displayName ??
+        pipeline?.name[locale] ??
+        pipeline?.name.en ??
+        id
+      );
+    },
+    includeTiff: includeTiff ?? false,
     // « la session du 7 oct. »: the sentence form, the evening of the night.
     date: context.session
       ? nightSentence(
@@ -1242,7 +1276,12 @@ export function SummaryStep({
               <li
                 key={index}
                 className={
-                  [row.over && "is-over", row.note && "is-note"]
+                  [
+                    row.over && "is-over",
+                    row.note && "is-note",
+                    row.render && "is-render",
+                    row.fullResolution && "is-full-resolution",
+                  ]
                     .filter(Boolean)
                     .join(" ") || undefined
                 }
@@ -1267,6 +1306,19 @@ export function SummaryStep({
         onPlan={onPlan}
         onMeasure={onMeasure}
       />
+      {/* « Joindre aussi les TIFF »: only when a render of this sending has
+          a TIFF to join (the stacking to come, or renders already made). */}
+      {(treatments.has("stacking") ||
+        (precheck.fullResolution?.count ?? 0) > 0) && (
+        <section className="as-card as-join-tiff-card">
+          <JoinTiffBox
+            checked={includeTiff ?? false}
+            disabled={includeTiff === null}
+            fullResolution={precheck.fullResolution ?? null}
+            onChange={setIncludeTiff}
+          />
+        </section>
+      )}
       {summary.allowed ? (
         <div className="as-check">
           <h3 className="as-check__title">

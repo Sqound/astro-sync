@@ -19,6 +19,7 @@ import {
   localSettingsGet,
   localSettingsSetPlanField,
   localSettingsSetPolishedEngine,
+  localSettingsSetRendersUpload,
   localSettingsSetUtcOffsets,
   settingsGet,
   settingsSet,
@@ -29,6 +30,7 @@ import {
   type LocalSettings,
   type PlanField,
   type PolishedEngine,
+  type RendersUpload,
   type SpaceStatus,
 } from "../lib/bridge";
 import { settingsVersionLine } from "../lib/buildInfo";
@@ -271,6 +273,16 @@ function GeneralTab({
     }
   }
 
+  // « Envoi des rendus »: kept at once, the starting value of the box
+  // « Joindre aussi les TIFF » of the next sending.
+  async function changeRendersUpload(renders: RendersUpload) {
+    try {
+      setLocal(await localSettingsSetRendersUpload(renders));
+    } catch (caught) {
+      setError(formatError(t, caught));
+    }
+  }
+
   const shown = root ? displayPath(root, homeOf(root)) : "";
   const savable = offsetsSavable(local, draft);
 
@@ -354,6 +366,27 @@ function GeneralTab({
             <option value="siril">{t("settings.polished.siril")}</option>
           </select>
           <p className={helpTextClassName}>{t("settings.polished.line")}</p>
+        </div>
+      </section>
+
+      <section className="as-zone">
+        <h2 className="as-zone__title">{t("settings.rendersUpload.title")}</h2>
+        <div className={fieldGroupClassName}>
+          <select
+            className={fieldClassName}
+            aria-label={t("settings.rendersUpload.title")}
+            value={local?.rendersUpload ?? "png"}
+            disabled={!local}
+            onChange={(event) =>
+              void changeRendersUpload(event.target.value as RendersUpload)
+            }
+          >
+            <option value="png">{t("settings.rendersUpload.png")}</option>
+            <option value="both">{t("settings.rendersUpload.both")}</option>
+          </select>
+          <p className={helpTextClassName}>
+            {t("settings.rendersUpload.line")}
+          </p>
         </div>
       </section>
 

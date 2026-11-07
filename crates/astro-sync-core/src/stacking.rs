@@ -90,10 +90,13 @@
 //!   no pose and needs no room beyond the render's. The choice reaches
 //!   [`plan_target_with_device`] as the files taken ([`DeviceUse`]); without
 //!   it nothing changes.
-//! - **What leaves** ([`stacked_candidates`]): each render's 16-bit TIFF,
+//! - **What leaves** ([`stacked_candidates`]): each render's PNG (8-bit),
 //!   as [`ResultKind::Stacked`] (source `stacking`), the pipeline's id as
-//!   its `render`; [`crate::precheck::plan_images`] makes the first the
-//!   capture (or a variant of the capture online) and each other a variant.
+//!   its `render`, and beside it its 16-bit TIFF, which leaves only when the
+//!   person joins the TIFF ([`crate::render_files`]; a render without a PNG,
+//!   the linear one, leaves as its TIFF); [`crate::precheck::plan_images`]
+//!   makes the first the capture (or a variant of the capture online) and
+//!   each other a variant.
 
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
@@ -1622,16 +1625,22 @@ pub struct StackedRender {
     /// for the render itself.
     #[serde(default, flatten)]
     pub retouch: Retouch,
+    /// The file that leaves: the PNG of the render when the stacker wrote
+    /// one, else its only file (the linear TIFF) -- [`crate::render_files`].
     pub path: PathBuf,
     pub sha256: String,
     pub size: u64,
+    /// The TIFF of the same render beside its PNG: it leaves only when the
+    /// person joins the TIFF to the sending.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_resolution: Option<crate::render_files::RenderFile>,
     /// The family of exposures, when the target has several.
     #[serde(default)]
     pub family: Option<String>,
 }
 
-/// What [`run_stacking`] gives: the TIFF of each render (the image sent)
-/// and the other files written (the PNG to look at).
+/// What [`run_stacking`] gives: each render (its PNG and, beside it, its TIFF
+/// in full resolution) and the other files written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StackOutcome {
@@ -1987,6 +1996,7 @@ pub fn run_stacking(
         integrations: Vec::new(),
         outside_frames: 0,
     };
+    let mut written = Vec::new();
     for output in outputs {
         let path = job.output_dir.join(&output.file);
         let inside = !output.file.contains(['/', '\\'])
@@ -1994,19 +2004,32 @@ pub fn run_stacking(
         if !inside {
             return Err(StackFailure::OutsideStacked { file: output.file });
         }
-        let is_tiff = Path::new(&output.file)
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "tif" | "tiff"));
-        if !is_tiff {
+        if crate::render_files::is_render_file(&path) {
+            written.push((output, path));
+        } else {
             outcome.other_files.push(path);
-            continue;
         }
-        let (sha256, size) = sha256_and_size(&path).map_err(|e| StackFailure::Failed {
-            code: "io_error".to_string(),
-            message: e.to_string(),
-            logs: None,
-        })?;
+    }
+    let io_error = |e: std::io::Error| StackFailure::Failed {
+        code: "io_error".to_string(),
+        message: e.to_string(),
+        logs: None,
+    };
+    // Each render once: its PNG leaves, its TIFF is the twin in full
+    // resolution (`render_files`).
+    for ((output, path), twin) in crate::render_files::pair_render_files(written, |(_, p)| p) {
+        let (sha256, size) = sha256_and_size(&path).map_err(io_error)?;
+        let full_resolution = match twin {
+            Some((_, tiff)) => {
+                let (sha256, size) = sha256_and_size(&tiff).map_err(io_error)?;
+                Some(crate::render_files::RenderFile {
+                    path: tiff,
+                    sha256,
+                    size,
+                })
+            }
+            None => None,
+        };
         outcome.renders.push(StackedRender {
             pipeline_id: output.pipeline,
             contrast: output.contrast,
@@ -2014,6 +2037,7 @@ pub fn run_stacking(
             path,
             sha256,
             size,
+            full_resolution,
             family: job.family.clone(),
         });
     }
@@ -2057,20 +2081,34 @@ pub fn stacked_candidates(outcome: &StackOutcome, target_id: &str) -> Vec<ImageC
     outcome
         .renders
         .iter()
-        .map(|render| ImageCandidate {
-            target_id: target_id.to_string(),
-            path: render.path.clone(),
-            sha256: render.sha256.clone(),
-            size: render.size,
-            kind: ResultKind::Stacked,
-            render: Some(render.pipeline_id.clone()),
-            render_rank: asked
-                .iter()
-                .position(|id| *id == render.pipeline_id)
-                .and_then(|place| u32::try_from(place).ok()),
-            contrast: render.contrast,
-            retouch: render.retouch,
-            frame_count: None,
+        .flat_map(|render| {
+            let candidate =
+                |path: &Path, sha256: &str, size: u64, twin: Option<&str>| ImageCandidate {
+                    target_id: target_id.to_string(),
+                    path: path.to_path_buf(),
+                    sha256: sha256.to_string(),
+                    size,
+                    kind: ResultKind::Stacked,
+                    render: Some(render.pipeline_id.clone()),
+                    render_rank: asked
+                        .iter()
+                        .position(|id| *id == render.pipeline_id)
+                        .and_then(|place| u32::try_from(place).ok()),
+                    contrast: render.contrast,
+                    retouch: render.retouch,
+                    frame_count: None,
+                    twin_sha256: twin.map(str::to_string),
+                };
+            // The PNG, then its TIFF in full resolution: the check keeps the
+            // TIFF only when the person joins it (`night_steps::precheck_candidates`).
+            let full = render.full_resolution.as_ref();
+            std::iter::once(candidate(
+                &render.path,
+                &render.sha256,
+                render.size,
+                full.map(|f| f.sha256.as_str()),
+            ))
+            .chain(full.map(|f| candidate(&f.path, &f.sha256, f.size, Some(&render.sha256))))
         })
         .collect()
 }

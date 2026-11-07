@@ -3,6 +3,20 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.0.2 (2026-11-07)
+
+- Renders are uploaded as PNG. The TIFF of a render leaves only when you tick
+  it: the import screen lists each TIFF unticked under its PNG, the summary
+  shows the format of every render, and a new setting, « Uploads: PNG only /
+  PNG + TIFF », chooses what is sent by default.
+- The « already captured » bookmark has three states, told apart by their
+  shape and not by colour alone.
+- The German texts keep the informal register of the other languages: a line
+  of the uploads screen no longer starts a sentence with « Sie ».
+- French typography: no-break spaces before the double punctuation marks in
+  the French strings.
+- The installers are unchanged: the Windows installer is still unsigned.
+
 ## 1.0.1
 
 - The contrast chosen for a pipeline in the stacking assistant now reaches

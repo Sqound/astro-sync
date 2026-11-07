@@ -182,6 +182,7 @@ pub mod python_env;
 pub mod raster;
 pub mod raw_header;
 pub mod refusal;
+pub mod render_files;
 pub mod scanner;
 pub mod service_wait;
 pub mod session_detection;

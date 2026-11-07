@@ -43,6 +43,15 @@ PlanImageJob``) naming the masters kept by the stacking of each night
    lost on each edge, the share of the frame kept), and the ``CRPIX`` of a WCS moves with it.  A milestone of
    the progression is given the frame master and the rectangle of the image of the plan (``frameMaster``,
    ``crop``): it is registered on that master when its own frame is another one, then cut the same way;
+
+   **The display** (``renders.prepare_native``): the black point (per channel) and the stretch scale a render shows
+   an image with are measured on it, and the record says them (``display``: ``black``, ``scale``, ``imposed``).  A
+   milestone of the progression is given those of the image of the plan (job ``display``:
+   ``{"black": [r, g, b], "scale": s}``) and shows its poses at the same level -- a stack of one night is
+   noisier, its own percentile would fall lower and its sky would look brighter --; ``imposed`` is then true in its
+   record.  The natural and the polished preparations have it -- the polished one also records the sky levels its
+   two matches aim at (``sky``, ``finalWithStars``), and aims at the imposed ones instead of the natural render
+   of its own, noisier, poses --; "No processing" has none (``display: null``);
 3. **renders** the result like the stacking of a night does
    (``astro_sync_stack.render_outputs``: "Natural render", "Dual-band
    correction", or a pipeline the person added) or, for "No
@@ -128,6 +137,34 @@ def read_job(path: Path) -> dict[str, object]:
     return job
 
 
+def imposed_display(job: dict[str, object]) -> dict[str, object] | None:
+    """The display a milestone is shown with (job ``display``), ``None``: its own.
+
+    ``{"black": [r, g, b], "scale": s}``, and for the polished render the sky levels its matches aim at:
+    ``"sky": {"displayed": d, "final": f}`` and ``"finalWithStars": t``.  ``bad_job`` when it is not three finite
+    black points, a finite positive scale and finite levels.
+    """
+    display = job.get("display")
+    if display is None:
+        return None
+    try:
+        black = [float(v) for v in display["black"]]
+        scale = float(display["scale"])
+        if len(black) != 3 or not all(math.isfinite(v) for v in black) or not (math.isfinite(scale) and scale > 0):
+            raise ValueError("expected three black points and a scale")
+        used: dict[str, object] = {"black": black, "scale": scale}
+        if display.get("sky") is not None:
+            used["sky"] = {key: float(display["sky"][key]) for key in ("displayed", "final")}
+        if display.get("finalWithStars") is not None:
+            used["finalWithStars"] = float(display["finalWithStars"])
+        levels = [*used.get("sky", {}).values(), used.get("finalWithStars", 0.0)]
+        if not all(math.isfinite(v) for v in levels):
+            raise ValueError("a sky level is not finite")
+    except (KeyError, TypeError, ValueError) as error:
+        raise stack.StackingError("bad_job", f"the display of the job cannot be used: {error}", stack.EXIT_INPUT) from error
+    return used
+
+
 def render_args(job: dict[str, object]) -> argparse.Namespace:
     """The options ``astro_sync_stack``'s render steps read, from the job."""
     pipeline = job.get("pipeline") or {}
@@ -159,7 +196,19 @@ def render_args(job: dict[str, object]) -> argparse.Namespace:
         black_percentile=0.05,
         deconv_fwhm=None,
         keep_work=False,
+        # The display (black point and stretch scale) the image is shown with: the job's, or measured on the image;
+        # ``measured_display`` receives the pair used, for the record.
+        display=imposed_display(job),
+        measured_display={},
     )
+
+
+def display_of(args: argparse.Namespace) -> dict[str, object] | None:
+    """What the render showed the image with, for the record; ``None`` when the render did not use a shared display."""
+    used = args.measured_display
+    if args.linear_only or "black" not in used or "scale" not in used:
+        return None
+    return {**used, "imposed": args.display is not None}
 
 
 def masters_of(job: dict[str, object]) -> list[plan_combine.Master]:
@@ -797,6 +846,11 @@ def execute(job: dict[str, object], args: argparse.Namespace, report: stack.Repo
         # the master named, the pixels lost on each edge, why; the milestones of the progression take it again.
         "crop": crop,
         "frameMaster": frame_master_of(job, combined, crop),
+        # The display of the image (``black`` per channel, ``scale`` of the stretch) and whether the job imposed it
+        # (``imposed``: a milestone at the level of the image of the plan) or it is this image's own measure;
+        # ``None`` for "No processing" and for a render that has its own display (the polished one).
+        # The milestones of the progression take the one of the image of the plan.
+        "display": display_of(args),
         "preview": preview,
         "tools": {"siril": stack.siril_version(args.siril) if args.siril else None, "starnet2": starnet is not None,
                   "graxpert": graxpert is not None},

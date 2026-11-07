@@ -448,6 +448,7 @@ fn candidate(night: &Night, relative: &str, kind: ResultKind, sha: &str) -> Imag
         contrast: crate::stacking::Contrast::None,
         retouch: Default::default(),
         frame_count: None,
+        twin_sha256: None,
     }
 }
 

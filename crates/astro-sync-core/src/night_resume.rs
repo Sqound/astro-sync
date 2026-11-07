@@ -51,6 +51,19 @@ pub struct LocalImage {
     pub sha256: String,
     pub size: u64,
     pub kind: ResultKind,
+    /// The digest of the same render in its other format, for a render the
+    /// stacker wrote as PNG and TIFF ([`crate::render_files`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twin_sha256: Option<String>,
+}
+
+impl LocalImage {
+    /// The TIFF of a render that also exists as a PNG: it leaves only when
+    /// the person joins the TIFF, so it is never « to send » by itself.
+    #[must_use]
+    pub fn is_full_resolution_twin(&self) -> bool {
+        self.twin_sha256.is_some() && crate::render_files::is_tiff(&self.path)
+    }
 }
 
 /// A target of the night as its folder holds it.
@@ -118,6 +131,7 @@ impl ResumeLocal {
                     Default::default()
                 },
                 frame_count: None,
+                twin_sha256: image.twin_sha256.clone(),
             })
             .collect()
     }
@@ -576,11 +590,20 @@ pub fn resume_night(
     }
 
     // Images here that would leave (identical ones never do; a different
-    // one only as a variant, when the space keeps variants).
+    // one only as a variant, when the space keeps variants). The TIFF of a
+    // render that leaves as PNG is a choice of the person, never missing;
+    // a render online in its other format is online.
     let to_send = local
         .images
         .iter()
+        .filter(|image| !image.is_full_resolution_twin())
         .filter(|image| online.image_with(&image.sha256).is_none())
+        .filter(|image| {
+            image
+                .twin_sha256
+                .as_deref()
+                .is_none_or(|twin| online.image_with(twin).is_none())
+        })
         .filter(|image| variant_limit > 0 || online.capture_of(&image.target_id).is_none())
         .filter(|image| {
             !queue

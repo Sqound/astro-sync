@@ -58,8 +58,8 @@ use astro_sync_core::working_folder::{
 };
 
 use crate::commands::{
-    ending_sign_in_on_error, forced_log_offsets, local_work, local_work_of,
-    require_portal_and_token, run_blocking, service_wait, LOCAL_WORK_EVENT,
+    LOCAL_WORK_EVENT, ending_sign_in_on_error, forced_log_offsets, local_work, local_work_of,
+    require_portal_and_token, run_blocking, service_wait,
 };
 use crate::error::CommandError;
 use crate::paths;
@@ -712,7 +712,9 @@ pub async fn night_view<R: Runtime>(
 
 /// « Récapitulatif »: what each image becomes, the service's answer before
 /// any byte, the four limits. `extra` adds the stacked renders and the
-/// progression images made for this sending. Nothing is sent.
+/// progression images made for this sending; `include_tiff` is the box
+/// « Joindre aussi les TIFF » (the TIFF of a render written as PNG too).
+/// Nothing is sent.
 #[tauri::command]
 pub async fn night_precheck<R: Runtime>(
     app: AppHandle<R>,
@@ -721,22 +723,34 @@ pub async fn night_precheck<R: Runtime>(
     extra: Vec<ImageCandidate>,
     language: Option<String>,
     restack: Option<Vec<String>>,
+    include_tiff: Option<bool>,
 ) -> Result<NightPrecheck, CommandError> {
     let (cancel, progress) = local_work(&app);
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
+        // « Joindre aussi les TIFF » of the sending; without the window's
+        // word, « Envoi des rendus » of Réglages.
+        let include_tiff = match include_tiff {
+            Some(joined) => joined,
+            None => settings(&paths)?.renders_upload.includes_tiff(),
+        };
         let (portal_url, token) = require_portal_and_token(&app)?;
         let transport = transport(&app)?;
         let result = (|| {
             let online = transport.night_online(&portal_url, &token, &session_id)?;
             let night = local_night(&paths, &session_id, &input, &cancel, &progress)?;
-            let candidates = night_steps::precheck_candidates(
-                &night.local,
-                extra,
-                restack.as_deref().unwrap_or_default(),
+            let restack = restack.as_deref().unwrap_or_default();
+            // What the box « Joindre aussi les TIFF » says: the TIFF of the
+            // renders, joined or not, with their weight.
+            let full_resolution = night_steps::full_resolution_of(
+                &night_steps::precheck_candidates(&night.local, extra.clone(), restack, true),
+                include_tiff,
             );
+            let candidates =
+                night_steps::precheck_candidates(&night.local, extra, restack, include_tiff);
             let mut check =
                 night_steps::precheck_night(&transport, &portal_url, &token, &online, &candidates)?;
+            check.full_resolution = full_resolution;
             // What Astro Sync proposes for each image, in the language
             // of the window (the saved one, else English).
             if let (NightLocation::Found { folder }, Some(detection)) =

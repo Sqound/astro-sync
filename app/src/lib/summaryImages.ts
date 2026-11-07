@@ -4,11 +4,8 @@
 
 import type { TranslateParams } from "../i18n/locale.ts";
 import { CONTRAST_STOPS, hasContrast } from "./contrast.ts";
-import {
-  formatOf,
-  type ImageBlock,
-  type SummaryImage,
-} from "./detectTreatments.ts";
+import { type ImageBlock, type SummaryImage } from "./detectTreatments.ts";
+import { renderFormatText } from "./renderFormat.ts";
 import { finishSummaries } from "./finish.ts";
 import { formatBytes, pluralText } from "./written.ts";
 
@@ -21,7 +18,7 @@ export interface SummaryImageView {
   title: string;
   /** « Rendu naturel », or « Correction bibande · Présentation · 2,0 · Couleurs +40 % ». */
   render: string;
-  /** « 3 nuits empilées · TIFF · 46,5 Mo ». */
+  /** « 3 nuits empilées · PNG · 13 Mo ». */
   meta: string;
   /** Why the box cannot be ticked, or `null`. */
   blocked: string | null;
@@ -71,7 +68,11 @@ export function summaryImageView(
       row.role === "capture" && row.nights > 1
         ? pluralText(t, locale, "detect.send.stacked", row.nights)
         : null,
-      formatOf(row.path),
+      // « PNG », « TIFF pleine résolution » under its PNG, « TIFF seul ».
+      renderFormatText(t, {
+        path: row.path,
+        twinSha256: row.fullResolution ? row.twinOf : null,
+      }),
       formatBytes(t, row.size, locale),
     ]
       .filter(Boolean)

@@ -172,6 +172,21 @@ pub struct ImageCandidate {
     /// A progression image: the light frames its milestone stacks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame_count: Option<u64>,
+    /// The digest of the same render in its other format when the stacker
+    /// wrote both (the TIFF of a PNG, the PNG of a TIFF;
+    /// [`crate::render_files`]). A TIFF with a twin is the render in full
+    /// resolution: it leaves only when the person joins the TIFF.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub twin_sha256: Option<String>,
+}
+
+impl ImageCandidate {
+    /// The TIFF of a render that also leaves as a PNG: sent only when the
+    /// TIFF are joined to the sending.
+    #[must_use]
+    pub fn is_full_resolution_twin(&self) -> bool {
+        self.twin_sha256.is_some() && crate::render_files::is_tiff(&self.path)
+    }
 }
 
 /// The role a progression image is sent with (`uploadMetadata.role`, the
@@ -285,12 +300,17 @@ pub struct ImagePlan {
 /// The sort key of a stacked image: the main image of the capture sorts first.
 /// A render with a curve is never first; among the others the stacking's own
 /// order decides (the first asked is the main), the natural render being the
-/// main one when the order is not known.
-fn main_order(image: &ImageCandidate) -> (bool, u32) {
+/// main one when the order is not known. The TIFF of a render, when it is
+/// joined, comes right after its PNG: the PNG stays the capture's image.
+fn main_order(image: &ImageCandidate) -> (bool, u32, bool) {
     let rank = image
         .render_rank
         .unwrap_or(u32::from(image.render.as_deref() != Some(DEFAULT_PIPELINE)));
-    (!image.contrast.is_none() || !image.retouch.is_none(), rank)
+    (
+        !image.contrast.is_none() || !image.retouch.is_none(),
+        rank,
+        image.is_full_resolution_twin(),
+    )
 }
 
 /// Makes `main` the main image of every target that has a render of that
@@ -343,7 +363,18 @@ pub fn plan_images_within(
     let mut plans: Vec<Option<Decision>> = vec![None; candidates.len()];
 
     for (i, image) in candidates.iter().enumerate() {
-        if let Some((capture, online_image)) = online.image_with(&image.sha256) {
+        // A render whose other format is online is online: its PNG is not
+        // sent again beside the TIFF a sending of before left (nor the
+        // reverse when the TIFF are not joined).
+        let twin_online = || {
+            image
+                .twin_sha256
+                .as_deref()
+                .filter(|_| !image.is_full_resolution_twin())
+                .and_then(|twin| online.image_with(twin))
+        };
+        if let Some((capture, online_image)) = online.image_with(&image.sha256).or_else(twin_online)
+        {
             plans[i] = Some(Decision::AlreadyOnline {
                 capture_id: capture.id.clone(),
                 image_id: online_image.id.clone(),
@@ -589,6 +620,11 @@ pub struct QuotaCheck {
     pub allowed: bool,
     /// The bytes of the images that would leave.
     pub to_send_bytes: u64,
+    /// The part of `to_send_bytes` that is the TIFF of renders also sent as
+    /// PNG: what the sending weighs less without them (« Sans les TIFF :
+    /// 479 Mo, cela tient »).
+    #[serde(default)]
+    pub full_resolution_bytes: u64,
     pub to_send_files: u64,
     pub new_captures: u64,
     pub findings: Vec<QuotaFinding>,
@@ -603,6 +639,11 @@ pub fn check_quotas(
 ) -> QuotaCheck {
     let sending: Vec<&ImagePlan> = plans.iter().filter(|p| p.decision.sends()).collect();
     let to_send_bytes: u64 = sending.iter().map(|p| p.image.size).sum();
+    let full_resolution_bytes: u64 = sending
+        .iter()
+        .filter(|p| p.image.is_full_resolution_twin())
+        .map(|p| p.image.size)
+        .sum();
     let mut findings = Vec::new();
 
     if to_send_bytes > storage.remaining_bytes {
@@ -676,6 +717,7 @@ pub fn check_quotas(
     QuotaCheck {
         allowed: findings.is_empty(),
         to_send_bytes,
+        full_resolution_bytes,
         to_send_files: sending.len() as u64,
         new_captures,
         findings,

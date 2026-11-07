@@ -24,8 +24,14 @@ import type {
 import { calibrationFindings, stackedWithoutText } from "./missingMessages.ts";
 import type { Seg } from "./wizardFiles.ts";
 import { baseName } from "./wizardSteps.ts";
+import { NO_PROCESSING_ID } from "./pipelineChoice.ts";
 import { formatDuration } from "./duration.ts";
 import { formatSize, pluralText, shortDigest } from "./written.ts";
+import {
+  isFullResolutionTwin,
+  renderFormatText,
+  withoutTiffText,
+} from "./renderFormat.ts";
 
 type Translate = (key: string, params?: TranslateParams) => string;
 
@@ -38,6 +44,10 @@ export interface SummaryRow {
   /** A line under the row above it, not a row of its own (the quality of a
    * stacked image): no rule over it, no right column. */
   note?: boolean;
+  /** One file of a render, under the line of its target (indented). */
+  render?: boolean;
+  /** That file is the TIFF in full resolution of a render. */
+  fullResolution?: boolean;
 }
 
 export interface SummaryGroup {
@@ -275,6 +285,12 @@ export function summaryView(
     privateServer: boolean;
     /** The session's date, short and localised (`nightShortDate`). */
     date: string;
+    /** The name of a pipeline (« Rendu naturel »), for the rows of the
+     * renders; absent: its identifier. */
+    renderName?: (pipelineId: string) => string;
+    /** « Joindre aussi les TIFF » is ticked: the stacking to come sends the
+     * PNG and the TIFF of each render. */
+    includeTiff?: boolean;
   },
 ): SummaryView {
   const { precheck, detection, online, treatments, resume } = input;
@@ -321,9 +337,24 @@ export function summaryView(
     );
     return text ? { segs: [text], value: "", note: true } : null;
   };
+  // The renders of a target leave together: one line for the target (« 4
+  // images · 52 Mo »), one per file with its format (« Rendu naturel ·
+  // PNG »), so the weight of the TIFF is seen before the sending.
+  const renderName = input.renderName ?? ((id: string) => id);
+  const sendsAsImage = (plan: ImagePlan) =>
+    plan.decision.decision !== "already_online" &&
+    plan.decision.decision !== "not_sent" &&
+    (treatments.has("final_image") || plan.image.kind !== "final");
+  const rendersSaid = new Set<string>();
   for (const plan of plans) {
     // The progression images have their own line, per target (below).
     if (plan.image.kind === "progression") continue;
+    if (
+      plan.image.kind === "stacked" &&
+      sendsAsImage(plan) &&
+      rendersSaid.has(plan.image.targetId)
+    )
+      continue;
     const target = names(plan.image.targetId);
     const file = baseName(plan.image.path);
     const digest = shortDigest(plan.image.sha256);
@@ -361,15 +392,77 @@ export function summaryView(
         ],
         value: size(plan.image.size),
       });
-    } else if (treatments.has("final_image") || plan.image.kind !== "final") {
+    } else if (plan.image.kind === "stacked") {
+      rendersSaid.add(plan.image.targetId);
+      const renders = plans.filter(
+        (other) =>
+          other.image.kind === "stacked" &&
+          other.image.targetId === plan.image.targetId &&
+          sendsAsImage(other),
+      );
+      sent.push({
+        // The renders of a capture online are its variants: said so.
+        segs: [
+          renders.every((item) => item.decision.decision === "variant")
+            ? t("wizard.sending.variant", { target })
+            : t("wizard.summary.stackedOf", { target }),
+        ],
+        value: pluralText(t, locale, "uploadFormat.images", renders.length, {
+          size: size(renders.reduce((sum, item) => sum + item.image.size, 0)),
+        }),
+      });
+      for (const render of renders) {
+        const name =
+          render.image.render === NO_PROCESSING_ID
+            ? t("wizard.treatments.noProcessing")
+            : render.image.render
+              ? renderName(render.image.render)
+              : baseName(render.image.path);
+        sent.push({
+          segs: [
+            name,
+            t("detect.join"),
+            { strong: renderFormatText(t, render.image) },
+            ...(allowed
+              ? [
+                  t("wizard.summary.digest"),
+                  { code: shortDigest(render.image.sha256) },
+                ]
+              : []),
+          ],
+          value: size(render.image.size),
+          over: overPaths.has(render.image.path),
+          render: true,
+          fullResolution: isFullResolutionTwin(render.image),
+        });
+      }
+      const quality = renders.find((item) => item.metadata?.imageQuality)
+        ?.metadata?.imageQuality;
+      const said = `${plan.image.targetId}|${JSON.stringify(quality)}`;
+      if (quality && allowed && !qualitySaid.has(said)) {
+        qualitySaid.add(said);
+        sent.push({
+          segs: [
+            imageQualityText(
+              t,
+              locale,
+              quality,
+              renders.some((item) => item.fromDevice) ? "device" : "stacking",
+            ),
+          ],
+          value: "",
+          note: true,
+        });
+      }
+      const note = withoutNote(plan.image.targetId);
+      if (note) sent.push(note);
+    } else if (treatments.has("final_image")) {
+      // The person's final image (the renders are said above, by target).
       const variant =
         d.decision === "variant" || d.decision === "variant_of_new";
-      // A stacked image is never called a final image.
       const lineKey = variant
         ? "wizard.summary.variantOf"
-        : plan.image.kind === "stacked"
-          ? "wizard.summary.stackedFile"
-          : "wizard.summary.finalOf";
+        : "wizard.summary.finalOf";
       sent.push({
         segs: allowed
           ? [
@@ -393,20 +486,12 @@ export function summaryView(
               t,
               locale,
               quality,
-              plan.fromDevice
-                ? "device"
-                : plan.image.kind === "final"
-                  ? "master"
-                  : "stacking",
+              plan.fromDevice ? "device" : "master",
             ),
           ],
           value: "",
           note: true,
         });
-      }
-      if (plan.image.kind === "stacked") {
-        const note = withoutNote(plan.image.targetId);
-        if (note) sent.push(note);
       }
     }
   }
@@ -453,8 +538,19 @@ export function summaryView(
   if (treatments.has("stacking")) {
     const deviceUse = input.deviceUse ?? NO_DEVICE_CHOICES;
     for (const targetId of input.stackTargets) {
+      // What the stacking to come sends of each render.
       sent.push({
-        segs: [t("wizard.summary.stackedOf", { target: names(targetId) })],
+        segs: [
+          t("wizard.summary.stackedOf", { target: names(targetId) }),
+          t("detect.join"),
+          {
+            strong: t(
+              input.includeTiff
+                ? "uploadFormat.pngAndTiff"
+                : "uploadFormat.pngOnly",
+            ),
+          },
+        ],
         value: t("wizard.summary.computedHere"),
       });
       const without = withoutNote(targetId);
@@ -730,9 +826,27 @@ export function summaryView(
     analysisNote: allowed && resume && treatments.has("logs"),
     refusals: allowed
       ? []
-      : precheck.quota.findings.map((finding) =>
-          refusalText(t, locale, finding, names, input.privateServer),
-        ),
+      : precheck.quota.findings.flatMap((finding) => {
+          const said = refusalText(
+            t,
+            locale,
+            finding,
+            names,
+            input.privateServer,
+          );
+          // A sending refused for room that would fit without the TIFF of its
+          // renders says so, and how to get there.
+          const without =
+            finding.limit === "storage_quota"
+              ? withoutTiffText(
+                  t,
+                  locale,
+                  precheck.quota,
+                  finding.remainingBytes,
+                )
+              : null;
+          return without ? [said, without] : [said];
+        }),
     toSend: size(toSend),
     primaryKey: resume
       ? "wizard.summary.sendComplements"

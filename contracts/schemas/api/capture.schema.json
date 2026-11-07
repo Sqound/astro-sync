@@ -113,6 +113,13 @@
             { "type": "null" }
           ]
         },
+        "placement": {
+          "description": "Additive: where the image goes when it falls into a capture the space already holds (the one of the same night and target, found by `sessionId` or `planId` with `targetId`, or the one `captureId` names). `replace`: the image takes the place of the capture's main image, whatever `capture.variant_limit`; the old image leaves only when the new one is finalized (an upload never finalized leaves it intact), its bytes are released from the quota, the capture keeps its other images. `add`: the image is a new variant of the capture, within `capture.variant_limit`; past it (or at `0`) `409 capture_variant_limit_reached`, never a replacement. Absent or `null`: the service's own rule, unchanged (`capture.variant_limit` `0` replaces, above `0` adds). Without an existing capture to place into, the image is a new capture and `placement` changes nothing. An unknown value, or a value with a `role`, is `400 invalid_placement`. The pre-check (`POST /v1/uploads/check`) reads it too.",
+          "anyOf": [
+            { "type": "string", "enum": ["replace", "add"] },
+            { "type": "null" }
+          ]
+        },
         "metadataSource": {
           "description": "The producer the proposals below come from — `astro-sync` or `import`. Absent: `astro-sync` for Astro Sync's token or an image of Astro Sync (`source` `astro-sync`, `stacking`); a phone's upload proposing without it is refused (`400 invalid_metadata`), and the web session proposes nothing at an upload (its owner writes on the detail).",
           "anyOf": [
@@ -631,7 +638,8 @@
                 "storage_quota_reached",
                 "file_too_large",
                 "capture_variant_limit_reached",
-                "invalid_metadata"
+                "invalid_metadata",
+                "invalid_placement"
               ]
             },
             "message": { "type": "string", "minLength": 1 },

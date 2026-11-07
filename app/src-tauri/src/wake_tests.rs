@@ -168,6 +168,7 @@ fn build_harness(policy: WakePolicy, sky_after_upload: bool) -> Harness {
             commands::local_settings_set_soft_stars,
             commands::local_settings_set_polished_engine,
             commands::local_settings_set_plan_field,
+            commands::local_settings_set_renders_upload,
             crate::commands_night::night_analysis,
             crate::commands_night::night_send_logs,
             crate::commands_night::working_folder_get,

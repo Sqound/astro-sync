@@ -57,7 +57,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import IO
 
@@ -114,8 +114,16 @@ def remove_gradient(
     tile: int = 160,
     degree: int = 2,
     black_percentile: float = 0.25,
+    black: Sequence[float] | None = None,
+    measured: dict[str, object] | None = None,
 ) -> np.ndarray:
-    """Subtract a robust low-order background model without flattening stars."""
+    """Subtract a robust low-order background model without flattening stars.
+
+    The black point is the ``black_percentile`` of the flattened image, per channel, unless ``black`` imposes
+    it (the value a render of the same plan measured); ``measured`` (when given) receives the one used, as
+    ``measured["black"]``: three floats, the level subtracted from the flattened image -- absolute, in the
+    units of the data, so that it means the same level for the stack of one night and the stack of three.
+    """
     if degree not in (1, 2):
         raise ValueError("gradient degree must be 1 or 2")
     if not 0 <= black_percentile <= 5:
@@ -143,9 +151,14 @@ def remove_gradient(
             keep = np.abs(residual - med) < 2.2 * mad
         model = (full @ coef).reshape(h, w)
         model -= np.percentile(model, 2)
-        corrected[..., channel] = data[..., channel] - model
-    black = np.percentile(corrected, black_percentile, axis=(0, 1))
-    return np.clip(corrected - black, 0, None)
+        # The image flattened around the mean level of the model: its sky keeps the level of the data, whatever
+        # offset the model had (the tiles' 16th percentile sits lower the noisier the image is).
+        corrected[..., channel] = data[..., channel] - model + model.mean()
+    point = (np.percentile(corrected, black_percentile, axis=(0, 1)) if black is None
+             else np.asarray(black, dtype=corrected.dtype))
+    if measured is not None:
+        measured["black"] = [float(v) for v in point]
+    return np.clip(corrected - point, 0, None)
 
 
 def measure_psf(level: np.ndarray, size: int = 15, limit: int = 400) -> np.ndarray:
@@ -330,8 +343,13 @@ def calibrated_linear(
     gradient_degree: int,
     black_percentile: float,
     deconv_fwhm: float | None,
+    black: Sequence[float] | None = None,
+    measured: dict[str, object] | None = None,
 ) -> np.ndarray:
     """Prepare a linear image before the common display stretch.
+
+    ``black`` imposes the black point instead of measuring it, ``measured`` receives the one used
+    (``remove_gradient``).
 
     Each integration keeps its own gradient correction and neutral background,
     but the display stretch can be shared with another integration.  This is
@@ -344,6 +362,8 @@ def calibrated_linear(
         raw,
         degree=gradient_degree,
         black_percentile=black_percentile,
+        black=black,
+        measured=measured,
     )
     if deconv_fwhm is not None:
         linear = deconvolve_linear(linear, deconv_fwhm)
@@ -364,9 +384,21 @@ def prepare_native(
     black_percentile: float = 0.25,
     deconv_fwhm: float | None = None,
     display_scale: float | None = None,
+    black: Sequence[float] | None = None,
+    measured: dict[str, object] | None = None,
 ) -> np.ndarray:
-    linear = calibrated_linear(source, gradient_degree, black_percentile, deconv_fwhm)
-    return native_from_linear(linear, display_scale)
+    """The natural display image of a master.
+
+    The display is two numbers: the black point (per channel) and the stretch scale.  They are measured on
+    the image unless ``black`` and ``display_scale`` impose them -- the plan's milestones are shown at the
+    level of the image of the plan --; ``measured`` (when given) receives the pair used, as
+    ``measured["black"]`` and ``measured["scale"]``.
+    """
+    linear = calibrated_linear(source, gradient_degree, black_percentile, deconv_fwhm, black, measured)
+    scale = display_scale if display_scale is not None else stretch_scale(linear)
+    if measured is not None:
+        measured["scale"] = float(scale)
+    return native_from_linear(linear, scale)
 
 
 def native_from_linear(linear: np.ndarray, display_scale: float | None = None) -> np.ndarray:
@@ -752,7 +784,7 @@ def sky_display_level(linear: np.ndarray) -> float:
     return float(np.median(np.arcsinh(18.0 * level / scale) / np.arcsinh(18.0)))
 
 
-def match_sky_level(linear: np.ndarray, reference: float) -> tuple[np.ndarray, float]:
+def match_sky_level(linear: np.ndarray, reference: float, scale: float | None = None) -> tuple[np.ndarray, float]:
     """The image with its displayed sky level brought back to ``reference`` (``sky_display_level``); ``(image, shift)``.
 
     One offset, in linear light, for the three channels, so the neutral sky
@@ -760,9 +792,10 @@ def match_sky_level(linear: np.ndarray, reference: float) -> tuple[np.ndarray, f
     the denoising, the SCNR) each take a little of the sky level with them;
     the natural render keeps it, and the polished one is to look as deep as the
     natural one, not darker.  The stretch is increasing, so the median of the
-    displayed luminance is the stretch of the median: the offset is exact.
+    displayed luminance is the stretch of the median: the offset is exact.  ``scale``: the stretch scale of the
+    display (default: the image's own, ``stretch_scale``).
     """
-    scale = stretch_scale(linear)
+    scale = stretch_scale(linear) if scale is None else scale
     wanted = scale * float(np.sinh(reference * np.arcsinh(18.0))) / 18.0
     shift = wanted - float(np.median(lum(linear)))
     return np.clip(linear + np.float32(shift), 0, None), shift
@@ -792,8 +825,16 @@ def prepare_polished(
     engine: str = DEFAULT_POLISHED_ENGINE,
     siril: Path | None = None,
     dualband: bool = False,
+    imposed: dict[str, object] | None = None,
+    measured: dict[str, object] | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Linear steps (a)-(d) and the stretch of (e); ``(display image, what was done)``.
+
+    The display -- the black point, the stretch scale and the sky level the image is matched to -- is
+    measured on the master unless ``imposed`` gives it (``{"black": [r, g, b], "scale": s, "sky": {...}}``, what a
+    render of the same plan recorded: a milestone of the progression is shown at the level of the image of the
+    plan); ``measured`` (when given) receives the one used.  The sky match then aims at the imposed level, never at
+    the master's own (which falls with its noise).
 
     ``engine`` picks the background and the denoising (``POLISHED_ENGINES``).
     ``graxpert-ai`` falls back on Siril when GraXpert is not given or fails,
@@ -814,6 +855,7 @@ def prepare_polished(
         raise ValueError("GraXpert and Siril need a work folder: nothing is written beside the master")
     raw = read_linear_rgb(source)
     master_fwhm = star_fwhm(lum(raw)) if deconv_fwhm is None else None
+    imposed = imposed or {}
     done: dict[str, object] = {}
     cleaned: Path | None = None
     used = "polynomial"
@@ -846,14 +888,21 @@ def prepare_polished(
                 print(f"Siril failed ({error}): polynomial background, no denoising")
     if cleaned is not None:
         cleaned_raw = read_linear_rgb(cleaned)
-        black = np.percentile(cleaned_raw, black_percentile, axis=(0, 1))
+        black = (np.percentile(cleaned_raw, black_percentile, axis=(0, 1)) if imposed.get("black") is None
+                 else np.asarray(imposed["black"], dtype=cleaned_raw.dtype))
+        if measured is not None:
+            measured["black"] = [float(v) for v in black]
         linear = np.clip(cleaned_raw - black, 0, None)
         # The sky level the natural render would have kept (its polynomial, its neutral sky).
-        reference = natural_sky_levels(raw, gradient_degree, black_percentile)
+        sky = imposed.get("sky")
+        reference = (sky["displayed"], sky["final"]) if sky else natural_sky_levels(raw, gradient_degree, black_percentile)
+        if measured is not None:
+            measured["sky"] = {"displayed": float(reference[0]), "final": float(reference[1])}
         tool = "graxpert" if used == "graxpert-ai" else "siril"
         done.update({"background": tool, "denoise": tool})
     else:
-        linear = remove_gradient(raw, degree=gradient_degree, black_percentile=black_percentile)
+        linear = remove_gradient(raw, degree=gradient_degree, black_percentile=black_percentile,
+                                 black=imposed.get("black"), measured=measured)
         reference = None
         done.update({"background": "polynomial", "denoise": None})
     done["engine"] = used
@@ -862,7 +911,8 @@ def prepare_polished(
     if used != engine:
         done["engineRequested"] = engine
         done["fallbackReason"] = "; ".join(reasons)
-    return polished_display(linear, deconv_fwhm, done, None if dualband else SCNR_AMOUNT, reference, master_fwhm), done
+    return polished_display(linear, deconv_fwhm, done, None if dualband else SCNR_AMOUNT, reference, master_fwhm,
+                            imposed.get("scale"), measured), done
 
 
 def polished_display(
@@ -872,6 +922,8 @@ def polished_display(
     scnr: float | None = SCNR_AMOUNT,
     sky_reference: tuple[float, float] | None = None,
     master_fwhm: float | None = None,
+    scale: float | None = None,
+    measured: dict[str, object] | None = None,
 ) -> np.ndarray:
     """Steps (c), (d) and the stretch of (e) on a linear image whose background is already removed.
 
@@ -881,7 +933,8 @@ def polished_display(
     that the image is to keep: its sky is brought to the first before the
     stretch, then nudged until the second is met after the tone
     (``polished_nebula_tone``; its toe follows the noise of the darkest pixels,
-    which the denoising has lowered).  ``master_fwhm``: the stars' FWHM on the master,
+    which the denoising has lowered).  ``scale``: the stretch scale to use instead of the image's own
+    (``stretch_scale``); ``measured`` (when given) receives the one used.  ``master_fwhm``: the stars' FWHM on the master,
     before any denoising, that the deconvolution target is read from.  ``done`` (when given) receives the SCNR,
     the deconvolution target and the sky shift.
     """
@@ -897,13 +950,16 @@ def polished_display(
         except RuntimeError as error:  # too few isolated stars for a PSF: the image goes on undeconvolved
             print(f"deconvolution skipped: {error}")
     done["deconvolutionFwhm"] = None if target is None else round(float(target), 2)
+    # The shift is small against the scale: one scale for the whole search.
+    scale = stretch_scale(linear) if scale is None else scale
+    if measured is not None:
+        measured["scale"] = float(scale)
     if sky_reference is None:
-        return polished_stretch(linear)
+        return polished_stretch(linear, scale)
     displayed, final = sky_reference
-    scale = stretch_scale(linear)  # the shift is small against the scale: one scale for the whole search
-    image, shift = polished_stretch(linear), 0.0
+    image, shift = polished_stretch(linear, scale), 0.0
     for _ in range(SKY_MATCH_ROUNDS):
-        matched, shift = match_sky_level(linear, displayed)
+        matched, shift = match_sky_level(linear, displayed, scale)
         image = polished_stretch(matched, scale)
         reached = float(np.median(lum(polished_nebula_tone(image))))
         done["skyLevelShift"] = round(shift, 6)

@@ -100,6 +100,7 @@ pub fn run() {
             commands::local_settings_set_soft_stars,
             commands::local_settings_set_polished_engine,
             commands::local_settings_set_plan_field,
+            commands::local_settings_set_renders_upload,
             commands::local_settings_set_last_folders,
             commands::download_reference_stars,
             commands_night::working_folder_get,

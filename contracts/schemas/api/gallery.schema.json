@@ -134,31 +134,32 @@
     },
     "media": {
       "type": "object",
+      "description": "The two files of a public capture. `v` (the first 12 hexadecimal characters of the image's SHA-256) versions the address: the route serves it immutable and cacheable while it names the image served, `no-cache` otherwise.",
       "required": ["image", "thumbnail"],
       "properties": {
         "image": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media(\\?v=[0-9a-f]{12})?$"
         },
         "thumbnail": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail(&v=[0-9a-f]{12})?$"
         }
       },
       "additionalProperties": false
     },
     "variantMedia": {
       "type": "object",
-      "description": "The two files of a public variant, selected on the media route by `imageId` (`variant=thumbnail` is the size).",
+      "description": "The two files of a public variant, selected on the media route by `imageId` (`variant=thumbnail` is the size; `v` versions the address as in `media`).",
       "required": ["image", "thumbnail"],
       "properties": {
         "image": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?imageId=[^&#]+$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?imageId=[^&#]+(&v=[0-9a-f]{12})?$"
         },
         "thumbnail": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail&imageId=[^&#]+$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail&imageId=[^&#]+(&v=[0-9a-f]{12})?$"
         }
       },
       "additionalProperties": false

@@ -53,6 +53,7 @@ fn final_image(target: &str, sha: char) -> LocalImage {
         sha256: sha.to_string().repeat(64),
         size: 10,
         kind: ResultKind::Final,
+        twin_sha256: None,
     }
 }
 
@@ -309,6 +310,7 @@ fn the_renders_of_a_folder_carry_the_pipeline_the_stacker_recorded() {
         sha256: sha.to_string().repeat(64),
         size: 1,
         kind: ResultKind::Stacked,
+        twin_sha256: None,
     };
     let local = here(vec![
         image("IC 1805_dualband-correction.tif", 'd'),

@@ -628,10 +628,15 @@ pub fn check(args: &CheckArgs) -> Outcome {
     let transport = crate::words::portal_transport()?;
     let online = transport.night_online(&args.service.portal, &token, &args.session_id)?;
     let (detection, local) = night_candidates(&args.night)?;
-    let mut candidates = local.candidates();
     // The milestones of the progression the folder holds leave as the history of
-    // the target's capture, as the window sends the ones it has just made.
-    candidates.extend(recorded_progression(&args.night.folder, &detection));
+    // the target's capture, as the window sends the ones it has just made; the
+    // TIFF of a render only with --with-tiff (`render_files`).
+    let mut candidates = night_steps::precheck_candidates(
+        &local,
+        recorded_progression(&args.night.folder, &detection),
+        &[],
+        args.with_tiff,
+    );
     if let Some(main) = &args.main {
         precheck::prefer_main_render(&mut candidates, main);
     }
@@ -642,6 +647,11 @@ pub fn check(args: &CheckArgs) -> Outcome {
         &online,
         &candidates,
     )?;
+    // What the box « Joindre aussi les TIFF » of the window says.
+    check.full_resolution = night_steps::full_resolution_of(
+        &night_steps::precheck_candidates(&local, Vec::new(), &[], true),
+        args.with_tiff,
+    );
     propose(
         &mut check,
         &online,
@@ -876,10 +886,15 @@ pub fn send_night(args: &SendNightArgs) -> Outcome {
     let data = DataPaths::new(&args.data);
     let choice = solver_choice(&args.solver)?;
     let (detection, local) = night_candidates(&args.night)?;
-    let mut candidates = local.candidates();
     // The milestones of the progression the folder holds leave as the history of
-    // the target's capture, as the window sends the ones it has just made.
-    candidates.extend(recorded_progression(&args.night.folder, &detection));
+    // the target's capture, as the window sends the ones it has just made; the
+    // TIFF of a render only with --with-tiff (`render_files`).
+    let mut candidates = night_steps::precheck_candidates(
+        &local,
+        recorded_progression(&args.night.folder, &detection),
+        &[],
+        args.with_tiff,
+    );
     if let Some(main) = &args.main {
         precheck::prefer_main_render(&mut candidates, main);
     }
