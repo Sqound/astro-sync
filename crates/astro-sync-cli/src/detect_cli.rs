@@ -505,6 +505,13 @@ pub fn detect_sessions(args: &DetectSessionsArgs) -> Outcome {
         filter: args.filter.clone(),
     };
     let catalogue = catalogue_of(args)?;
+    if catalogue.is_empty() {
+        // Without a catalogue every object looks unknown: say so, rather than
+        // let « not in the catalogue » read as a finding.
+        eprintln!(
+            "No catalogue was read (give --catalogue, or --data with a kept index, or --portal and --token): the targets below are not compared with it."
+        );
+    }
     let solvers = args.data.as_ref().filter(|_| args.solve).map(|data| {
         tools::solvers(&tools::detect_tools(&DetectContext::system(
             data,

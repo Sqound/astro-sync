@@ -13,6 +13,7 @@ import {
   nightOnline,
   nightView,
   queueStatus,
+  spaceCheck,
   spaceStatus,
   workingFolderGet,
   type CapabilitiesState,
@@ -20,9 +21,12 @@ import {
   type WizardStep,
 } from "../lib/bridge";
 import {
+  connectionCard,
   displayPath,
   homeOf,
   homeState,
+  rememberServiceAnswered,
+  serviceAnsweredThisLaunch,
   HOW_STEPS,
   type ResumeRow,
 } from "../lib/home";
@@ -202,7 +206,32 @@ export function HomeScreen({
     };
   }, [refreshLocal, refreshResume]);
 
-  const connected = !!status?.paired;
+  // The token kept here is not the space: the service is asked once per
+  // launch before the card says « Connecté » (a space deleted while it slept
+  // ends the sign-in by `signed_out`, and the home starts over).
+  const [answered, setAnswered] = useState<boolean | null>(() =>
+    serviceAnsweredThisLaunch() ? true : null,
+  );
+  const paired = !!status?.paired;
+  useEffect(() => {
+    if (!paired || answered !== null) return;
+    let stopped = false;
+    spaceCheck()
+      .then((check) => {
+        if (stopped) return;
+        rememberServiceAnswered(check.answered);
+        setStatus(check.status);
+        setAnswered(check.answered);
+      })
+      .catch(() => {
+        if (!stopped) setAnswered(false);
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [paired, answered]);
+  const card = connectionCard({ paired, answered });
+  const connected = paired;
   const state = useMemo(
     () => homeState({ connected, toResume, sentOnce }),
     [connected, toResume, sentOnce],
@@ -212,6 +241,11 @@ export function HomeScreen({
   async function handleConnectionChanged() {
     onConnectionChanged();
     const space = await refreshLocal();
+    // A sign-in that just succeeded is the service's answer.
+    if (space?.paired) {
+      rememberServiceAnswered(true);
+      setAnswered(true);
+    }
     void refreshResume(!!space?.paired);
   }
 
@@ -250,9 +284,20 @@ export function HomeScreen({
             </span>
             <span className={cardBodyClassName}>
               <span className={cardTitleClassName}>{t("space.title")}</span>
-              <span className={cardSubClassName}>
-                <Icon name="check" strokeWidth={2.4} />
-                {t("home.connection.connected", { who })}
+              <span className={cardSubClassName} data-connection={card}>
+                {card === "checking" ? (
+                  <Waiting
+                    label={t("home.connection.checking")}
+                    size="inline"
+                  />
+                ) : card === "connected" ? (
+                  <>
+                    <Icon name="check" strokeWidth={2.4} />
+                    {t("home.connection.connected", { who })}
+                  </>
+                ) : (
+                  t("home.connection.unchecked", { who })
+                )}
               </span>
             </span>
           </button>

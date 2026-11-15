@@ -237,6 +237,15 @@ XISF_SUFFIXES = (".xisf",)
 # stretched (at 18 % an image stretched to 5 % was accepted with its stars
 # wider, or refused for the wrong reason).
 STRETCHED_MEDIAN = 0.02
+# A pedestal is not a stretch.  A master that keeps its sky glow and its offset (a smart telescope's, or the
+# stack of a bright sky) has its median far above its lowest pixels -- a few edge pixels no frame covers sit
+# near 0: tens of noise widths under the sky (38 to 58 on the two masters of a real night of 10 s and 30 s
+# frames, whose medians stood at 1.4 and 2.0 % of the range).  A stretch clips its black a few widths under the
+# sky (5 to 6.3 on an automatic screen stretch).  When the lowest pixel lies more than ``PEDESTAL_SIGMAS``
+# noise widths under the median, the range is read from ``TAIL_SIGMAS`` widths under it, where the noise of a
+# linear sky ends, instead of from that pixel.
+PEDESTAL_SIGMAS = 10
+TAIL_SIGMAS = 5
 
 
 class MasterError(Exception):
@@ -286,8 +295,12 @@ def read_pixels(path: Path) -> np.ndarray:
 def stretch_reason(level: np.ndarray) -> str | None:
     """Why ``level`` is not a linear master, or None when it looks linear (the histogram's median, see :data:`STRETCHED_MEDIAN`)."""
     finite = level[np.isfinite(level)]
-    low, high = float(finite.min()), float(finite.max())
-    position = (float(np.median(finite)) - low) / (high - low)
+    low, high, median = float(finite.min()), float(finite.max()), float(np.median(finite))
+    sample = finite[:: max(1, finite.size // 2_000_000)]
+    sigma = 1.4826 * float(np.median(np.abs(sample - median)))
+    if sigma > 0 and median - low > PEDESTAL_SIGMAS * sigma:
+        low = median - TAIL_SIGMAS * sigma
+    position = (median - low) / (high - low)
     if position > STRETCHED_MEDIAN:
         return f"stretched image: the median sits at {position:.1%} of its range, a linear master stays under {STRETCHED_MEDIAN:.0%}"
     return None

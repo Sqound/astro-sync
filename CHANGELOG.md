@@ -3,6 +3,52 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.0 (2026-11-16)
+
+- Adjust a finished image before it is sent. The new screen opens from each
+  PNG of « Images to send » and from the PNG render of a night's summary. It
+  has five settings (black point, brightness, colour, smoothing, stars) and a
+  live preview. The adjusted image is written beside the render, never over
+  it, and « Back to the original render » removes it. Settings can be saved
+  under a name, renamed, exported and imported.
+- An adjusted image takes the place of its render online. When the render is
+  already the main image of a capture, the adjusted image replaces it instead
+  of creating a new capture. Its TIFF carries the same settings and replaces
+  the TIFF already online. The summary has a box, « Keep the existing TIFF »,
+  to keep both, and the command line has `--keep-tiff`.
+- Series of poses. A night that holds several series of the same target (for
+  example 10 s frames and 30 s frames) gets one box per series and one capture
+  per series. The main image comes from the longest series, and a series under
+  a tenth of the time of another one opens unticked.
+- Several sessions in one night are told apart by their clock window.
+- The polished render is new. Colour is balanced on the field stars, clipped
+  star cores are neutral, bright stars no longer have a dark ring, and the
+  bright core of a nebula keeps its colour and texture.
+- Renders of short stacks and of masters already stretched by their device no
+  longer come out with a grey sky.
+- Only the chosen finish of a pipeline is listed and sent. Renders sent from
+  « Images to send » carry their title, steps and acquisition figures.
+- After stacking, Astro Sync says how many frames were stacked and how many
+  added more noise than they took away.
+- Clearer failures. Astro Sync says why a tool could not be installed, why a
+  polished render was made by another engine than GraXpert, and why an
+  alignment failed.
+- Tools installed with pipx, uv or `pip --user` are found, including when the
+  window is opened from the Finder.
+- The pinned digests of ASTAP's command-line archives follow the files served
+  today, so ASTAP installs again.
+- Sizes counted against the space are written in base 1 024, as the service
+  counts them.
+- The linear render of a night leaves as a file attached to the capture. It
+  is unticked by default, can be downloaded from the capture, and is never
+  shown in the gallery.
+- Eleven findings of the Windows smoke are fixed, among them the link check
+  before « Connected » is shown, an existing Python environment found and
+  updated instead of installed again, the text of the uninstaller in ten
+  languages and the language selector of the installer.
+- The installers are otherwise unchanged: the Windows installer is still
+  unsigned.
+
 ## 1.0.2 (2026-11-07)
 
 - Renders are uploaded as PNG. The TIFF of a render leaves only when you tick

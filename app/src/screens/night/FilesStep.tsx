@@ -61,6 +61,7 @@ export function FilesStep({
   onAnswer,
   onAddTarget,
   onRefresh,
+  checking = false,
   onRetry,
   onMakeFolder,
   poses,
@@ -79,6 +80,9 @@ export function FilesStep({
   onAnswer: (answer: DetectAnswer | null) => void;
   onAddTarget: (targetId: string) => Promise<void>;
   onRefresh: () => void;
+  /** « Vérifier à nouveau » is reading the night again: the button says so
+   * and waits, the cards are the read before until its answer. */
+  checking?: boolean;
   onRetry: () => void;
   /** Makes the night's folder (without a question); its failure is said
    * in a snackbar. */
@@ -291,9 +295,11 @@ export function FilesStep({
             type="button"
             className="as-button as-button--link"
             onClick={onRefresh}
+            disabled={checking}
+            aria-busy={checking}
           >
             <Icon name="refresh" className="as-button__icon" />
-            {t("wizard.files.checkAgain")}
+            {t(checking ? "wizard.files.checking" : "wizard.files.checkAgain")}
           </button>
         </div>
       </div>

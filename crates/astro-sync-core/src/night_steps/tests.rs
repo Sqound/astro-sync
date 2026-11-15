@@ -638,6 +638,8 @@ fn night_with_a_stacked_leftover(root: &Path) -> (ResumeLocal, String) {
 
 fn render(target: &str, name: &str, fill: u8) -> ImageCandidate {
     ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         target_id: target.to_string(),
         path: PathBuf::from(format!("/n/M31/stacked/{name}")),
@@ -779,26 +781,28 @@ fn space(remaining: u64) -> SpaceStorage {
 }
 
 #[test]
-fn by_default_a_render_leaves_as_its_png_the_linear_as_its_tiff_and_final_as_it_is() {
+fn by_default_a_render_leaves_as_its_png_the_linear_file_only_with_the_tiff_and_final_as_it_is() {
     let root = TempDir::new("steps-png-only");
     let (local, online) = night_of_renders(root.path());
     let candidates = precheck_candidates(&local, Vec::new(), &[], false);
     assert_eq!(
         names_of(&candidates),
-        [
-            "M31.tif",
-            "M31_2026-10-07_linear.tif",
-            "M31_2026-10-07_raw.png"
-        ],
-        "the final image untouched, the linear TIFF, the PNG of the render; \
-         never the render's TIFF nor the preview"
+        ["M31.tif", "M31_2026-10-07_raw.png"],
+        "the final image untouched and the PNG of the render; never the \
+         render's TIFF, the linear file nor the preview: a TIFF is a choice"
     );
     let plans = crate::precheck::plan_images(&online, &candidates, 12);
     let quota = crate::precheck::check_quotas(&space(1000), &online, &plans);
-    // The final TIFF is replaced by the stacking (as before); the PNG and the
-    // linear TIFF leave.
-    assert_eq!(quota.to_send_bytes, 130 + 200);
+    // The final TIFF is replaced by the stacking (as before); the PNG leaves.
+    assert_eq!(quota.to_send_bytes, 130);
     assert_eq!(quota.full_resolution_bytes, 0);
+    // The linear file stays here, and the summary lists it as such.
+    let kept = linear_files_kept_here(&local, Vec::new(), &[], false);
+    assert_eq!(names_of(&kept), ["M31_2026-10-07_linear.tif"]);
+    assert!(
+        linear_files_kept_here(&local, Vec::new(), &[], true).is_empty(),
+        "joined, nothing stays: it leaves"
+    );
 }
 
 #[test]
@@ -833,15 +837,24 @@ fn joined_the_tiff_of_a_render_follows_its_png_as_an_image_of_the_same_capture()
         }
     );
     let quota = crate::precheck::check_quotas(&space(1000), &online, &plans);
+    // The linear file follows the capture the PNG creates, as a file: it
+    // takes no variant of the space (12 here) and no capture.
+    assert_eq!(
+        decision("M31_2026-10-07_linear.tif"),
+        Decision::FileOfNew {
+            first_sha256: candidates[2].sha256.clone()
+        }
+    );
     assert_eq!(quota.to_send_bytes, 130 + 200 + 470);
-    assert_eq!(quota.full_resolution_bytes, 470);
-    // What the box says of the TIFF, joined or not: one, 470 bytes.
+    assert_eq!(quota.full_resolution_bytes, 470 + 200);
+    // What the box says of the TIFF, joined or not: the render's and the
+    // linear file, 670 bytes (the label is an average, « ≈ »).
     assert_eq!(
         full_resolution_of(&candidates, false),
         FullResolution {
             joined: false,
-            count: 1,
-            bytes: 470
+            count: 2,
+            bytes: 670
         }
     );
 }
@@ -850,7 +863,7 @@ fn joined_the_tiff_of_a_render_follows_its_png_as_an_image_of_the_same_capture()
 fn a_refusal_for_room_says_what_the_sending_weighs_without_the_tiff() {
     let root = TempDir::new("steps-room");
     let (local, online) = night_of_renders(root.path());
-    // 500 bytes left: with the TIFF (800) it does not fit, without (330) it does.
+    // 500 bytes left: with the TIFF (800) it does not fit, without (130) it does.
     let with = crate::precheck::plan_images(
         &online,
         &precheck_candidates(&local, Vec::new(), &[], true),
@@ -865,7 +878,7 @@ fn a_refusal_for_room_says_what_the_sending_weighs_without_the_tiff() {
             ..
         }
     ));
-    assert_eq!(refused.to_send_bytes - refused.full_resolution_bytes, 330);
+    assert_eq!(refused.to_send_bytes - refused.full_resolution_bytes, 130);
     let without = crate::precheck::plan_images(
         &online,
         &precheck_candidates(&local, Vec::new(), &[], false),
@@ -873,7 +886,7 @@ fn a_refusal_for_room_says_what_the_sending_weighs_without_the_tiff() {
     );
     let allowed = crate::precheck::check_quotas(&space(500), &online, &without);
     assert!(allowed.allowed, "{:?}", allowed.findings);
-    assert_eq!(allowed.to_send_bytes, 330);
+    assert_eq!(allowed.to_send_bytes, 130);
 }
 
 #[test]
@@ -906,6 +919,63 @@ fn a_render_whose_tiff_is_online_is_online_and_its_tiff_is_never_missing() {
         night_resume::Missing::ImagesToSend { count } => Some(*count),
         _ => None,
     });
-    // The final TIFF and the linear one are here and not online.
-    assert_eq!(to_send, Some(2));
+    // Only the final TIFF is here and not online: the linear file, like the
+    // TIFF of a render, is a choice.
+    assert_eq!(to_send, Some(1));
+}
+
+/// With a finish chosen the stacker writes the render twice (bare and
+/// finished); only the finished image is a candidate, in both formats, the
+/// bare one stays on this computer and is never counted as to send.
+#[test]
+fn with_a_finish_only_the_finished_image_leaves_the_bare_twin_stays_here() {
+    let root = TempDir::new("steps-finish-only");
+    let (folder, detection) = night(root.path());
+    fs::remove_file(folder.join("M31/final/M31_old.jpg")).unwrap();
+    let stacked = folder.join("M31/stacked");
+    for name in [
+        "M31_2026-10-07_raw.png",
+        "M31_2026-10-07_raw.tif",
+        "M31_2026-10-07_raw_strong.png",
+        "M31_2026-10-07_raw_strong.tif",
+        "M31_2026-10-07_hoo.png",
+    ] {
+        fs::write(stacked.join(name), name.as_bytes()).unwrap();
+    }
+    fs::write(
+        stacked.join("M31_2026-10-07_stacking.json"),
+        serde_json::json!({"outputs": [
+            {"pipeline": "raw", "file": "M31_2026-10-07_raw.png"},
+            {"pipeline": "raw", "file": "M31_2026-10-07_raw.tif"},
+            {"pipeline": "raw", "file": "M31_2026-10-07_raw_strong.png", "contrast": "strong"},
+            {"pipeline": "raw", "file": "M31_2026-10-07_raw_strong.tif", "contrast": "strong"},
+            {"pipeline": "hoo", "file": "M31_2026-10-07_hoo.png"}
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+    let local = resume_local(
+        FolderState::Found,
+        Some(&folder),
+        Some(&detection),
+        None,
+        None,
+    )
+    .unwrap();
+    let candidates = precheck_candidates(&local, Vec::new(), &[], false);
+    assert_eq!(
+        names_of(&candidates),
+        // `hoo` has no finished twin: it leaves as it is.
+        [
+            "M31.tif",
+            "M31_2026-10-07_hoo.png",
+            "M31_2026-10-07_raw_strong.png"
+        ]
+    );
+    let joined = precheck_candidates(&local, Vec::new(), &[], true);
+    assert!(
+        !names_of(&joined).contains(&"M31_2026-10-07_raw.tif".to_string()),
+        "the bare TIFF stays here too"
+    );
+    assert!(names_of(&joined).contains(&"M31_2026-10-07_raw_strong.tif".to_string()));
 }

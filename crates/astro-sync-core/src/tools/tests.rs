@@ -465,6 +465,14 @@ fn the_registry_pins_astap_and_its_star_database_on_every_system() {
             );
             assert!(is_archive(&download.url), "{}", download.url);
             assert_eq!(download.sha256.len(), 64);
+            assert!(
+                download
+                    .sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+                "{}",
+                download.sha256
+            );
             assert!(download.bytes.is_some_and(|bytes| bytes > 100_000));
         }
     }
@@ -712,4 +720,56 @@ fn graxpert_is_in_the_registry_and_found_where_its_archive_is_unpacked() {
     assert!(!found.required);
     // The places of this system include the unpacked archive.
     assert!(graxpert_install_locations(&data).contains(&unpacked.join("GraXpert")));
+}
+
+/// A program installed for the person alone (`pipx`, `uv tool`, `pip --user`:
+/// `~/.local/bin`) is found even when the window was opened from the Finder,
+/// whose `PATH` does not name that folder: GraXpert installed that way was
+/// « not given » to the stacking of a real night.
+#[cfg(not(target_os = "windows"))]
+#[test]
+fn the_folder_of_the_person_s_own_programs_is_searched() {
+    let finder_path = std::ffi::OsString::from("/usr/bin:/bin:/usr/sbin:/sbin");
+    let dirs = system_search_dirs(Some(finder_path), Some("/home/someone".into()));
+    assert!(
+        dirs.contains(&PathBuf::from("/home/someone/.local/bin")),
+        "{dirs:?}"
+    );
+    // After `PATH` and the usual folders, never before them.
+    assert_eq!(dirs.first(), Some(&PathBuf::from("/usr/bin")));
+    assert_eq!(
+        dirs.last(),
+        Some(&PathBuf::from("/home/someone/.local/bin"))
+    );
+    // Named once when `PATH` already has it; nothing without a home.
+    let dirs = system_search_dirs(
+        Some("/home/someone/.local/bin".into()),
+        Some("/home/someone".into()),
+    );
+    assert_eq!(dirs.iter().filter(|d| d.ends_with(".local/bin")).count(), 1);
+    assert!(
+        !system_search_dirs(None, None)
+            .iter()
+            .any(|d| d.ends_with(".local/bin"))
+    );
+}
+
+#[test]
+fn the_rows_added_beside_the_registry_are_named_in_every_language() {
+    let dir = TempDir::new("tools-row-names");
+    let context = DetectContext::system(dir.path(), &dir.path().join("reference-stars.bin"));
+    let rows = detect_tools(&context);
+    for id in ["astap-database", "tycho-2", "stacking-pipeline"] {
+        let row = rows.iter().find(|r| r.id == id).unwrap();
+        for language in [
+            "fr", "en", "ja", "de", "es", "it", "pt-BR", "ru", "zh-Hans", "zh-Hant",
+        ] {
+            assert!(row.name.contains_key(language), "{id} {language}");
+        }
+        assert_ne!(
+            localized(&row.name, "ja"),
+            localized(&row.name, "en"),
+            "{id}"
+        );
+    }
 }

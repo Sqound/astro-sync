@@ -3,8 +3,10 @@
 
 On synthetic images: the steps of the polished preparation on a gradient, with
 a stand-in GraXpert, a stand-in Siril and without either (the polynomial, no
-denoising, and it is said), the sky level it keeps, the SCNR it skips
-on a dual-band capture, the deconvolution floor, and the HOO palette on a
+denoising, and it is said); the polished render's dark sky without a flat
+black, its colour by the capture's band (the green taken back on a broadband
+capture only), the white, ring-free cores of bright stars; the natural renders
+unchanged to the last bit; the deconvolution floor, and the HOO palette on a
 synthetic dual-band nebula.
 """
 
@@ -25,6 +27,7 @@ from unittest import mock
 
 import numpy as np
 from astropy.io import fits
+from scipy.ndimage import gaussian_filter
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -70,7 +73,7 @@ def stand_in_tool(root: Path, name: str, body: str) -> Path:
     return script
 
 
-def fake_graxpert(root: Path, fail: bool = False, pedestal: float = 0.0) -> Path:
+def fake_graxpert(root: Path, fail: bool = False, pedestal: float = 0.0, says: str = "") -> Path:
     """A stand-in for GraXpert's command line: records its arguments, subtracts a
     fitted plane (background extraction) or smooths a little (denoising), and
     writes ``<output>.fits`` as GraXpert does."""
@@ -85,6 +88,7 @@ def fake_graxpert(root: Path, fail: bool = False, pedestal: float = 0.0) -> Path
         f"PEDESTAL = {pedestal!r}\n"
         f"open({str(record)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
         f"if {fail!r}:\n"
+        f"    print({says!r})\n"
         "    sys.exit(3)\n"
         "args = sys.argv[1:]\n"
         "command, output, source = args[args.index('-cmd') + 1], args[args.index('-output') + 1], args[-1]\n"
@@ -194,19 +198,20 @@ class PolishedSteps(unittest.TestCase):
 
     def test_scnr_takes_back_half_of_the_green_excess_and_nothing_else(self) -> None:
         pixels = np.array([[[0.3, 0.3, 0.3], [0.2, 0.5, 0.2], [0.6, 0.2, 0.3], [0.1, 0.3, 0.5]]], np.float32)
-        out = renders.scnr_green(pixels)
+        out = renders.scnr_green(pixels, 0.5)
         np.testing.assert_allclose(out[0, 0], pixels[0, 0])  # grey
         np.testing.assert_allclose(out[0, 1], [0.2, 0.35, 0.2], atol=1e-6)  # green cast: 0.3 of excess, half taken back
         np.testing.assert_allclose(out[0, 2], pixels[0, 2])  # red: no green excess
         np.testing.assert_allclose(out[0, 3], pixels[0, 3])  # blue-green: green under the mean of red and blue
         with self.assertRaises(ValueError):
             renders.scnr_green(pixels, 1.5)
+        np.testing.assert_allclose(renders.scnr_green(pixels, 1.0)[0, 1], [0.2, 0.2, 0.2], atol=1e-6)  # full: all of it
 
     def test_without_graxpert_the_polynomial_removes_the_gradient_and_it_is_said(self) -> None:
         master, cloud = gradient_master(self.root)
         printed = io.StringIO()
         with redirect_stdout(printed):
-            image, done = renders.prepare_polished(master, None, self.root / "work", gradient_degree=1, black_percentile=0.05)
+            _, image, done = renders.prepare_polished(master, None, self.root / "work", gradient_degree=1, black_percentile=0.05)
         self.assertEqual((done["engine"], done["background"], done["denoise"]), ("polynomial", "polynomial", None))
         self.assertEqual(done["engineRequested"], "graxpert-ai")
         self.assertIsNone(done["deconvolutionFwhm"])
@@ -225,7 +230,7 @@ class PolishedSteps(unittest.TestCase):
         graxpert = fake_graxpert(self.root)
         before = sorted(p.name for p in self.root.iterdir())
         with redirect_stdout(io.StringIO()):
-            image, done = renders.prepare_polished(master, graxpert, self.root / "work", "N_polished")
+            _, image, done = renders.prepare_polished(master, graxpert, self.root / "work", "N_polished")
         self.assertEqual((done["background"], done["denoise"]), ("graxpert", "graxpert"))
         background, denoise = calls(self.root)
         self.assertEqual(background[:3], ["-cli", "-cmd", "background-extraction"])
@@ -248,13 +253,12 @@ class PolishedSteps(unittest.TestCase):
     def test_the_local_contrast_spares_the_sky_and_keeps_the_colours(self) -> None:
         rng = np.random.default_rng(5)
         cloud = blob(SHAPE, (80, 100), 20) + 0.5 * blob(SHAPE, (60, 60), 6)
-        nebula = np.stack([0.05 + 0.6 * cloud, 0.05 + 0.35 * cloud, 0.05 + 0.25 * cloud], axis=-1)
+        nebula = np.stack([0.03 + 0.6 * cloud, 0.03 + 0.35 * cloud, 0.03 + 0.25 * cloud], axis=-1)
         nebula = np.clip(nebula + rng.normal(0, 0.004, nebula.shape), 0, 1).astype(np.float32)
-        natural = renders.deep_nebula_tone(nebula)
-        polished = renders.polished_nebula_tone(nebula)
+        polished = renders.local_contrast(nebula, 0.03, 0.35)
         sky = cloud < 0.005
         noise = lambda image: float(np.std(renders.lum(image)[sky]))  # noqa: E731
-        self.assertLess(noise(polished), 1.05 * noise(natural), "the sky's noise is not lifted")
+        self.assertLess(noise(polished), 1.05 * noise(nebula), "the sky's noise is not lifted")
         body = cloud > 0.2
         for channel in (0, 2):
             before = nebula[..., channel][body] / nebula[..., 1][body]
@@ -263,45 +267,16 @@ class PolishedSteps(unittest.TestCase):
         self.assertLessEqual(float(polished.max()), 1.0)
 
 
-def median_of_display(image: np.ndarray) -> float:
-    return float(np.median(renders.lum(image)))
-
-
-class SkyLevel(unittest.TestCase):
-    """the polished render keeps the sky as deep as the natural one (its median within 2 %)."""
-
-    def setUp(self) -> None:
-        self.root = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
-        self.master, _ = gradient_master(self.root)
-
-    def natural(self) -> np.ndarray:
-        nebula = renders.prepare_native(self.master, 1, 0.05)
-        return renders.natural_deep(nebula, np.zeros_like(nebula))
-
-    def polished(self, **options: object) -> tuple[np.ndarray, dict[str, object]]:
-        with redirect_stdout(io.StringIO()):
-            image, done = renders.prepare_polished(self.master, work=self.root / "work", gradient_degree=1,
-                                                   black_percentile=0.05, **options)
-        return renders.polished_deep(image, np.zeros_like(image)), done
-
-    def test_graxpert_background_that_eats_the_pedestal_does_not_darken_the_sky(self) -> None:
-        natural = median_of_display(self.natural())
-        polished, done = self.polished(graxpert=fake_graxpert(self.root, pedestal=0.012))
-        self.assertEqual(done["engine"], "graxpert-ai")
-        self.assertGreater(float(done["skyLevelShift"]), 0.0, "the sky was brought back up")
-        self.assertAlmostEqual(median_of_display(polished) / natural, 1.0, delta=0.02)
-
-    def test_siril_background_that_eats_the_pedestal_does_not_darken_the_sky(self) -> None:
-        natural = median_of_display(self.natural())
-        polished, done = self.polished(engine="siril", siril=fake_siril(self.root, pedestal=0.012))
-        self.assertEqual(done["engine"], "siril")
-        self.assertAlmostEqual(median_of_display(polished) / natural, 1.0, delta=0.02)
-
+class SirilConfiguration(unittest.TestCase):
     def test_siril_runs_with_its_own_configuration_never_the_persons(self) -> None:
         """``-i`` points inside the work folder, so ``~/.config/siril`` is not rewritten."""
-        self.polished(engine="siril", siril=fake_siril(self.root, pedestal=0.012))
-        calls_made = siril_calls(self.root)
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        master, _ = gradient_master(root)
+        with redirect_stdout(io.StringIO()):
+            renders.prepare_polished(master, work=root / "work", gradient_degree=1, black_percentile=0.05,
+                                     engine="siril", siril=fake_siril(root, pedestal=0.012))
+        calls_made = siril_calls(root)
         self.assertTrue(calls_made, "Siril was called")
         for call in calls_made:
             args = [str(word) for word in call["args"]]
@@ -309,61 +284,7 @@ class SkyLevel(unittest.TestCase):
             ini = Path(args[args.index("-i") + 1])
             self.assertEqual(ini.parent, Path(str(call["cwd"])))
             self.assertEqual(ini.name, "siril-config.ini")
-
-    def test_without_the_match_the_same_background_would_be_darker(self) -> None:
-        """The test above would pass for any background: here it is shown that the match is what holds it."""
-        natural = median_of_display(self.natural())
-        graxpert = fake_graxpert(self.root, pedestal=0.012)
-        cleaned = renders.graxpert_linear(self.master, graxpert, self.root / "work", "N")
-        raw = renders.read_linear_rgb(cleaned)
-        linear = np.clip(raw - np.percentile(raw, 0.05, axis=(0, 1)), 0, None)
-        with redirect_stdout(io.StringIO()):
-            bare = renders.polished_deep(renders.polished_display(linear), np.zeros_like(linear))
-        self.assertLess(median_of_display(bare) / natural, 0.97)
-
-    def test_the_polynomial_route_is_left_alone(self) -> None:
-        _, done = self.polished()
-        self.assertEqual(done["engine"], "polynomial")
-        self.assertNotIn("skyLevelShift", done)
-
-
-class SkyLevelAfterStarnet(unittest.TestCase):
-    """once the stars are split off, the polished sky is brought to the natural render's level."""
-
-    def test_the_final_level_search_reaches_its_target(self) -> None:
-        cloud = blob(SHAPE, (80, 100), 20)
-        nebula = np.stack([0.05 + 0.5 * cloud, 0.05 + 0.3 * cloud, 0.05 + 0.2 * cloud], axis=-1).astype(np.float32)
-        stars = np.zeros_like(nebula)
-        stars[30, 30] = [0.8, 0.8, 0.8]
-        now = float(np.median(renders.lum(renders.polished_deep(nebula, stars))))
-        for target in (0.9 * now, 1.12 * now):
-            lifted, shift = renders.match_final_sky_level(nebula, stars, target)
-            reached = float(np.median(renders.lum(renders.polished_deep(lifted, stars))))
-            self.assertAlmostEqual(reached / target, 1.0, delta=0.005)
-            self.assertEqual(shift > 0, target > now)
-        same, shift = renders.match_final_sky_level(nebula, stars, now)
-        self.assertEqual(shift, 0.0)
-        np.testing.assert_array_equal(same, nebula)
-
-    def test_the_polished_render_keeps_the_natural_sky_level_through_starnet(self) -> None:
-        root = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
-        (root / "work" / "render").mkdir(parents=True)
-        master, _ = gradient_master(root, (640, 720))
-        available, _ = pipeline_defs.load_pipelines([])
-        plan = stack.Plan(frames={}, colour=True, pipelines=[available["polished"], available["raw"]])
-        args = argparse.Namespace(work=root / "work", out=root / "out", name="N", trusted=[], pipelines_dir=[],
-                                  pipeline=["polished", "raw"], gradient_degree=1, black_percentile=0.05, deconv_fwhm=None,
-                                  contrast="none", polished_engine="siril", capture_filter=None)
-        notes: dict[str, object] = {}
-        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
-            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), master, fake_starnet(root), None, notes,
-                                 fake_siril(root, pedestal=0.012))
-        import tifffile
-
-        level = lambda name: float(np.median(renders.lum(tifffile.imread(root / "out" / name).astype(np.float32) / 65535)))  # noqa: E731
-        self.assertAlmostEqual(level("N_polished.tif") / level("N_raw.tif"), 1.0, delta=0.02)
-        self.assertNotEqual(notes["polished"]["skyLevelFinalShift"], 0.0, "the stand-in StarNet leaves more of the halos: a shift was needed")
+            self.assertIn("denoise -mod=1.0", call["script"], "the full dose (RENDER-R5-01)")
 
 
 class StarnetModelCleanup(unittest.TestCase):
@@ -489,56 +410,49 @@ class MonoMaster(unittest.TestCase):
             self.assertGreater(float(level.max()), float(np.median(level)) + 0.3, f"{name}: the star and the cloud stand out")
 
 
-class DualBand(unittest.TestCase):
-    """the green of a dual-band capture is OIII, signal -- the SCNR is skipped."""
+class CaptureBand(unittest.TestCase):
+    """What is known of the band of a capture: only a broadband one for certain loses the green of its nebula."""
 
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
 
-    def green_master(self) -> Path:
-        """A flat sky and a cloud whose green and blue are strong (OIII): green above the mean of red and blue."""
-        rng = np.random.default_rng(8)
-        cloud = blob(MASTER, (240, 320), 50)
-        rgb = np.stack([0.02 + 0.05 * cloud, 0.02 + 0.30 * cloud, 0.02 + 0.10 * cloud])
-        rgb = rgb + rng.normal(0, 0.0006, rgb.shape)
-        path = self.root / "oiii.fit"
-        fits.PrimaryHDU(rgb.astype(np.float32)).writeto(path)
+    def light(self, name: str, filter_name: str | None) -> Path:
+        header = fits.Header()
+        if filter_name is not None:
+            header["FILTER"] = filter_name
+        path = self.root / name
+        fits.PrimaryHDU(np.zeros((8, 8), np.float32), header).writeto(path, overwrite=True)
         return path
 
-    def greenness(self, image: np.ndarray) -> float:
-        """The share of green in the cloud's chromaticity (it does not depend on the stretch's brightness)."""
-        body = image[200:280, 280:360]
-        return float(np.mean(body[..., 1] / body.sum(axis=-1)))
+    def test_the_name_of_a_filter_says_its_band_or_nothing(self) -> None:
+        for name in ("L-eXtreme", "Optolong L-Ultimate", "Dual-band", "Duo", "LP", "ALP-T"):
+            self.assertEqual(stack.filter_band(name), "dual-band", name)
+        for name in ("IRCUT", "Broadband", "Baader UV/IR cut", "UV-IR", "CLS", "None", "L-Pro LPS", "Luminance"):
+            self.assertEqual(stack.filter_band(name), "broadband", name)
+        for name in ("", None, "RGB", "OSC", "Ha", "L", "Filter 3", "Dual-band UV/IR cut"):
+            self.assertIsNone(stack.filter_band(name), name)
 
-    def test_the_scnr_is_skipped_on_a_dual_band_capture_and_kept_otherwise(self) -> None:
-        master = self.green_master()
-        with redirect_stdout(io.StringIO()):
-            plain, done_plain = renders.prepare_polished(master, gradient_degree=1, black_percentile=0.05)
-            dual, done_dual = renders.prepare_polished(master, gradient_degree=1, black_percentile=0.05, dualband=True)
-        self.assertEqual(done_plain["scnr"], renders.SCNR_AMOUNT)
-        self.assertIsNone(done_dual["scnr"])
-        self.assertGreater(self.greenness(dual), self.greenness(plain) + 0.03)
-
-    def test_the_capture_is_dual_band_by_its_filter_keyword_its_option_or_its_pipeline(self) -> None:
+    def test_the_band_comes_from_the_pipeline_the_record_and_the_frames(self) -> None:
         available, _ = pipeline_defs.load_pipelines([])
-        light = self.root / "light.fit"
-        header = fits.Header()
-        header["FILTER"] = "L-eXtreme"
-        fits.PrimaryHDU(np.zeros((8, 8), np.float32), header).writeto(light)
-        plain_light = self.root / "plain.fit"
-        fits.PrimaryHDU(np.zeros((8, 8), np.float32)).writeto(plain_light)
         polished = [available["polished"]]
-        args = argparse.Namespace(capture_filter=None)
-        self.assertTrue(stack.capture_is_dualband(args, stack.Plan(frames={"lights": [light]}, colour=True, pipelines=polished)))
-        self.assertFalse(stack.capture_is_dualband(args, stack.Plan(frames={"lights": [plain_light]}, colour=True, pipelines=polished)))
-        self.assertTrue(stack.capture_is_dualband(argparse.Namespace(capture_filter="Optolong L-Ultimate"),
-                                                  stack.Plan(frames={"lights": [plain_light]}, colour=True, pipelines=polished)))
+        none = argparse.Namespace(capture_filter=None)
+        plan = lambda light, pipelines=polished: stack.Plan(frames={"lights": [light]}, colour=True, pipelines=pipelines)  # noqa: E731
+        self.assertEqual(stack.capture_band(none, plan(self.light("a.fit", "L-eXtreme")))[0], "dual-band")
+        self.assertEqual(stack.capture_band(none, plan(self.light("b.fit", "IRCUT")))[0], "broadband")
+        self.assertEqual(stack.capture_band(none, plan(self.light("c.fit", None)))[0], "unknown", "no name: doubt")
+        bare = self.light("d.fit", None)
+        self.assertEqual(stack.capture_band(argparse.Namespace(capture_filter="Broadband"), plan(bare))[0], "broadband")
+        self.assertEqual(stack.capture_band(argparse.Namespace(capture_filter="Optolong L-Ultimate"), plan(bare))[0], "dual-band")
+        # The record and the frames disagree: dual-band wins over broadband, a name that says nothing leaves a doubt.
+        self.assertEqual(stack.capture_band(argparse.Namespace(capture_filter="Duo"), plan(self.light("e.fit", "IRCUT")))[0],
+                         "dual-band")
+        self.assertEqual(stack.capture_band(argparse.Namespace(capture_filter="RGB"), plan(self.light("f.fit", "IRCUT")))[0],
+                         "unknown")
         for chosen in ("dualband-correction", "hoo"):
-            self.assertTrue(stack.capture_is_dualband(args, stack.Plan(frames={"lights": [plain_light]}, colour=True,
-                                                                       pipelines=[available[chosen], available["polished"]])), chosen)
-        self.assertFalse(stack.capture_is_dualband(args, stack.Plan(frames={}, colour=True, pipelines=polished)))
-        self.assertFalse(stack.is_dualband_filter("Baader UV/IR cut"))
+            self.assertEqual(stack.capture_band(none, plan(self.light("g.fit", "IRCUT"),
+                                                           [available[chosen], available["polished"]]))[0], "dual-band", chosen)
+        self.assertEqual(stack.capture_band(none, stack.Plan(frames={}, colour=True, pipelines=polished))[0], "unknown")
 
 
 class DeconvolutionFloor(unittest.TestCase):
@@ -661,7 +575,7 @@ class Engines(unittest.TestCase):
     def prepare(self, **options: object) -> tuple[np.ndarray, dict[str, object], str]:
         printed = io.StringIO()
         with redirect_stdout(printed):
-            image, done = renders.prepare_polished(self.master, work=self.root / "work", stem="N",
+            _, image, done = renders.prepare_polished(self.master, work=self.root / "work", stem="N",
                                                    gradient_degree=1, black_percentile=0.05, **options)
         return image, done, printed.getvalue()
 
@@ -718,6 +632,20 @@ class Engines(unittest.TestCase):
         self.assertIn("GraXpert failed", done["fallbackReason"])
         self.assertIn("graxpertFailed", done)
         self.assertIn("GraXpert failed", said)
+
+    def test_a_graxpert_without_its_ai_library_is_said_as_such(self) -> None:
+        # GraXpert installed with pip or uv without onnxruntime answers its version, then fails at once: the
+        # fallback says why, so that the person knows what to reinstall.
+        says = ("2026-11-14 MainProcess root ERROR    Critical error!  The required ONNX Runtime (AI library) package "
+                "is misconfigured.\nNo module named 'onnxruntime'")
+        _, done, said = self.prepare(graxpert=fake_graxpert(self.root, fail=True, says=says), siril=fake_siril(self.root))
+        self.assertEqual((done["engine"], done["engineRequested"]), ("siril", "graxpert-ai"))
+        self.assertIn("without its AI library (onnxruntime)", done["fallbackReason"])
+        self.assertIn("without its AI library (onnxruntime)", said)
+        # Another failure keeps the last error line GraXpert wrote.
+        _, done, _ = self.prepare(graxpert=fake_graxpert(self.root, fail=True, says="ERROR    model file not found"),
+                                  siril=fake_siril(self.root))
+        self.assertIn("model file not found", done["fallbackReason"])
 
     def test_with_nothing_that_runs_the_polynomial_is_the_last_resort(self) -> None:
         _, done, said = self.prepare(graxpert=fake_graxpert(self.root, fail=True), siril=fake_siril(self.root, fail=True))
@@ -812,6 +740,167 @@ class PolishedInTheScript(unittest.TestCase):
         self.assertIsNone(stack.find_graxpert(argparse.Namespace(graxpert=None, no_graxpert=True), polished))
         linear = stack.Plan(frames={}, colour=True, pipelines=[], linear_only=True)
         self.assertIsNone(stack.find_graxpert(args, linear))
+
+
+class NaturalRendersUnchanged(unittest.TestCase):
+    """RENDER-R5-01 changed the polished render only: the renders of the natural preparation, and their finish,
+    are the same to the last bit as before it (digests taken on the code of RENDER-STUDY-01, a1a7e735be)."""
+
+    DIGESTS = {
+        "N_raw.tif": "fb2fe7f8e55a27d447b5f0a63c626818acc0d4eeb5e384212b1eb14db8871bf5",
+        "N_raw_presentation.tif": "1e9eba738dfa281eed67949e0c7e5473b8a6970f2899ea1db777aaa492cebac5",
+        "N_dualband-correction.tif": "21f9d2166b6589900f02846b92ba70598da30055217aaf2614a5c51fdabb8013",
+        "N_dualband-correction_presentation.tif": "4150a65debb68cb8a9bdee577cf32c55137adb8e2ce58c6ae8fe48a028bb3782",
+        "N_hoo.tif": "bb9e400df1d8d37f6c9a17f9faf171296633be1093cc15a74e0f55f254f57b8a",
+        "N_hoo_presentation.tif": "e5f0d99d63a6b380b18fcd1e52fd5e7df700c5ffc381aacedff7d84d8be4e7b9",
+    }
+
+    def test_the_natural_renders_are_the_same_to_the_last_bit(self) -> None:
+        import hashlib
+
+        import tifffile
+
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        (root / "work" / "render").mkdir(parents=True)
+        path, _ = gradient_master(root, (640, 720))
+        data = fits.getdata(path).copy()
+        yy, xx = np.mgrid[:640, :720]
+        for y, x, peak in ((120, 150, 0.9), (400, 520, 0.5), (300, 200, 0.3)):
+            data += (peak * np.exp(-((yy - y) ** 2 + (xx - x) ** 2) / 4.5))[None].astype(np.float32)
+        fits.PrimaryHDU(data.astype(np.float32)).writeto(path, overwrite=True)
+        available, _ = pipeline_defs.load_pipelines([])
+        ids = ["raw", "dualband-correction", "hoo"]
+        plan = stack.Plan(frames={}, colour=True, pipelines=[available[i] for i in ids])
+        args = argparse.Namespace(work=root / "work", out=root / "out", name="N", trusted=[], pipelines_dir=[], pipeline=ids,
+                                  gradient_degree=1, black_percentile=0.05, deconv_fwhm=None, contrast="presentation",
+                                  polished_engine="siril", capture_filter=None)
+        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
+            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), path, fake_starnet(root), None, {},
+                                 fake_siril(root))
+        for name, digest in self.DIGESTS.items():
+            with self.subTest(file=name):
+                self.assertEqual(hashlib.sha256(tifffile.imread(root / "out" / name).tobytes()).hexdigest(), digest)
+
+
+def bright_star(shape: tuple[int, int], centre: tuple[int, int], clip: tuple[float, float, float],
+                widths: tuple[float, float, float], peak: float = 6.0) -> np.ndarray:
+    """A star brighter than the sensor holds: each channel a Gaussian of its own width (the optics' colour), cut at its
+    own clip level (the camera's), on nothing."""
+    yy, xx = np.mgrid[: shape[0], : shape[1]]
+    r2 = (yy - centre[0]) ** 2 + (xx - centre[1]) ** 2
+    return np.stack([np.minimum(peak * np.exp(-r2 / (2 * w * w)), c) for c, w in zip(clip, widths)], axis=-1)
+
+
+def radial(image: np.ndarray, centre: tuple[int, int], radius: int) -> np.ndarray:
+    yy, xx = np.mgrid[: image.shape[0], : image.shape[1]]
+    r = np.hypot(yy - centre[0], xx - centre[1])
+    return np.asarray([image[(r >= k - 0.5) & (r < k + 0.5)].mean(axis=0) for k in range(radius + 1)])
+
+
+class PolishedRender(unittest.TestCase):
+    """The polished render of RENDER-R5-01 on its layers (``polished_layers``, ``polished_deep``)."""
+
+    SHAPE = (300, 360)
+
+    def field(self, green: float = 0.0, seed: int = 4) -> tuple[np.ndarray, np.ndarray]:
+        """A linear sky with noise, a cloud (bluish, with ``green`` of excess green), field stars; ``(linear, cloud)``."""
+        rng = np.random.default_rng(seed)
+        cloud = blob(self.SHAPE, (150, 180), 45)
+        base = np.stack([0.010 + 0.020 * cloud, 0.010 + (0.026 + green) * cloud, 0.010 + 0.040 * cloud], axis=-1)
+        stars = np.zeros_like(base)
+        for y, x, f in zip(rng.integers(20, 280, 40), rng.integers(20, 340, 40), rng.uniform(0.02, 0.3, 40)):
+            stars += f * blob(self.SHAPE, (y, x), 1.3)[..., None] * np.array([1.0, 0.9, 0.8])
+        linear = base + stars + rng.normal(0, 0.0012, base.shape)
+        return np.clip(linear, 0, None).astype(np.float32), cloud
+
+    def layers(self, linear: np.ndarray, band: str = "unknown", stars: np.ndarray | None = None) -> tuple[np.ndarray, dict]:
+        scale = renders.stretch_scale(linear)
+        display = renders.polished_stretch(linear, scale)
+        starless = display if stars is None else renders.polished_stretch(np.clip(linear - stars, 0, None), scale)
+        done: dict[str, object] = {}
+        with redirect_stdout(io.StringIO()):
+            nebula, star_layer = renders.polished_layers(linear, display, starless, scale, band, done=done)
+        return renders.polished_deep(nebula, star_layer), done
+
+    def test_the_sky_is_put_at_its_level_without_a_flat_black(self) -> None:
+        linear, cloud = self.field()
+        image, done = self.layers(linear)
+        level = renders.lum(image)
+        sky = level[cloud < 0.01]
+        self.assertAlmostEqual(float(np.median(sky)), renders.POLISHED.sky, delta=0.006)
+        self.assertLess(float(np.mean(sky <= 0.5 / 255)), 0.01, "under 1 % of the sky at 0: no flat black")
+        self.assertGreater(float(np.median(level[cloud > 0.5])), 3 * renders.POLISHED.sky, "the cloud stands out")
+        self.assertIn("curve", done)
+
+    def greenness(self, image: np.ndarray, cloud: np.ndarray) -> float:
+        body = image[cloud > 0.4]
+        return float(np.mean(body[:, 1] / body.sum(axis=-1)))
+
+    def test_the_green_of_the_nebula_is_taken_back_only_on_a_broadband_capture(self) -> None:
+        linear, cloud = self.field(green=0.03)
+        broadband, done = self.layers(linear, "broadband")
+        self.assertEqual(done["green"], renders.POLISHED.green)
+        for band in ("dual-band", "unknown"):
+            with self.subTest(band=band):
+                kept, done = self.layers(linear, band)
+                self.assertIsNone(done["green"], "a dual-band capture, or one in doubt, keeps its green")
+                self.assertGreater(self.greenness(kept, cloud), self.greenness(broadband, cloud) + 0.02)
+        with self.assertRaises(ValueError):
+            self.layers(linear, "narrowband")
+
+    def test_a_dual_band_capture_keeps_its_own_balance(self) -> None:
+        linear, _ = self.field()
+        _, done = self.layers(linear, "dual-band")
+        self.assertIsNone(done["starGains"])
+
+    def test_into_gamut_keeps_the_luminance_and_never_darkens(self) -> None:
+        rgb = np.array([[[0.2, 0.5, 2.4], [1.6, 0.6, 1.5], [0.3, 0.3, 0.3]]], np.float32)
+        level = renders.lum(rgb)
+        out = renders.into_gamut(rgb, level)
+        self.assertLessEqual(float(out.max()), 1.0)
+        np.testing.assert_allclose(renders.lum(out), level, atol=1e-6)
+        np.testing.assert_allclose(out[0, 2], rgb[0, 2])  # in gamut: untouched
+
+    def test_the_bright_core_of_a_nebula_keeps_its_colour_and_its_texture(self) -> None:
+        """A nebula whose core is far brighter than the rest (M42): the core is not a white plate -- it keeps its
+        colour, its fine structure and a level under the white -- while a clipped star in it stays white."""
+        linear, _ = self.field()
+        yy, xx = np.mgrid[: self.SHAPE[0], : self.SHAPE[1]]
+        core = np.exp(-((yy - 150) ** 2 + (xx - 220) ** 2) / (2 * 25.0 ** 2))
+        ripples = 1 + 0.08 * np.sin(xx / 2.5) * np.sin(yy / 3.0)
+        nebula = (1.5 * core * ripples)[..., None] * np.array([1.0, 0.45, 0.55])
+        star = bright_star(self.SHAPE, (150, 230), clip=(0.9, 1.0, 0.89), widths=(2.0, 2.0, 2.0))
+        linear = (linear + nebula + star).astype(np.float32)
+        image, _ = self.layers(linear, "unknown", stars=star.astype(np.float32))
+        level = renders.lum(image)
+        ring = (np.hypot(yy - 150, xx - 220) < 15) & (np.hypot(yy - 150, xx - 230) > 8)
+        saturation = (image.max(-1) - image.min(-1)) / np.maximum(image.max(-1), 1e-6)
+        self.assertLess(float(np.median(level[ring])), 0.85, "the core is under the white")
+        # Before RENDER-R5-01's second part: 0.91, a saturation of 0.05 and a structure of 0.0017 (a white plate).
+        self.assertGreater(float(np.median(saturation[ring])), 0.1, "the core keeps its colour")
+        detail = level - gaussian_filter(level, 3)
+        self.assertGreater(float(np.std(detail[ring])), 0.0022, "the core keeps its fine structure")
+        centre = image[148:153, 228:233].reshape(-1, 3).mean(axis=0)
+        self.assertLess(float(centre.max() - centre.min()), 0.05, f"the clipped star in it is white: {np.round(centre, 3)}")
+
+    def test_a_bright_star_is_a_white_disc_that_fades_in_one_piece(self) -> None:
+        """The core the sensor clipped (here at three levels, green highest) and the halo whose channels have
+        their own widths (a wider red and blue): no ring, a neutral centre, the colour kept in the outer halo."""
+        linear, _ = self.field()
+        centre = (150, 120)
+        star = bright_star(self.SHAPE, centre, clip=(0.90, 1.0, 0.89), widths=(4.0, 3.2, 4.6)).astype(np.float32)
+        linear = linear + star
+        image, _ = self.layers(linear, "broadband", stars=star)
+        profile = radial(image, centre, 18)
+        level = renders.lum(profile)
+        # Deepest dip: how far the luminance falls under what comes after it, outwards.
+        dip = max(float(level[k + 1:].max() - level[k]) for k in range(len(level) - 1))
+        self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
+        core = profile[0]
+        self.assertLess(float(core.max() - core.min()), 0.03, f"a white centre: {np.round(core, 3)}")
+        halo = profile[9]
+        self.assertGreater(float(halo[2] - halo[1]), 0.01, f"the halo keeps its colour: {np.round(halo, 3)}")
 
 
 class _stderr:

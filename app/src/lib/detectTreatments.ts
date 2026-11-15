@@ -4,6 +4,7 @@
 // the space, and the images that may be ticked in « Images à envoyer ».
 // Pure: the window writes the words and runs the treatments.
 
+import { seriesKey, type SeriesOfPoses } from "./seriesOfPoses.ts";
 import type {
   Band,
   BulkCreateOutcome,
@@ -38,12 +39,38 @@ export interface TreatmentTargetCard {
   multiNight: CreatedMultiNight | null;
 }
 
-const DUAL_BAND =
-  /dual|duo|tri-?band|quad|l-?e?nhance|l-?extreme|l-?ultimate|alp-?t|nbz|hα|h-?alpha|oiii|o3|s2|sii/i;
+/** The words of a dual-band filter's name, letters and digits only, lower
+ * case: the core's `DUALBAND_WORDS` (`plan_image.rs`), word for word -- the
+ * night's « Traitements » step reads the band from the core, the import's
+ * from here, and both must say the same of one filter (a test reads the
+ * core's list). One narrowband line alone (OIII, Hα, SII) is broadband. */
+export const DUALBAND_WORDS = [
+  "dual",
+  "duo",
+  "bibande",
+  "extreme",
+  "enhance",
+  "ultimate",
+  "alpt",
+  "nbz",
+  "hao3",
+  "haoiii",
+  "hoo",
+  "triad",
+  "quadband",
+] as const;
+
+/** The band of one filter name, as the core's `band_of` tells it. */
+export function bandOfFilter(filter: string): Band {
+  const name = filter.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+  return DUALBAND_WORDS.some((word) => name.includes(word))
+    ? "dualband"
+    : "broadband";
+}
 
 /** The band of a target from its filters: dual-band when one names it. */
 export function bandOfFilters(filters: readonly string[]): Band {
-  return filters.some((filter) => DUAL_BAND.test(filter))
+  return filters.some((filter) => bandOfFilter(filter) === "dualband")
     ? "dualband"
     : "broadband";
 }
@@ -143,6 +170,20 @@ export interface TreatmentResult {
   softStars?: SoftStars;
   /** The nights stacked into it (1 for the image of one night). */
   nights: number;
+  /** The series of poses (one filter, exposure, gain) a night's render was
+   * stacked from, when the stacking kept its master: the capture comes from
+   * the longest series, and a series far shorter than another of the same
+   * filter opens unticked. */
+  series?: {
+    filter: string | null;
+    totalSeconds: number;
+    /** One frame's exposure, the gain, the binning and the frames: with the
+     * filter, the series (one capture per series). */
+    exposureSeconds?: number;
+    gain?: number | null;
+    binning?: number;
+    frames?: number | null;
+  };
   path: string;
   size: number;
   /** The TIFF in full resolution of a render that leaves as a PNG
@@ -150,6 +191,11 @@ export interface TreatmentResult {
    * les TIFF ». `twinOf` is the path of that PNG. */
   fullResolution?: boolean;
   twinOf?: string;
+  /** `linear`: the file of « Sans traitement » -- a file attached to the
+   * capture of its target (a TIFF to download), never an image of it. Listed
+   * under the images of its target, ticked only with « Joindre aussi les TIFF
+   * ». */
+  file?: "linear";
 }
 
 /** Why a row of « Images à envoyer » cannot be ticked. */
@@ -164,7 +210,8 @@ export type ImageBlock =
 export interface SummaryImage extends TreatmentResult {
   /** The target and the file: what the box of the row stands for. */
   key: string;
-  role: "capture" | "variant";
+  /** `file`: the linear file, listed after the images of its target. */
+  role: "capture" | "variant" | "file";
   /** Set when the row cannot be ticked, and why. */
   blocked: ImageBlock | null;
 }
@@ -172,6 +219,44 @@ export interface SummaryImage extends TreatmentResult {
 /** The key of a row. */
 export function imageKey(result: Pick<TreatmentResult, "targetId" | "path">) {
   return `${result.targetId}\u0000${result.path}`;
+}
+
+/** Whether `result` carries a finish (a contrast, colours, softened stars). */
+function isFinished(result: TreatmentResult): boolean {
+  return hasContrast(result.contrast) || hasFinish(result);
+}
+
+/** The total exposure of the series of a result; 0 when not known. */
+function seriesSeconds(result: TreatmentResult): number {
+  return result.series?.totalSeconds ?? 0;
+}
+
+/** A series under this share of the total exposure of another series of the
+ * same target and filter opens unticked in « Images à envoyer » (it stays
+ * tickable). */
+export const MINOR_SERIES_SHARE = 0.1;
+
+/** Whether `result` comes from a series far shorter than another series of
+ * the same target and filter ([`MINOR_SERIES_SHARE`]): 6 min of 10 s frames
+ * beside 3 h 34 of 30 s ones. */
+export function isMinorSeries(
+  result: TreatmentResult,
+  results: readonly TreatmentResult[],
+): boolean {
+  const mine = result.series;
+  if (!mine) return false;
+  return results.some(
+    (other) =>
+      other.targetId === result.targetId &&
+      other.series !== undefined &&
+      other.series.filter === mine.filter &&
+      mine.totalSeconds < MINOR_SERIES_SHARE * other.series.totalSeconds,
+  );
+}
+
+/** A path without its extension. */
+function stemOf(path: string): string {
+  return path.replace(/\.[^./\\]+$/, "");
 }
 
 /** Whether `result` is the render itself of the natural pipeline, the image
@@ -204,7 +289,47 @@ export function summaryImages(
   const targets = [...new Set(results.map((item) => item.targetId))];
   const rows: SummaryImage[] = [];
   for (const targetId of targets) {
-    const all = results.filter((item) => item.targetId === targetId);
+    // The linear file is no image: it never is the capture nor a variant.
+    const files = results.filter(
+      (item) => item.targetId === targetId && item.file,
+    );
+    // With a finish chosen, only the finished image leaves, as the night's
+    // wizard sends it (`stacking::stacked_candidates`): the bare render of a
+    // pipeline whose finished image is listed, and its TIFF, stay on this
+    // computer.
+    const listed = results.filter(
+      (item) => item.targetId === targetId && !item.file,
+    );
+    const bare = new Set(
+      listed
+        .filter(
+          (item) =>
+            !item.fullResolution &&
+            !isFinished(item) &&
+            listed.some(
+              (other) =>
+                !other.fullResolution &&
+                isFinished(other) &&
+                other.pipelineId === item.pipelineId &&
+                stemOf(other.path).startsWith(`${stemOf(item.path)}_`),
+            ),
+        )
+        .map((item) => item.path),
+    );
+    // The longest series of poses first: the capture comes from it (6 min
+    // of 10 s frames never before 3 h 34 of 30 s ones), each series keeping
+    // its order.
+    const all = listed
+      .filter(
+        (item) =>
+          !bare.has(item.path) && !(item.twinOf && bare.has(item.twinOf)),
+      )
+      .map((item, index) => ({ item, index }))
+      .sort(
+        (a, b) =>
+          seriesSeconds(b.item) - seriesSeconds(a.item) || a.index - b.index,
+      )
+      .map(({ item }) => item);
     // The TIFF of a render is never the capture: it is listed right under
     // its PNG (a TIFF whose PNG is not listed stays an image of its own).
     const twins = all.filter(
@@ -212,26 +337,35 @@ export function summaryImages(
         item.fullResolution && all.some((other) => other.path === item.twinOf),
     );
     const mine = all.filter((item) => !twins.includes(item));
-    // The capture: the natural render when there is one, else the first
-    // image made without a curve, else the first; the others keep their order.
-    const capture =
-      mine.find(isNaturalMaster) ??
-      mine.find(
-        (item) =>
-          !item.fullResolution &&
-          !hasContrast(item.contrast) &&
-          !hasFinish(item),
-      ) ??
-      mine[0];
-    const sorted = [
-      capture,
-      ...mine.filter((item) => item !== capture),
-    ].flatMap((item) => [
-      item,
-      ...twins.filter((twin) => twin.twinOf === item.path),
-    ]);
-    sorted.forEach((item, index) => {
-      const role = index === 0 ? "capture" : "variant";
+    // One capture per series of poses (CAPTURES-SERIES-2): the images of each
+    // series, the longest first, each with its own capture — the natural
+    // render when there is one, else the first image made without a curve,
+    // else the first; the others keep their order. A series not known is
+    // one, as before.
+    const groups = new Map<string, TreatmentResult[]>();
+    for (const item of mine) {
+      const key = seriesKeyOfRow(item) ?? "";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+    const heads = new Set<TreatmentResult>();
+    const sorted = [...groups.values()].flatMap((group) => {
+      const capture =
+        group.find(isNaturalMaster) ??
+        group.find(
+          (item) =>
+            !item.fullResolution &&
+            !hasContrast(item.contrast) &&
+            !hasFinish(item),
+        ) ??
+        group[0];
+      heads.add(capture);
+      return [capture, ...group.filter((item) => item !== capture)].flatMap(
+        (item) => [item, ...twins.filter((twin) => twin.twinOf === item.path)],
+      );
+    });
+    sorted.forEach((item) => {
+      const role = heads.has(item) ? "capture" : "variant";
       rows.push({
         ...item,
         key: imageKey(item),
@@ -239,13 +373,29 @@ export function summaryImages(
         blocked: blockOf(item, role, storage),
       });
     });
+    for (const item of files) {
+      rows.push({
+        ...item,
+        key: imageKey(item),
+        role: "file",
+        blocked: blockOf(item, "file", storage),
+      });
+    }
   }
   return rows;
 }
 
+/** A TIFF the person chooses to send: the TIFF in full resolution of a render
+ * and the linear file. Ticked only with « Joindre aussi les TIFF ». */
+export function isTiffChoice(
+  row: Pick<TreatmentResult, "fullResolution" | "file">,
+): boolean {
+  return !!row.fullResolution || !!row.file;
+}
+
 function blockOf(
   item: TreatmentResult,
-  role: "capture" | "variant",
+  role: "capture" | "variant" | "file",
   storage: SpaceStorage | null,
 ): ImageBlock | null {
   if (!storage) return null;
@@ -265,7 +415,9 @@ export function tickedTargets(
   ticked: readonly string[],
 ): Set<string> {
   return new Set(
-    rows.filter((row) => ticked.includes(row.key)).map((row) => row.targetId),
+    rows
+      .filter((row) => row.role !== "file" && ticked.includes(row.key))
+      .map((row) => row.targetId),
   );
 }
 
@@ -281,6 +433,9 @@ export function canTickImage(
   if (ticked.includes(row.key)) return true;
   if (row.blocked) return false;
   const taken = tickedTargets(rows, ticked);
+  // The linear file takes no place of its own: it is attached to the capture
+  // of an image of its target, so it opens once one is ticked.
+  if (row.role === "file") return taken.has(row.targetId);
   if (taken.has(row.targetId)) return true;
   return room === null || taken.size < room.remaining;
 }
@@ -296,23 +451,74 @@ export function sendOrder(
 ): { row: SummaryImage; variantOf: SummaryImage | null }[] {
   const sent: { row: SummaryImage; variantOf: SummaryImage | null }[] = [];
   const firstOf = new Map<string, SummaryImage>();
+  // One capture per series of poses: the first image ticked of each series of
+  // a target is its capture, the others its variants (a series not known is
+  // one, as before).
+  const headKey = (row: SummaryImage) =>
+    `${row.targetId}\u0000${seriesKeyOfRow(row) ?? ""}`;
   for (const row of rows) {
     if (!ticked.includes(row.key)) continue;
-    const head = firstOf.get(row.targetId) ?? null;
-    if (!head) firstOf.set(row.targetId, row);
+    const head =
+      firstOf.get(headKey(row)) ??
+      (row.role === "file"
+        ? ([...firstOf.values()].find((r) => r.targetId === row.targetId) ??
+          null)
+        : null);
+    if (row.role === "file") {
+      // A file needs the capture of an image sent with it; without one, it
+      // stays here.
+      if (head) sent.push({ row, variantOf: head });
+      continue;
+    }
+    if (!head) firstOf.set(headKey(row), row);
     sent.push({ row, variantOf: head });
   }
   return sent;
 }
 
+/** The series of poses of a row, when known, as `uploadMetadata.series`. */
+export function seriesOfRow(
+  row: Pick<TreatmentResult, "series">,
+): SeriesOfPoses | null {
+  const series = row.series;
+  if (!series || typeof series.exposureSeconds !== "number") return null;
+  return {
+    filter: series.filter,
+    exposureSeconds: series.exposureSeconds,
+    gain: series.gain ?? null,
+    binning: series.binning ?? 1,
+    frames: series.frames ?? null,
+    totalSeconds: series.totalSeconds,
+  };
+}
+
+/** The key of the series of a row (`IRCUT|30|200|1`), `null` when unknown. */
+export function seriesKeyOfRow(
+  row: Pick<TreatmentResult, "series">,
+): string | null {
+  const series = seriesOfRow(row);
+  return series ? seriesKey(series) : null;
+}
+
+/** How many images are ticked: the linear file is no image, it is not
+ * counted. */
+export function tickedImageCount(
+  rows: readonly Pick<SummaryImage, "key" | "role">[],
+  ticked: readonly string[],
+): number {
+  return ticked.filter(
+    (key) => !rows.some((row) => row.key === key && row.role === "file"),
+  ).length;
+}
+
 /** The primary of 6 c: « Envoyer 2 images », or « Terminer » with nothing
- * ticked. */
+ * ticked. The linear file is not an image: it is not counted. */
 export function sendPrimary(
   ticked: readonly string[],
+  rows: readonly Pick<SummaryImage, "key" | "role">[] = [],
 ): { kind: "send"; count: number } | { kind: "done" } {
-  return ticked.length > 0
-    ? { kind: "send", count: ticked.length }
-    : { kind: "done" };
+  const count = tickedImageCount(rows, ticked);
+  return count > 0 ? { kind: "send", count } : { kind: "done" };
 }
 
 /** The folder of each target the treatments prepared: its folder in the

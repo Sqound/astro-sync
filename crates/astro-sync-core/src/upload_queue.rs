@@ -63,6 +63,11 @@ pub enum ResultKind {
     /// The image of a multi-night plan, from `<plan>/stacked/`: a capture of
     /// the plan, never of a night (`role: "plan"`).
     Plan,
+    /// The linear render ("No processing"), from `<target>/stacked/`: a file
+    /// attached to a capture (`role: "linear"`), never an image of it. It
+    /// needs the capture another result creates or that is online, counts
+    /// against the storage only, and has no sky solution.
+    Linear,
 }
 
 impl ResultKind {
@@ -72,6 +77,7 @@ impl ResultKind {
             ResultKind::Stacked => "stacked",
             ResultKind::Progression => "progression",
             ResultKind::Plan => "plan",
+            ResultKind::Linear => "linear",
         }
     }
 
@@ -80,6 +86,7 @@ impl ResultKind {
             Some("stacked") => ResultKind::Stacked,
             Some("progression") => ResultKind::Progression,
             Some("plan") => ResultKind::Plan,
+            Some("linear") => ResultKind::Linear,
             _ => ResultKind::Final,
         }
     }
@@ -110,8 +117,8 @@ const LOG_EXTENSIONS: [&str; 3] = ["log", "txt", "csv"];
 /// Whether `path` is a result the queue may take, and which. The extension
 /// decides first (a FITS is a frame wherever it is), then the folders the
 /// path goes through (`lights/`, `calibration/`, `logs/` hold no result);
-/// a file under `stacked/` is a stacked image, one under `progression/` a
-/// progression image, any other a final one.
+/// a file under `stacked/` is a stacked image (`<name>_linear.tif` the linear
+/// file), one under `progression/` a progression image, any other a final one.
 pub fn result_kind_of(path: &Path) -> Result<ResultKind, NotAResult> {
     let extension = path
         .extension()
@@ -143,7 +150,14 @@ pub fn result_kind_of(path: &Path) -> Result<ResultKind, NotAResult> {
         return Err(NotAResult::NotAnImage);
     }
     Ok(if within("stacked") {
-        ResultKind::Stacked
+        // The linear stack is a file attached to a capture, never an image
+        // of it: its name says so (the stacking record, where there is one,
+        // decides before the queue is fed: [`crate::metadata::is_linear_render`]).
+        if crate::render_files::is_linear_name(path) {
+            ResultKind::Linear
+        } else {
+            ResultKind::Stacked
+        }
     } else if within("progression") {
         ResultKind::Progression
     } else {
@@ -175,6 +189,16 @@ pub struct EntryTarget {
     /// combines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<PlanUpload>,
+    /// `replace`: the image takes the place of the main image of the capture
+    /// `variant_of` names (an image set in « Régler l'image » whose render
+    /// is online); absent: the service's own rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<String>,
+    /// The digest of the variant of the capture `variant_of` names that this
+    /// image takes the place of (`replacesSha256`: the TIFF of an image set
+    /// in place of the render's TIFF online); absent: the image is added.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces_sha256: Option<String>,
 }
 
 /// What the image of a multi-night plan declares (`uploads.md`, « The image
@@ -337,6 +361,8 @@ fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<QueueEntry> {
             plan: row
                 .get::<_, Option<String>>("plan")?
                 .and_then(|json| serde_json::from_str(&json).ok()),
+            placement: row.get("placement")?,
+            replaces_sha256: row.get("replaces_sha256")?,
         },
     })
 }
@@ -375,6 +401,23 @@ pub struct EnqueueOutcome {
     /// instead of waiting for a run that has nothing to send.
     #[serde(default)]
     pub already_sent: Vec<AlreadySent>,
+    /// The renders set in « Régler l'image » that leave as their image set:
+    /// the file the queue holds (and every event names) is not the one the
+    /// caller gave, and the interface follows the one that leaves.
+    #[serde(default)]
+    pub sent_instead: Vec<SentInstead>,
+}
+
+/// A render given to the queue that leaves as its image set.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SentInstead {
+    /// The digest of the render the caller gave.
+    pub render_sha256: String,
+    /// What the queue holds and sends in its place.
+    pub sha256: String,
+    pub path: PathBuf,
+    pub size: u64,
 }
 
 /// A file enqueued again that this space already has.
@@ -412,7 +455,9 @@ fn queue_table(name: &str) -> String {
     metadata TEXT,
     frames TEXT,
     plan TEXT,
-    space_id TEXT
+    space_id TEXT,
+    placement TEXT,
+    replaces_sha256 TEXT
 )"
     )
 }
@@ -460,6 +505,8 @@ fn add_missing_columns(connection: &Connection) -> rusqlite::Result<()> {
         "frames",
         "plan",
         "space_id",
+        "placement",
+        "replaces_sha256",
     ] {
         if !columns.iter().any(|name| name == column) {
             connection.execute(
@@ -485,7 +532,7 @@ const SPACE_SCOPED_VERSION: i64 = 1;
 
 const QUEUE_COLUMNS: &str = "id, source_path, sha256, size, upload_id, offset, state, capture_id, \
     last_error, last_error_code, created_at, updated_at, kind, session_id, target_ids, \
-    variant_of, source, metadata, frames, plan, space_id";
+    variant_of, source, metadata, frames, plan, space_id, placement, replaces_sha256";
 
 const SKY_COLUMNS: &str = "sha256, space_id, capture_id, state, failure, error_code, message, elapsed_ms, source, updated_at";
 
@@ -746,6 +793,34 @@ impl UploadQueue {
         &self,
         files: &[ResultFile],
     ) -> Result<EnqueueOutcome, UploadQueueError> {
+        let files_given = files;
+        // A render set in « Régler l'image » leaves as its image set, and a
+        // variant of it follows it.
+        let mut files = crate::image_adjust::substitute_results(files);
+        let sent_instead: Vec<SentInstead> = files
+            .iter()
+            .zip(files_given)
+            .filter(|(sent, given)| !sent.sha256.eq_ignore_ascii_case(&given.sha256))
+            .map(|(sent, given)| SentInstead {
+                render_sha256: given.sha256.clone(),
+                sha256: sent.sha256.clone(),
+                path: sent.path.clone(),
+                size: sent.size,
+            })
+            .collect();
+        // An image set whose render already left through this queue as the
+        // main image of a capture takes its place there.
+        crate::image_adjust::replace_sent_renders(&mut files, |original| {
+            self.find_by_sha256(original)
+                .ok()
+                .flatten()
+                .filter(|entry| entry.state == QueueState::Completed)
+                .and_then(|entry| {
+                    let main = entry.target.variant_of.is_none();
+                    entry.capture_id.map(|capture| (capture, main))
+                })
+        });
+        let files = &files[..];
         for file in files {
             if let Err(reason) = result_kind_of(&file.path) {
                 return Err(UploadQueueError::NotAResult {
@@ -754,7 +829,10 @@ impl UploadQueue {
                 });
             }
         }
-        let mut outcome = EnqueueOutcome::default();
+        let mut outcome = EnqueueOutcome {
+            sent_instead,
+            ..EnqueueOutcome::default()
+        };
         for file in files {
             // A caller may still name a folder that was renamed since the
             // image was made (the provisional folder of a plan): the row is
@@ -783,8 +861,8 @@ impl UploadQueue {
             "INSERT INTO upload_queue
                 (source_path, sha256, size, offset, state, created_at, updated_at,
                  kind, session_id, target_ids, variant_of, source, metadata, frames, plan,
-                 space_id)
-             VALUES (?1, ?2, ?3, 0, 'queued', ?4, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                 space_id, placement, replaces_sha256)
+             VALUES (?1, ?2, ?3, 0, 'queued', ?4, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
              ON CONFLICT DO NOTHING",
             params![
                 file.path.to_string_lossy(),
@@ -806,6 +884,8 @@ impl UploadQueue {
                     .as_ref()
                     .and_then(|p| serde_json::to_string(p).ok()),
                 self.space_id,
+                file.target.placement,
+                file.target.replaces_sha256,
             ],
         )?;
         Ok(changed == 1)
@@ -1383,6 +1463,7 @@ mod tests {
                 already_known: 0,
                 left_out: 0,
                 already_sent: Vec::new(),
+                sent_instead: Vec::new(),
             }
         );
 
@@ -1394,6 +1475,7 @@ mod tests {
                 already_known: 1,
                 left_out: 0,
                 already_sent: Vec::new(),
+                sent_instead: Vec::new(),
             }
         );
 
@@ -1657,6 +1739,8 @@ mod tests {
         assert_eq!(kind("M31/final/m31.tif"), Ok(ResultKind::Final));
         assert_eq!(kind("M31/final/M31.JPEG"), Ok(ResultKind::Final));
         assert_eq!(kind("M31/stacked/m31-raw.tif"), Ok(ResultKind::Stacked));
+        assert_eq!(kind("M31/stacked/m31_linear.tif"), Ok(ResultKind::Linear));
+        assert_eq!(kind("M31/final/m31_linear.tif"), Ok(ResultKind::Final));
         assert_eq!(kind("M31/final/m31.fits"), Err(NotAResult::Frame));
         assert_eq!(kind("M31/lights/l-0001.xisf"), Err(NotAResult::Frame));
         assert_eq!(kind("M31/lights/raw.CR2"), Err(NotAResult::Frame));
@@ -1732,6 +1816,8 @@ mod tests {
             metadata: None,
             frame_count: None,
             plan: None,
+            placement: None,
+            replaces_sha256: None,
         };
         queue
             .enqueue_results(&[

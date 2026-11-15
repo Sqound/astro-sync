@@ -64,6 +64,14 @@ impl LocalImage {
     pub fn is_full_resolution_twin(&self) -> bool {
         self.twin_sha256.is_some() && crate::render_files::is_tiff(&self.path)
     }
+
+    /// A TIFF the person chooses to send (the full-resolution twin of a PNG,
+    /// or the linear file): never « missing », it leaves only with « Joindre
+    /// aussi les TIFF ».
+    #[must_use]
+    pub fn is_optional_tiff(&self) -> bool {
+        self.is_full_resolution_twin() || self.kind == ResultKind::Linear
+    }
 }
 
 /// A target of the night as its folder holds it.
@@ -113,8 +121,19 @@ impl ResumeLocal {
                 kind: image.kind,
                 // What the stacker recorded for its own renders: the natural
                 // one is the main image of the capture (`precheck`).
-                render: (image.kind == ResultKind::Stacked)
-                    .then(|| crate::metadata::recorded_pipeline(&image.path))
+                render: match image.kind {
+                    ResultKind::Stacked => crate::metadata::recorded_pipeline(&image.path),
+                    ResultKind::Linear => Some(crate::pipelines::LINEAR_PIPELINE.to_string()),
+                    _ => None,
+                },
+                // The series it was stacked from: the main image comes from
+                // the longest one (`precheck`).
+                series_seconds: (image.kind == ResultKind::Stacked)
+                    .then(|| crate::metadata::recorded_series_seconds(&image.path))
+                    .flatten(),
+                // Its series of poses: one capture per series.
+                series: matches!(image.kind, ResultKind::Stacked | ResultKind::Linear)
+                    .then(|| crate::metadata::recorded_series(&image.path))
                     .flatten(),
                 // Where the stacker put the render among those asked for.
                 render_rank: (image.kind == ResultKind::Stacked)
@@ -593,22 +612,50 @@ pub fn resume_night(
     // one only as a variant, when the space keeps variants). The TIFF of a
     // render that leaves as PNG is a choice of the person, never missing;
     // a render online in its other format is online.
+    // A render set in « Régler l'image » leaves as its image set: it is to
+    // send while the image set is not online, even when the render is (the
+    // image set then takes the place of the main image online; a render
+    // online as a variant cannot be replaced from here, `precheck`).
+    let replacing = |image: &LocalImage| {
+        crate::image_adjust::sent_file(&image.path).map(|set| {
+            let original = crate::image_adjust::original_sha256(&image.path);
+            let online_as = original.as_deref().and_then(|o| online.image_with(o));
+            (
+                set.sha256,
+                set.tiff.map(|tiff| tiff.sha256),
+                online_as.map(|(_, online_image)| online_image.main),
+            )
+        })
+    };
     let to_send = local
         .images
         .iter()
-        .filter(|image| !image.is_full_resolution_twin())
-        .filter(|image| online.image_with(&image.sha256).is_none())
-        .filter(|image| {
-            image
-                .twin_sha256
-                .as_deref()
-                .is_none_or(|twin| online.image_with(twin).is_none())
-        })
-        .filter(|image| variant_limit > 0 || online.capture_of(&image.target_id).is_none())
-        .filter(|image| {
-            !queue
-                .iter()
-                .any(|row| row.sha256.eq_ignore_ascii_case(&image.sha256))
+        .filter(|image| !image.is_optional_tiff())
+        .filter(|image| match replacing(image) {
+            Some((set, set_tiff, original_online)) => {
+                online.image_with(&set).is_none()
+                    && set_tiff
+                        .as_deref()
+                        .is_none_or(|tiff| online.image_with(tiff).is_none())
+                    && original_online != Some(false)
+                    && (original_online == Some(true)
+                        || variant_limit > 0
+                        || online.capture_of(&image.target_id).is_none())
+                    && !queue
+                        .iter()
+                        .any(|row| row.sha256.eq_ignore_ascii_case(&set))
+            }
+            None => {
+                online.image_with(&image.sha256).is_none()
+                    && image
+                        .twin_sha256
+                        .as_deref()
+                        .is_none_or(|twin| online.image_with(twin).is_none())
+                    && (variant_limit > 0 || online.capture_of(&image.target_id).is_none())
+                    && !queue
+                        .iter()
+                        .any(|row| row.sha256.eq_ignore_ascii_case(&image.sha256))
+            }
         })
         .count() as u64;
     if to_send > 0 {

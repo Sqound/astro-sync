@@ -14,6 +14,7 @@ import {
   nightDetail,
   nightOnline,
   nightView,
+  sessionsUserData,
   workingFolderGet,
   type CapabilitiesState,
   type SessionSummary,
@@ -25,6 +26,9 @@ import { loadImportClock, withImportClock } from "../lib/importClock";
 import { windowStorage } from "../lib/lastReport";
 import {
   createFormReady,
+  createFormReason,
+  createPlaces,
+  createPlacesNote,
   detectionInput,
   isOffline,
   knownPlaces,
@@ -32,9 +36,12 @@ import {
   loadUnticked,
   newestFirst,
   nightRow,
+  nightSentence,
   offlineWhen,
   saveSnapshot,
+  todayOnThisComputer,
   type CreateForm,
+  type CreatePlacesRead,
   type NightRow,
   type NightsSnapshot,
 } from "../lib/nights";
@@ -355,9 +362,9 @@ function CreateNightDialog({
   onCancel: () => void;
   onCreated: (sessionId: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [form, setForm] = useState<CreateForm>({
-    date: new Date().toISOString().slice(0, 10),
+    date: todayOnThisComputer(),
     place: places[0] ?? "",
     start: "",
     end: "",
@@ -367,6 +374,41 @@ function CreateNightDialog({
   const [error, setError] = useState<string | null>(null);
   const set = (field: keyof CreateForm) => (value: string) =>
     setForm((current) => ({ ...current, [field]: value }));
+
+  // The saved places of the space, read when the window opens: the list of
+  // « Sessions » only knows the places of the nights it has read so far
+  // (none just after signing in). The place proposed fills an empty field
+  // once they are there, never one the person typed.
+  const [placesRead, setPlacesRead] = useState<CreatePlacesRead>("loading");
+  const [saved, setSaved] = useState<Parameters<typeof createPlaces>[1]>(null);
+  const [readTry, setReadTry] = useState(0);
+  useEffect(() => {
+    let stopped = false;
+    setPlacesRead("loading");
+    sessionsUserData()
+      .then((data) => {
+        if (stopped) return;
+        setSaved(data);
+        setPlacesRead("ready");
+        const { proposed } = createPlaces(places, data);
+        setForm((current) =>
+          current.place.trim() === ""
+            ? { ...current, place: proposed }
+            : current,
+        );
+      })
+      .catch(() => {
+        if (!stopped) setPlacesRead("failed");
+      });
+    return () => {
+      stopped = true;
+    };
+    // `places` only adds names to the list below; the read is once per try.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readTry]);
+  const offered = createPlaces(places, saved).names;
+  const placesNote = createPlacesNote(placesRead, offered.length);
+  const reason = createFormReason(form);
 
   async function submit() {
     setBusy(true);
@@ -421,7 +463,7 @@ function CreateNightDialog({
               onChange={(event) => set("place")(event.target.value)}
             />
             <datalist id="create-night-places">
-              {places.map((place) => (
+              {offered.map((place) => (
                 <option key={place} value={place} />
               ))}
             </datalist>
@@ -430,6 +472,24 @@ function CreateNightDialog({
             </span>
           </label>
         </div>
+        {placesNote && (
+          <div className="as-dialog__places" data-places-read={placesRead}>
+            {placesRead === "loading" ? (
+              <Waiting label={t(placesNote)} size="inline" />
+            ) : (
+              <Notice tone="warning">
+                {t(placesNote)}{" "}
+                <button
+                  type="button"
+                  className={buttonClassName("link")}
+                  onClick={() => setReadTry((current) => current + 1)}
+                >
+                  {t("nights.createForm.placesAgain")}
+                </button>
+              </Notice>
+            )}
+          </div>
+        )}
         <div className="as-dialog__grid as-dialog__grid--three">
           <label className="as-dialog__field">
             <span className={fieldLabelClassName}>
@@ -459,7 +519,9 @@ function CreateNightDialog({
             </span>
             <input
               className={fieldClassName}
-              placeholder={t("nights.createForm.namePlaceholder")}
+              placeholder={t("wizard.title", {
+                day: nightSentence(form.date, locale),
+              })}
               value={form.title}
               onChange={(event) => set("title")(event.target.value)}
             />
@@ -493,6 +555,11 @@ function CreateNightDialog({
             </button>
           )}
         </div>
+        {reason && !busy && (
+          <p className={`${helpTextClassName} as-dialog__reason`}>
+            {t(reason)}
+          </p>
+        )}
       </div>
     </div>
   );

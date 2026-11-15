@@ -158,6 +158,33 @@
   padding: var(--as-space-sm) 0;
 }
 
+/* A target with several series of poses: the banner that says why, then
+   one line and one box per series over its images. */
+.as-treat__series-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-treat__series {
+  border-top: 1px solid var(--as-color-border);
+  padding: var(--as-space-sm) 0;
+}
+
+.as-treat__series label {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: var(--as-space-sm);
+}
+
+.as-treat__series input {
+  accent-color: var(--as-color-gold-accent);
+}
+
 .as-treat__image.is-full {
   color: var(--as-color-muted-text);
 }
@@ -171,6 +198,13 @@
 /* A variant stands beneath its capture; every image shows a thumbnail, its
    path (a link that opens it) and « Afficher dans le Finder ». */
 .as-treat__image.is-variant {
+  margin-left: var(--as-space-lg);
+  border-top-style: dashed;
+}
+
+/* The linear file stands beneath the images of its target, like a variant: a
+   file attached to the capture, with no thumbnail. */
+.as-treat__image.is-file {
   margin-left: var(--as-space-lg);
   border-top-style: dashed;
 }

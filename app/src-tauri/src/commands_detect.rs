@@ -12,8 +12,8 @@ use tauri::{AppHandle, Emitter, Runtime};
 use astro_sync_core::catalogue_targets::{self, CatalogueTarget};
 use astro_sync_core::local_work::WorkKind;
 use astro_sync_core::session_detection::{
-    self, AccountRights, DetectOptions, DetectRequest, FoundSoFar, NightNaming, OrganiseMode,
-    OrganiseOptions, OrganiseOutcome, OrganisePlan, Proposal, UserData, service,
+    self, service, AccountRights, DetectOptions, DetectRequest, FoundSoFar, NightNaming,
+    OrganiseMode, OrganiseOptions, OrganiseOutcome, OrganisePlan, Proposal, UserData,
 };
 use astro_sync_core::sky_solution::{self, SolveHints, SolveJob, SolverChoice};
 use astro_sync_core::tools::{self, DetectContext};
@@ -26,6 +26,13 @@ use crate::paths;
 
 /// « Trouvé jusqu'ici » while the headers are read (`FoundSoFar`).
 pub const DETECT_FOUND_EVENT: &str = "detect-found";
+
+/// What the detection is doing between its progress events, for the window
+/// to say it instead of a count that stays at 0: `catalogue` (the target
+/// catalogue's index refreshed from the service), `files` (the search for the
+/// files, then their headers: `local_work` counts them), `sessions` (the
+/// sessions of the dates found, read from the service).
+pub const DETECT_PHASE_EVENT: &str = "detect-phase";
 
 /// The rights of the account, from the capabilities kept and whether the
 /// service sells the multi-night plans (the gates of the other screens).
@@ -51,6 +58,10 @@ fn account<R: Runtime>(app: &AppHandle<R>) -> Result<AccountRights, CommandError
                 .is_none_or(|c| c.planner_multiple || gate.allowed),
     })
 }
+
+/// The answers of the solver during one detection, by frame.
+type SolvedFrames =
+    std::collections::HashMap<PathBuf, Result<(f64, f64), sky_solution::SolveFailure>>;
 
 /// The catalogue's index kept here, refreshed from the service when it can
 /// be (a failure keeps the copy).
@@ -100,15 +111,24 @@ pub async fn sessions_detect<R: Runtime>(
     let (cancel, progress) = local_work_of(&app, Some(WorkKind::Headers));
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
+        let phase = |name: &str| {
+            let _ = app.emit(DETECT_PHASE_EVENT, name);
+        };
         let catalogue = match catalogue {
             Some(targets) => targets,
-            None => kept_catalogue(&app, locale.as_deref().unwrap_or("fr")),
+            None => {
+                phase("catalogue");
+                kept_catalogue(&app, locale.as_deref().unwrap_or("fr"))
+            }
         };
         // The solvers are looked for only when a frame needs one.
         let solvers = std::sync::OnceLock::new();
         let work = data_paths(&paths).solve.join("detection");
         let now = astro_sync_core::now_iso8601_utc();
-        let solve = |image: &Path| -> Result<(f64, f64), sky_solution::SolveFailure> {
+        // The frames are grouped twice (before and after the sessions of the
+        // dates are read): a frame is solved once, its answer kept.
+        let solved: std::sync::Mutex<SolvedFrames> = std::sync::Mutex::default();
+        let solve_once = |image: &Path| -> Result<(f64, f64), sky_solution::SolveFailure> {
             let solvers = solvers.get_or_init(|| {
                 tools::solvers(&tools::detect_tools(&DetectContext::system(
                     &paths.data_dir,
@@ -126,6 +146,19 @@ pub async fn sessions_detect<R: Runtime>(
             let solution = sky_solution::solve_image(solvers, SolverChoice::Astap, &job)?;
             Ok((solution.ra_deg, solution.dec_deg))
         };
+        let solve = |image: &Path| -> Result<(f64, f64), sky_solution::SolveFailure> {
+            if let Some(answer) = solved.lock().ok().and_then(|kept| kept.get(image).cloned()) {
+                return answer;
+            }
+            let answer = solve_once(image);
+            // A stop is not an answer: the next try solves again.
+            if !cancel.is_cancelled() {
+                if let Ok(mut kept) = solved.lock() {
+                    kept.insert(image.to_path_buf(), answer.clone());
+                }
+            }
+            answer
+        };
         let emitter = app.clone();
         let found = move |found: &FoundSoFar| {
             let _ = emitter.emit(DETECT_FOUND_EVENT, found);
@@ -136,28 +169,26 @@ pub async fn sessions_detect<R: Runtime>(
             solver: Some(&solve),
             found: Some(&found),
         };
+        phase("files");
         let reading = session_detection::read_locations(&request, &options)?;
         // The window gives its places (with the offset it computed from each
-        // time zone) and its equipment; the sessions and plans of the dates
-        // found are read from the service (read only) once they are known.
+        // time zone), its equipment, its plans and the account's rights, read
+        // a moment before (`sessions_user_data`): only the sessions of the
+        // dates found are read from the service (read only) once they are
+        // known -- reading the rest again cost the smoke on Windows half a
+        // minute on a service waking up, the window frozen on « 0 found ».
         let supplied = user.is_some();
         let mut user = user.unwrap_or_default();
         let mut grouping =
             session_detection::group_frames(&reading, &request, &catalogue, &user, &options)?;
         if let Ok((portal, token)) = require_portal_and_token(&app) {
-            let read = service::read_user_data(
-                &transport(&app)?,
-                &portal,
-                &token,
-                account(&app)?,
-                grouping.date_range(),
-            )?;
+            phase("sessions");
+            let transport = transport(&app)?;
+            let range = grouping.date_range();
             if supplied {
-                user.sessions = read.sessions;
-                user.plans = read.plans;
-                user.account = read.account;
+                user.sessions = service::read_sessions(&transport, &portal, &token, range)?;
             } else {
-                user = read;
+                user = service::read_user_data(&transport, &portal, &token, account(&app)?, range)?;
             }
             grouping =
                 session_detection::group_frames(&reading, &request, &catalogue, &user, &options)?;
@@ -518,6 +549,13 @@ pub async fn detect_images_send<R: Runtime>(
     use astro_sync_core::upload_queue::{EntryTarget, ResultFile, ResultKind};
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
+        // What each render proposes, as the night's « Récapitulatif » does
+        // (`metadata::attach_proposals`): its title, its description, its
+        // steps, and for the capture the acquisition, the sensor and the
+        // calibration; its quality under `analysis.logs` only.
+        let language = crate::commands_night::settings_locale(&paths);
+        let pipelines = crate::commands_night::pipeline_list_of(&app, &paths, &language);
+        let image_quality = capabilities_cached(&paths)?.is_some_and(|c| c.analysis_logs);
         let mut files = Vec::new();
         for image in images {
             match image {
@@ -528,6 +566,7 @@ pub async fn detect_images_send<R: Runtime>(
                     variant_of_sha256,
                     full_resolution,
                 } => {
+                    let linear = render.pipeline_id == astro_sync_core::pipelines::LINEAR_PIPELINE;
                     let file = match (full_resolution, render.full_resolution) {
                         (true, Some(tiff)) => tiff,
                         (true, None) => {
@@ -542,11 +581,41 @@ pub async fn detect_images_send<R: Runtime>(
                             size: render.size,
                         },
                     };
+                    // "No processing" is a file attached to the capture of its
+                    // target, not an image of it: it never creates that capture.
+                    if linear && variant_of_sha256.is_none() {
+                        return Err(CommandError::new(
+                            "file_capture_refused",
+                            format!("{} needs the capture of an image", file.path.display()),
+                        ));
+                    }
+                    let kind = if linear {
+                        ResultKind::Linear
+                    } else {
+                        ResultKind::Stacked
+                    };
+                    let metadata = astro_sync_core::metadata::import_render_proposals(
+                        &file.path,
+                        kind,
+                        Some(&render.pipeline_id),
+                        variant_of_sha256.is_none(),
+                        Some(&pipelines),
+                        image_quality,
+                    );
+                    // The series of poses the render was stacked from, sent
+                    // with it: one capture per session, target and series.
+                    let metadata =
+                        match (kind, astro_sync_core::metadata::recorded_series(&file.path)) {
+                            (ResultKind::Stacked, Some(series)) => {
+                                Some(metadata.unwrap_or_default().for_series(Some(&series)))
+                            }
+                            _ => metadata,
+                        };
                     files.push(ResultFile {
                         path: file.path,
                         sha256: file.sha256,
                         size: file.size,
-                        kind: ResultKind::Stacked,
+                        kind,
                         target: EntryTarget {
                             session_id: Some(session_id),
                             target_ids: vec![target_id],
@@ -554,6 +623,7 @@ pub async fn detect_images_send<R: Runtime>(
                                 format!("{}{digest}", astro_sync_core::uploader::VARIANT_OF_SHA256)
                             }),
                             source: Some("stacking".to_string()),
+                            metadata,
                             ..EntryTarget::default()
                         },
                     });
@@ -621,6 +691,8 @@ fn result_file(path: &str) -> Result<PathBuf, CommandError> {
         .parent()
         .and_then(|p| p.file_name())
         .is_some_and(|name| name == astro_sync_core::working_folder::STACKED_DIR);
+    // The image set of « Régler l'image » (`stacked/adjusted/`) is one too.
+    let in_stacked = in_stacked || astro_sync_core::image_adjust::is_adjusted_image(&path);
     if !path.is_file() || !in_stacked || !matches!(kind.as_deref(), Some("tif" | "tiff" | "png")) {
         return Err(CommandError::new(
             "file_missing",

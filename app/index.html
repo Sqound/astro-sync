@@ -1,10 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" style="background-color: #0a0d0b">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
     <title>Astro Sync</title>
+    <!-- The page background of the theme (tokens.json `pageBackground`)
+         before the first script runs: the window never flashes white while
+         the webview starts (WebView2 takes seconds on a cold Windows). -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background-color: #0a0d0b;
+      }
+    </style>
   </head>
 
   <body>

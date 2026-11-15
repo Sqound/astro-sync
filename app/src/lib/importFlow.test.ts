@@ -4,7 +4,13 @@ import test from "node:test";
 
 import { SUPPORTED_LOCALES, createTranslator } from "../i18n/locale.ts";
 import type { BulkCreateOutcome, Proposal, SpaceStorage } from "./bridge";
-import { summaryImages, type TreatmentResult } from "./detectTreatments.ts";
+import {
+  canTickImage,
+  sendPrimary,
+  summaryImages,
+  tickedImageCount,
+  type TreatmentResult,
+} from "./detectTreatments.ts";
 import {
   NO_IMPORT,
   canGoTo,
@@ -21,7 +27,12 @@ import {
   type ImportState,
   type Made,
 } from "./importFlow.ts";
-import { MENU_GROUPS, groupEntries, menuEntryOf } from "./menu.ts";
+import {
+  MENU_GROUPS,
+  groupEntries,
+  importEntryLabelKey,
+  menuEntryOf,
+} from "./menu.ts";
 
 // « Détecter les sessions » is one wizard of five steps whose state lives
 // above the screens (`ImportProvider`). The reducer is the import: where
@@ -313,6 +324,32 @@ test("the import outlives its page: a job's result lands in the state whoever sh
   assert.equal(closed.alive, false);
   assert.equal(closed.proposal, null);
   assert.equal(importPresence(closed).shown, false);
+});
+
+test("the menu entry follows the import: « Import terminé » without a badge once the nights are sent, never « Import en cours »", () => {
+  const running = play([
+    ...planned,
+    { type: "treatStart", target: "NGC 7000" },
+  ]);
+  const ended = play(
+    [{ type: "treatDone", made: [made("raw")], errors: [] }],
+    running,
+  );
+  const before = importPresence(ended);
+  assert.equal(before.done, false);
+  assert.equal(fr(importEntryLabelKey(before.done)), "Import en cours");
+  const sent = play([{ type: "sent", count: 1, variants: 0 }], ended);
+  // The screen says « Import terminé » (step 5): the menu says the same.
+  assert.equal(sent.step, 5);
+  const after = importPresence(sent);
+  assert.equal(after.shown, true);
+  assert.equal(after.done, true);
+  assert.equal(fr(importEntryLabelKey(after.done)), fr("import.done.title"));
+  assert.equal(fr(importEntryLabelKey(after.done)), "Import terminé");
+  // The badge of the import is drawn only while it is not done.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /importEntryLabelKey\(presence\.done\)/);
+  assert.match(app, /tab\.id === "import" &&\s+!presence\.done &&/);
 });
 
 /* --------------------------------- The foot -------------------------------- */
@@ -739,6 +776,100 @@ const pngAndTiff = (pipelineId: string): Made[] => {
   ];
 };
 
+/** A Seestar night of two families (10 s and 30 s), each render written
+ * bare and with the contrast chosen (`_strong`), each PNG with its TIFF. */
+const seestarNight = (): Made[] => {
+  const rows: Made[] = [];
+  for (const family of ["IRCUT_30s_g200", "IRCUT_10s_g200"]) {
+    for (const pipelineId of ["raw", "hoo"]) {
+      for (const finish of ["", "_strong"]) {
+        const stem = `/w/M45/stacked/M45_2026-10-10_${family}_${pipelineId}${finish}`;
+        const contrast = finish ? ("strong" as never) : undefined;
+        rows.push(
+          { ...made(pipelineId, 12), path: `${stem}.png`, contrast },
+          {
+            ...made(pipelineId, 45),
+            path: `${stem}.tif`,
+            contrast,
+            fullResolution: true,
+            twinOf: `${stem}.png`,
+          },
+        );
+      }
+    }
+  }
+  return rows;
+};
+
+test("« Images à envoyer »: with a finish chosen only the finished images are listed, as the night's wizard sends them; the bare render and its TIFF stay on this computer", () => {
+  const rows = summaryImages(seestarNight(), storage());
+  assert.deepEqual(
+    rows.map((row) => [row.path.split("/").pop(), row.role]),
+    [
+      ["M45_2026-10-10_IRCUT_30s_g200_raw_strong.png", "capture"],
+      ["M45_2026-10-10_IRCUT_30s_g200_raw_strong.tif", "variant"],
+      ["M45_2026-10-10_IRCUT_30s_g200_hoo_strong.png", "variant"],
+      ["M45_2026-10-10_IRCUT_30s_g200_hoo_strong.tif", "variant"],
+      ["M45_2026-10-10_IRCUT_10s_g200_raw_strong.png", "variant"],
+      ["M45_2026-10-10_IRCUT_10s_g200_raw_strong.tif", "variant"],
+      ["M45_2026-10-10_IRCUT_10s_g200_hoo_strong.png", "variant"],
+      ["M45_2026-10-10_IRCUT_10s_g200_hoo_strong.tif", "variant"],
+    ],
+  );
+  // A pipeline without a finished image keeps its render.
+  const bareOnly = seestarNight().filter(
+    (row) => !(row.pipelineId === "hoo" && row.contrast),
+  );
+  const names = summaryImages(bareOnly, storage()).map((row) =>
+    row.path.split("/").pop(),
+  );
+  assert.ok(names.includes("M45_2026-10-10_IRCUT_30s_g200_hoo.png"));
+  assert.ok(!names.includes("M45_2026-10-10_IRCUT_30s_g200_raw.png"));
+});
+
+test("« Images à envoyer »: the capture comes from the longest series, and a series under a tenth of another of the same filter opens unticked, its box still free", () => {
+  const series = (path: string) =>
+    path.includes("_10s_")
+      ? { filter: "IRCUT", totalSeconds: 360 }
+      : { filter: "IRCUT", totalSeconds: 12_870 };
+  // The 10 s series listed first, as the file names sort.
+  const results = seestarNight()
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((row) => ({ ...row, series: series(row.path) }));
+  const rows = summaryImages(results, storage());
+  assert.equal(
+    rows[0].path.split("/").pop(),
+    "M45_2026-10-10_IRCUT_30s_g200_hoo_strong.png",
+  );
+  assert.equal(rows[0].role, "capture");
+  const name = (key: string) => key.split("/").pop() ?? "";
+  const ticked = preTickedImages(rows, null);
+  assert.deepEqual(ticked.map(name), [
+    "M45_2026-10-10_IRCUT_30s_g200_hoo_strong.png",
+    "M45_2026-10-10_IRCUT_30s_g200_raw_strong.png",
+  ]);
+  const minor = rows.find((row) =>
+    row.path.endsWith("10s_g200_raw_strong.png"),
+  )!;
+  assert.equal(canTickImage(minor, rows, ticked, null), true);
+  // A series of another filter, however short, opens ticked.
+  const otherFilter = results.map((row) =>
+    row.path.includes("_10s_")
+      ? { ...row, series: { filter: "Ha", totalSeconds: 360 } }
+      : row,
+  );
+  assert.equal(
+    preTickedImages(summaryImages(otherFilter, storage()), null).length,
+    4,
+  );
+  // Without the series known, the order of before.
+  const unknown = summaryImages(seestarNight(), storage());
+  assert.equal(
+    unknown[0].path.split("/").pop(),
+    "M45_2026-10-10_IRCUT_30s_g200_raw_strong.png",
+  );
+});
+
 test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows listed unticked under their PNG; « Joindre aussi les TIFF » ticks and unticks them", () => {
   const results = [...pngAndTiff("dualband-correction"), ...pngAndTiff("raw")];
   const rows = summaryImages(results, storage());
@@ -787,4 +918,112 @@ test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows listed un
     { type: "joinTiff", on: false },
   );
   assert.deepEqual(without.ticked.map(name), ["raw.png"]);
+});
+
+// « Sans traitement » is a file attached to the capture of its target, not an
+// image of it: listed under the images, unticked, ticked with « Joindre aussi
+// les TIFF », never counted among the images, and without an image ticked it
+// goes too (the service attaches it to a capture, it never creates one).
+const withLinear = (): Made[] => [
+  ...pngAndTiff("raw"),
+  {
+    ...made("linear", 19_000_000),
+    path: "/w/NGC 7000/stacked/linear.tif",
+    file: "linear",
+  },
+];
+
+test("the linear file is listed after the images of its target, unticked, and a file is never a variant", () => {
+  const rows = summaryImages(withLinear(), storage());
+  assert.deepEqual(
+    rows.map((row) => [row.path.split("/").pop(), row.role]),
+    [
+      ["raw.png", "capture"],
+      ["raw.tif", "variant"],
+      ["linear.tif", "file"],
+    ],
+  );
+  const name = (key: string) => key.split("/").pop();
+  // Never pre-ticked, like every TIFF.
+  assert.deepEqual(preTickedImages(rows, null).map(name), ["raw.png"]);
+  assert.deepEqual(preTickedImages(rows, null, true).map(name), [
+    "raw.png",
+    "raw.tif",
+    "linear.tif",
+  ]);
+  // A space that keeps no variant still takes the file: it is no variant.
+  const noVariants = summaryImages(withLinear(), {
+    ...storage(),
+    variantLimit: 0,
+  });
+  assert.equal(noVariants.find((row) => row.role === "file")!.blocked, null);
+});
+
+test("the linear file opens only once an image of its target is ticked, and leaves with the last one", () => {
+  const results = withLinear();
+  const rows = summaryImages(results, storage());
+  const [capture, , file] = rows;
+  assert.equal(canTickImage(file, rows, [], null), false);
+  assert.equal(canTickImage(file, rows, [capture.key], null), true);
+  const played = play(
+    [
+      { type: "storage", storage: storage() },
+      { type: "treatStart", target: "IC 1805" },
+      { type: "joinTiff", on: true },
+      { type: "treatDone", made: results, errors: [] },
+    ],
+    play(planned),
+  );
+  assert.ok(played.ticked.includes(file.key));
+  // The file is not counted among the images queued.
+  assert.equal(tickedImageCount(rows, played.ticked), 2);
+  assert.deepEqual(sendPrimary(played.ticked, rows), {
+    kind: "send",
+    count: 2,
+  });
+  // Untick the PNG and its TIFF: the file goes with them.
+  const first = importReducer(played, {
+    type: "toggleImage",
+    key: capture.key,
+  });
+  assert.ok(first.ticked.includes(file.key));
+  const last = importReducer(first, { type: "toggleImage", key: rows[1].key });
+  assert.equal(last.ticked.includes(file.key), false);
+  // Unticking « Joindre aussi les TIFF » takes it off too.
+  const off = importReducer(played, { type: "joinTiff", on: false });
+  assert.equal(off.ticked.includes(file.key), false);
+});
+
+test("the detection says what it is doing: the space's data first, then the files counted to the end, then the sessions of the dates found -- never a « 0 found » that does not move", async () => {
+  const { isScanPhase, scanPhaseKey } = await import("./detectFlow.ts");
+  const started = play([{ type: "scanStart" }]);
+  assert.equal(started.scan?.phase, "space");
+  const walking = play(
+    [
+      { type: "scanPhase", phase: "files" },
+      { type: "scanWalk", found: 5, folder: "/n" },
+    ],
+    started,
+  );
+  assert.equal(walking.scan?.phase, "files");
+  assert.equal(walking.scan?.walked, 5);
+  const asking = play([{ type: "scanPhase", phase: "sessions" }], walking);
+  assert.equal(asking.scan?.phase, "sessions");
+  assert.equal(scanPhaseKey("files"), null);
+  for (const phase of ["space", "catalogue", "sessions"] as const) {
+    const key = scanPhaseKey(phase);
+    assert.ok(key && fr(key) !== key, `${phase}: ${fr(key ?? "")}`);
+  }
+  assert.equal(
+    fr("detect.scan.phase.sessions"),
+    "Lecture des sessions de votre espace pour ces dates…",
+  );
+  assert.equal(isScanPhase("headers"), false);
+  // The window listens to the core's phases.
+  const provider = readFileSync(
+    new URL("../components/ImportProvider.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(provider, /onDetectPhase\(/);
+  assert.match(provider, /type: "scanPhase", phase/);
 });

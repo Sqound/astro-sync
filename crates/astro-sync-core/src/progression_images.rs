@@ -929,6 +929,8 @@ pub fn recorded_candidates(
             let path = folder.join(&image.file);
             let (sha256, size) = digest(&path).ok()?;
             Some(ImageCandidate {
+                series_seconds: None,
+                series: None,
                 render_rank: None,
                 target_id: target_id.to_string(),
                 path,
@@ -978,6 +980,8 @@ pub fn progression_candidates(images: &ProgressionImages, target_id: &str) -> Ve
         .images
         .iter()
         .map(|image| ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: None,
             target_id: target_id.to_string(),
             path: image.path.clone(),

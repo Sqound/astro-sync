@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useImport } from "../../components/ImportProvider";
 import { WizardFrame } from "../../components/WizardFrame";
@@ -10,6 +10,7 @@ import {
   type ImportState,
 } from "../../lib/importFlow";
 import type { ScreenId } from "../../lib/menu";
+import { AdjustScreen } from "../adjust/AdjustScreen";
 import { ImportDone } from "./ImportDone";
 import { ImportSummary, summaryHead } from "./ImportSummary";
 import { ImportTreatments, treatmentsLine } from "./ImportTreatments";
@@ -46,6 +47,14 @@ export function ImportScreen({
   const held = useRef(state);
   held.current = state;
   const { open, close } = imp;
+  // « Régler l'image » on an image of « Images à envoyer »: the page in
+  // place of the wizard, « Retour aux images à envoyer » brings it back.
+  const [adjusting, setAdjusting] = useState<{
+    path: string;
+    target: string;
+    render: string;
+  } | null>(null);
+  const [adjustKey, setAdjustKey] = useState(0);
 
   useEffect(() => {
     open();
@@ -66,6 +75,25 @@ export function ImportScreen({
     go: item.reopens ? () => imp.goTo(item.step) : undefined,
   }));
 
+  if (adjusting && state.step === 4) {
+    return (
+      <AdjustScreen
+        path={adjusting.path}
+        target={adjusting.target}
+        render={adjusting.render}
+        eyebrow={t("detect.title")}
+        back={{
+          label: t("adjust.back"),
+          onClick: () => setAdjusting(null),
+        }}
+        onSaved={() => {
+          setAdjustKey((n) => n + 1);
+          setAdjusting(null);
+        }}
+      />
+    );
+  }
+
   return (
     <WizardFrame
       className={`as-import as-import--step-${state.step}`}
@@ -79,7 +107,15 @@ export function ImportScreen({
       {state.step === 1 && <FoldersStep />}
       {state.step === 2 && <ReviewStep onOpen={onOpen} />}
       {state.step === 3 && <ImportTreatments />}
-      {state.step === 4 && <ImportSummary onOpenNight={onOpenNight} />}
+      {state.step === 4 && (
+        <ImportSummary
+          onOpenNight={onOpenNight}
+          adjustKey={adjustKey}
+          onAdjust={(row, render) =>
+            setAdjusting({ path: row.path, target: row.designation, render })
+          }
+        />
+      )}
       {state.step === 5 && <ImportDone onLeave={onLeave} />}
     </WizardFrame>
   );

@@ -9,6 +9,7 @@ import {
   isCommandError,
   localWorkCancel,
   localWorkCancelKind,
+  onDetectPhase,
   onLocalWork,
   sessionsDetect,
   sessionsOrganise,
@@ -22,7 +23,7 @@ import {
   type SessionScope,
   type WorkProgress,
 } from "../../lib/bridge";
-import { isCancelled } from "../../lib/detectFlow";
+import { isCancelled, isScanPhase, type ScanPhase } from "../../lib/detectFlow";
 import { withUtcOffsets } from "../../lib/detectPlaces";
 import { formatBytes, formatError } from "../../lib/format";
 import { formatMinutes } from "../../lib/written";
@@ -136,6 +137,7 @@ export function DetectSheet({
     total: 0,
     walked: 0,
     folder: null as string | null,
+    phase: "space" as ScanPhase,
   });
   const [mode, setMode] = useState<OrganiseMode>("leave-in-place");
   const [plans, setPlans] = useState<
@@ -171,7 +173,7 @@ export function DetectSheet({
     if (ran === key && attempt === 0) return;
     const mine = ++run.current;
     setPhase({ kind: "reading" });
-    setProgress({ read: 0, total: 0, walked: 0, folder: null });
+    setProgress({ read: 0, total: 0, walked: 0, folder: null, phase: "space" });
     setPlans({});
     let off: (() => void) | null = null;
     let gone = false;
@@ -195,6 +197,16 @@ export function DetectSheet({
       .then((unlisten) => {
         if (gone) unlisten();
         else off = unlisten;
+      })
+      .catch(() => undefined);
+    let offPhase: (() => void) | null = null;
+    void onDetectPhase((phase) => {
+      if (mine === run.current && isScanPhase(phase))
+        setProgress((current) => ({ ...current, phase }));
+    })
+      .then((unlisten) => {
+        if (gone) unlisten();
+        else offPhase = unlisten;
       })
       .catch(() => undefined);
     void (async () => {
@@ -234,6 +246,7 @@ export function DetectSheet({
     return () => {
       gone = true;
       off?.();
+      offPhase?.();
     };
     // `scope` is read through its key: a new object with the same content
     // does not read again.
@@ -604,6 +617,7 @@ export function DetectSheet({
               total={progress.total}
               walked={progress.walked}
               folder={progress.folder}
+              phase={progress.phase}
             />
             <div className="as-actions">
               <button

@@ -58,8 +58,8 @@ use astro_sync_core::working_folder::{
 };
 
 use crate::commands::{
-    LOCAL_WORK_EVENT, ending_sign_in_on_error, forced_log_offsets, local_work, local_work_of,
-    require_portal_and_token, run_blocking, service_wait,
+    ending_sign_in_on_error, forced_log_offsets, local_work, local_work_of,
+    require_portal_and_token, run_blocking, service_wait, LOCAL_WORK_EVENT,
 };
 use crate::error::CommandError;
 use crate::paths;
@@ -713,7 +713,9 @@ pub async fn night_view<R: Runtime>(
 /// « Récapitulatif »: what each image becomes, the service's answer before
 /// any byte, the four limits. `extra` adds the stacked renders and the
 /// progression images made for this sending; `include_tiff` is the box
-/// « Joindre aussi les TIFF » (the TIFF of a render written as PNG too).
+/// « Joindre aussi les TIFF » (the TIFF of a render written as PNG too);
+/// `keep_tiffs` holds the SHA-256 of the TIFF that stay beside the TIFF
+/// online instead of replacing it (« Conserver le TIFF existant »).
 /// Nothing is sent.
 #[tauri::command]
 pub async fn night_precheck<R: Runtime>(
@@ -724,6 +726,7 @@ pub async fn night_precheck<R: Runtime>(
     language: Option<String>,
     restack: Option<Vec<String>>,
     include_tiff: Option<bool>,
+    keep_tiffs: Option<Vec<String>>,
 ) -> Result<NightPrecheck, CommandError> {
     let (cancel, progress) = local_work(&app);
     run_blocking(move || {
@@ -746,23 +749,28 @@ pub async fn night_precheck<R: Runtime>(
                 &night_steps::precheck_candidates(&night.local, extra.clone(), restack, true),
                 include_tiff,
             );
+            // The linear files the box leaves out: they stay on this computer.
+            let linear_kept_here =
+                night_steps::linear_files_kept_here(&night.local, extra.clone(), restack, include_tiff);
             let candidates =
                 night_steps::precheck_candidates(&night.local, extra, restack, include_tiff);
-            let mut check =
-                night_steps::precheck_night(&transport, &portal_url, &token, &online, &candidates)?;
+            let keep_tiffs = keep_tiffs.unwrap_or_default();
+            let mut check = night_steps::precheck_night_keeping(
+                &transport,
+                &portal_url,
+                &token,
+                &online,
+                &candidates,
+                &|plan| keep_tiffs.contains(&plan.image.sha256),
+            )?;
             check.full_resolution = full_resolution;
+            check.linear_kept_here = linear_kept_here;
             // What Astro Sync proposes for each image, in the language
             // of the window (the saved one, else English).
             if let (NightLocation::Found { folder }, Some(detection)) =
                 (&night.location, &night.detection)
             {
-                let language = language
-                    .or_else(|| {
-                        gui_bridge::load_settings(&paths.settings)
-                            .ok()
-                            .and_then(|s| s.locale)
-                    })
-                    .unwrap_or_else(|| "en".to_string());
+                let language = language.unwrap_or_else(|| settings_locale(&paths));
                 let list = pipeline_list_of(&app, &paths, &language);
                 metadata::attach_proposals(
                     &mut check.plans,
@@ -1332,6 +1340,14 @@ pub async fn tools_verify<R: Runtime>(app: AppHandle<R>) -> Result<Vec<ToolRow>,
         Ok(tools::detect_tools(&context))
     })
     .await
+}
+
+/// The language of the window kept in the settings, else English.
+pub(crate) fn settings_locale(paths: &AppPaths) -> String {
+    gui_bridge::load_settings(&paths.settings)
+        .ok()
+        .and_then(|s| s.locale)
+        .unwrap_or_else(|| "en".to_string())
 }
 
 pub(crate) fn pipeline_list_of<R: Runtime>(

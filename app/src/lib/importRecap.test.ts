@@ -766,7 +766,7 @@ test("« Terminé »: a running upload draws the bar of the page « Envois », t
   const running = drawDone(uploading());
   assert.match(running, /role="progressbar"/);
   assert.match(running, /aria-valuenow="40"/);
-  assert.match(flat(running), /40,0 Mo sur 100,0 Mo · 5,0 Mo\/s/);
+  assert.match(flat(running), /38,1 Mo sur 95,4 Mo · 4,8 Mo\/s/);
   assert.doesNotMatch(flat(running), /Envoi en cours/);
   assert.match(
     flat(running),

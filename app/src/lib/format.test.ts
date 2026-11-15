@@ -41,15 +41,21 @@ test("a date is read in the computer's time zone, and never as the ISO text of t
   assert.equal(formatDateTime(null, "fr"), "—");
 });
 
-test("bytes carry one decimal in the decimal mark of the language: « 4,1 Go »", () => {
+test("bytes carry one decimal in the decimal mark of the language, in base 1 024 as the service and the portal count them: « 4,1 Go »", () => {
   const fr = createTranslator("fr");
   const en = createTranslator("en");
-  assert.equal(formatBytes(fr, 4_100_000_000, "fr"), "4,1 Go");
-  assert.equal(formatBytes(fr, 15_600_000_000, "fr"), "15,6 Go");
-  assert.equal(formatBytes(en, 4_100_000_000, "en"), "4.1 GB");
-  assert.equal(formatBytes(fr, 2_540_000, "fr"), "2,5 Mo");
-  assert.equal(formatBytes(fr, 1_500, "fr"), "1,5 ko");
+  const GIB = 1024 ** 3;
+  const MIB = 1024 ** 2;
+  assert.equal(formatBytes(fr, 4.1 * GIB, "fr"), "4,1 Go");
+  assert.equal(formatBytes(fr, 15.6 * GIB, "fr"), "15,6 Go");
+  assert.equal(formatBytes(en, 4.1 * GIB, "en"), "4.1 GB");
+  assert.equal(formatBytes(fr, 2.5 * MIB, "fr"), "2,5 Mo");
+  assert.equal(formatBytes(fr, 1_536, "fr"), "1,5 ko");
   assert.equal(formatBytes(fr, 512, "fr"), "512 octets");
+  // The quota of the space (150 × 1 024 × 1 024 bytes): the portal says
+  // « 150 MB », the window the same number.
+  assert.equal(formatBytes(en, 157_286_400, "en"), "150.0 MB");
+  assert.equal(formatBytes(en, 769_200, "en"), "751.2 KB");
 });
 
 test("a count picks the singular sentence where the language has one", () => {
@@ -92,7 +98,7 @@ test("a stacking that gave no image is said in words: by its reason, its script'
   );
   equal(
     said({ why: "failed", code: "registration_failed", message: "x" }),
-    "Siril a échoué pendant l’empilement.",
+    "Siril n’a pas pu aligner les poses entre elles : trop peu d’étoiles communes (nuages, mise au point, champ qui change).",
   );
   equal(
     said({
@@ -101,7 +107,7 @@ test("a stacking that gave no image is said in words: by its reason, its script'
       message: "x",
       logs: "/data/stacking-logs/M31_2026-10-07-20261012-140309",
     }),
-    "Siril a échoué pendant l’empilement. Le journal est dans /data/stacking-logs/M31_2026-10-07-20261012-140309.",
+    "Siril n’a pas pu aligner les poses entre elles : trop peu d’étoiles communes (nuages, mise au point, champ qui change). Le journal est dans /data/stacking-logs/M31_2026-10-07-20261012-140309.",
   );
   equal(
     said({ why: "failed", code: "render_failed", message: "x", logs: "/d/l" }),

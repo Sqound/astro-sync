@@ -51,6 +51,8 @@ fn storage() -> SpaceStorage {
 
 fn image(target: &str, path: &str, sha: char, size: u64, kind: ResultKind) -> ImageCandidate {
     ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         target_id: target.into(),
         path: PathBuf::from(path),
@@ -107,7 +109,8 @@ fn an_identical_image_stays_online_a_different_one_is_a_variant() {
                 image_id: "21111111-1111-4111-8111-111111111111".into()
             },
             Decision::Variant {
-                capture_id: M31_CAPTURE.into()
+                capture_id: M31_CAPTURE.into(),
+                replaces_sha256: None,
             },
             Decision::NewCapture,
         ]
@@ -160,7 +163,8 @@ fn the_stacking_and_a_final_file_on_one_target_make_one_variant() {
                 reason: NotSent::ReplacedByStacking
             },
             Decision::Variant {
-                capture_id: M31_CAPTURE.into()
+                capture_id: M31_CAPTURE.into(),
+                replaces_sha256: None,
             },
         ]
     );
@@ -301,6 +305,8 @@ fn a_render_with_a_finish_is_a_variant_of_the_plain_one() {
 
     let night = online("night_bare.json");
     let render = |path: &str, sha: char, retouch: Retouch| ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         render: Some("raw".to_string()),
         retouch,
@@ -348,6 +354,8 @@ fn the_natural_render_without_contrast_stays_the_main_image() {
 
     let night = online("night_bare.json");
     let render = |path: &str, sha: char, contrast: Contrast| ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         render: Some("raw".to_string()),
         contrast,
@@ -397,6 +405,8 @@ fn the_natural_render_without_contrast_stays_the_main_image() {
 fn the_natural_render_is_the_main_image_and_the_others_its_variants() {
     let night = online("night_bare.json");
     let render = |path: &str, sha: char, pipeline: &str| ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         render: Some(pipeline.to_string()),
         ..image("m31", path, sha, 40, ResultKind::Stacked)
@@ -472,6 +482,8 @@ fn the_first_render_asked_is_the_main_image_unless_one_is_named() {
     let night = online("night_bare.json");
     let render =
         |path: &str, sha: char, pipeline: &str, rank: u32, contrast: Contrast| ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: Some(rank),
             render: Some(pipeline.to_string()),
             contrast,
@@ -695,11 +707,15 @@ fn a_render_after_the_first_is_sent_as_a_variant_of_the_capture_it_created() {
     let night = online("night_bare.json");
     let candidates = [
         ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: None,
             sha256: "e".repeat(64),
             ..image("m31", "", 'e', 16, ResultKind::Stacked)
         },
         ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: None,
             sha256: "f".repeat(64),
             ..image("m31", "", 'f', 16, ResultKind::Stacked)
@@ -764,6 +780,8 @@ fn a_render_after_the_first_is_sent_as_a_variant_of_the_capture_it_created() {
 /// A progression image of `target`: `frames` light frames stacked.
 fn milestone(target: &str, path: PathBuf, sha: char, frames: u64) -> ImageCandidate {
     ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         path,
         frame_count: Some(frames),
@@ -916,6 +934,8 @@ fn the_milestones_leave_after_their_capture_with_their_role_and_frames() {
             90,
         ),
         ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: None,
             path: source.join("IC 1805/stacked/raw.tif"),
             ..image("ic1805", "", 'e', 16, ResultKind::Stacked)
@@ -952,4 +972,620 @@ fn the_milestones_leave_after_their_capture_with_their_role_and_frames() {
         assert_eq!(body["source"], "astro-sync");
     }
     let _ = std::fs::remove_dir_all(&source);
+}
+
+/* ----------------------- The linear file: a file, not an image ------------- */
+
+/// `night_in_progress.json` with a linear file (digest `l…`) attached to the
+/// capture of M31 (`attachments[]` of the capture, never among its images).
+fn night_with_a_linear_file() -> NightOnline {
+    let mut value: serde_json::Value =
+        serde_json::from_str(&fixture("night_in_progress.json")).unwrap();
+    value["targets"][1]["captures"][0]["attachments"] = serde_json::json!([{
+        "id": "att-1",
+        "role": "linear",
+        "sha256": "1".repeat(64),
+        "byteSize": 19_000_000,
+        "originalName": "M31_linear.tif",
+        "createdAt": "2026-10-08T09:30:00.000Z"
+    }]);
+    schema_check::assert_valid("session-online.schema.json", "", &value);
+    serde_json::from_value(value).unwrap()
+}
+
+fn linear(target: &str, path: &str, sha: char) -> ImageCandidate {
+    ImageCandidate {
+        series_seconds: None,
+        series: None,
+        render: Some("linear".into()),
+        ..image(target, path, sha, 19, ResultKind::Linear)
+    }
+}
+
+#[test]
+fn the_linear_file_is_attached_to_the_capture_of_its_image_and_takes_no_variant() {
+    let night = online("night_in_progress.json");
+    // A space that keeps no variant still takes the file; a target with
+    // nothing online gets its capture from the image, the file follows it.
+    let plans = plan_images(
+        &night,
+        &[
+            image(
+                "ic1396",
+                "/n/IC 1396/stacked/raw.png",
+                'd',
+                20,
+                ResultKind::Stacked,
+            ),
+            linear("ic1396", "/n/IC 1396/stacked/IC1396_linear.tif", 'e'),
+            // M31 has a capture online: the file joins it, no image sent.
+            linear("m31", "/n/M31/stacked/M31_linear.tif", 'f'),
+        ],
+        0,
+    );
+    assert_eq!(
+        decisions(&plans),
+        [
+            Decision::NewCapture,
+            Decision::FileOfNew {
+                first_sha256: "d".repeat(64)
+            },
+            Decision::File {
+                capture_id: M31_CAPTURE.into()
+            },
+        ]
+    );
+    assert!(plans[1].decision.sends() && plans[1].decision.is_file());
+    let space = SpaceStorage {
+        variant_limit: 0,
+        ..storage()
+    };
+    let check = check_quotas(&space, &night, &plans);
+    assert!(check.allowed, "{:?}", check.findings);
+    assert_eq!(check.new_captures, 1, "a file never creates a capture");
+    assert_eq!(check.to_send_files, 3);
+    assert_eq!(check.to_send_bytes, 20 + 19 + 19);
+    assert_eq!(check.full_resolution_bytes, 19 + 19);
+}
+
+#[test]
+fn a_linear_file_with_nothing_to_join_stays_on_the_computer() {
+    let night = online("night_in_progress.json");
+    let plans = plan_images(
+        &night,
+        &[linear(
+            "ic1396",
+            "/n/IC 1396/stacked/IC1396_linear.tif",
+            'e',
+        )],
+        12,
+    );
+    assert_eq!(
+        decisions(&plans),
+        [Decision::NotSent {
+            reason: NotSent::NoCaptureForFile
+        }]
+    );
+    assert!(!plans[0].decision.sends());
+}
+
+#[test]
+fn bytes_the_space_holds_as_a_file_are_online_whatever_the_sending_declares() {
+    let night = night_with_a_linear_file();
+    let held = Decision::FileOnline {
+        capture_id: M31_CAPTURE.into(),
+        attachment_id: "att-1".into(),
+    };
+    let plans = plan_images(
+        &night,
+        &[
+            linear("m31", "/n/M31/stacked/M31_linear.tif", '1'),
+            // The same bytes declared as the person's final image: still the file.
+            image("m31", "/n/M31/final/m31.tif", '1', 19, ResultKind::Final),
+        ],
+        12,
+    );
+    assert_eq!(decisions(&plans), [held.clone(), held]);
+    assert!(!plans[0].decision.sends());
+}
+
+#[test]
+fn the_service_answers_present_as_a_file_without_an_image_id() {
+    let present_file = |sha: &str| {
+        let numbers = r#"{"usedBytes":1,"quotaBytes":100,"maxFileBytes":50,"captureCount":2,"captureCountLimit":3,"variantLimit":0}"#;
+        let body = if sha == "e".repeat(64) {
+            format!(
+                r#"{{"result":"present","captureId":"{M31_CAPTURE}","attachmentId":"att-9","storage":{numbers}}}"#
+            )
+        } else {
+            format!(r#"{{"result":"accepted","adds":"attachment","storage":{numbers}}}"#)
+        };
+        schema_check::assert_valid(
+            "upload-check.schema.json",
+            "",
+            &serde_json::from_str(&body).unwrap(),
+        );
+        body
+    };
+    let storage_json = fixture("space_storage.json");
+    let service = FakeService::start(Wake::Instant, move |request| {
+        match (request.method.as_str(), request.path.as_str()) {
+            ("GET", "/api/v1/space/storage") => Reply::Json(200, storage_json.clone()),
+            ("POST", "/api/v1/uploads/check") => {
+                let body = request.json();
+                Reply::Json(200, present_file(body["sha256"].as_str().unwrap()))
+            }
+            _ => error_reply(404, "not_found", "no such route"),
+        }
+    });
+    let transport = HttpPortalGuiTransport::with_options(fast(), WaitHooks::silent()).unwrap();
+    let night = online("night_in_progress.json");
+    let mut plans = plan_images(
+        &night,
+        &[
+            linear("m31", "/n/M31/stacked/a_linear.tif", 'e'),
+            linear("m31", "/n/M31/stacked/b_linear.tif", 'g'),
+        ],
+        0,
+    );
+    let findings = check_with_service(
+        &transport,
+        &service.base_url(),
+        "token",
+        &night.session_id,
+        &mut plans,
+    )
+    .unwrap();
+    assert!(findings.is_empty());
+    assert_eq!(
+        plans[0].decision,
+        Decision::FileOnline {
+            capture_id: M31_CAPTURE.into(),
+            attachment_id: "att-9".into()
+        }
+    );
+    // `accepted` as a file: still to be sent, as a file.
+    assert_eq!(
+        plans[1].decision,
+        Decision::File {
+            capture_id: M31_CAPTURE.into()
+        }
+    );
+    // The check declares the role and the capture, and nothing of an image.
+    let checks: Vec<serde_json::Value> = service
+        .requests()
+        .into_iter()
+        .filter(|r| r.path == "/api/v1/uploads/check")
+        .map(|r| r.json())
+        .collect();
+    assert_eq!(checks[0]["role"], "linear");
+    assert_eq!(checks[0]["captureId"], M31_CAPTURE);
+    assert_eq!(checks[0].get("progressionFrames"), None);
+    assert_eq!(checks[0].get("placement"), None);
+}
+
+#[test]
+fn a_file_waiting_for_the_capture_of_an_image_found_online_joins_that_capture() {
+    let night = online("night_bare.json");
+    let mut plans = plan_images(
+        &night,
+        &[
+            image(
+                "m31",
+                "/n/M31/stacked/raw.png",
+                'a',
+                20,
+                ResultKind::Stacked,
+            ),
+            linear("m31", "/n/M31/stacked/M31_linear.tif", 'e'),
+        ],
+        12,
+    );
+    assert!(matches!(plans[1].decision, Decision::FileOfNew { .. }));
+    // The service says the image is already online, on a capture of its own:
+    // the file joins that capture, it does not wait for a new one.
+    plans[0].decision = Decision::AlreadyOnline {
+        capture_id: "capture-9".into(),
+        image_id: "img-9".into(),
+    };
+    rebind_progressions(&mut plans);
+    assert_eq!(
+        plans[1].decision,
+        Decision::File {
+            capture_id: "capture-9".into()
+        }
+    );
+}
+
+#[test]
+fn the_linear_file_leaves_after_its_capture_with_its_role_and_nothing_else() {
+    let source = std::env::temp_dir().join(format!("astro-sync-linear-{}", std::process::id()));
+    std::fs::create_dir_all(source.join("M31/stacked")).unwrap();
+    std::fs::write(source.join("M31/stacked/raw.tif"), vec![1_u8; 16]).unwrap();
+    std::fs::write(source.join("M31/stacked/M31_linear.tif"), vec![2_u8; 16]).unwrap();
+    let creates = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
+    let seen = Arc::clone(&creates);
+    let service = FakeService::start(Wake::Instant, move |request| {
+        if request.method == "POST" && request.path == "/api/v1/uploads" {
+            seen.lock().unwrap().push(request.json());
+            return Reply::Json(
+                200,
+                r#"{"uploadId":"u-1","offset":16,"byteSize":16,"chunkSize":8388608,"completed":true,"captureId":"capture-new"}"#
+                    .to_string(),
+            );
+        }
+        error_reply(404, "not_found", "no such route")
+    });
+    let night = online("night_bare.json");
+    let mut candidates = vec![
+        // The file first in the list: the queue still sends it after the image.
+        linear("m31", "", '2'),
+        image("m31", "", '1', 16, ResultKind::Stacked),
+    ];
+    candidates[0].path = source.join("M31/stacked/M31_linear.tif");
+    candidates[1].path = source.join("M31/stacked/raw.tif");
+    let mut plans = plan_images(&night, &candidates, 0);
+    // What Astro Sync would propose for an image must never leave with a file.
+    plans[0].metadata = Some(astro_sync_core::metadata::Proposals {
+        variant_generated_title: Some(Default::default()),
+        ..Default::default()
+    });
+    let check = check_quotas(&storage(), &night, &plans);
+    assert!(check.allowed, "{:?}", check.findings);
+    let queue = UploadQueue::open(&source.join("queue.sqlite")).unwrap();
+    enqueue_checked(&queue, &night.session_id, &plans, &check)
+        .unwrap()
+        .unwrap();
+    let transport =
+        HttpUploadTransport::with_options(service.base_url(), fast(), WaitHooks::silent()).unwrap();
+    // The file before its image: held, nothing sent, with the code of a file.
+    let file = queue.find_by_sha256(&"2".repeat(64)).unwrap().unwrap();
+    assert_eq!(file.kind, ResultKind::Linear);
+    let error = upload_entry(
+        &transport,
+        &queue,
+        "t",
+        &file,
+        &UploadTarget::default(),
+        |_, _| {},
+    )
+    .unwrap_err();
+    assert_eq!(error.code(), "file_capture_pending");
+    assert_eq!(creates.lock().unwrap().len(), 0);
+    queue.release_held().unwrap();
+    while let Some(entry) = queue.next_pending().unwrap() {
+        upload_entry(
+            &transport,
+            &queue,
+            "t",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+    }
+    let bodies = creates.lock().unwrap().clone();
+    assert_eq!(bodies.len(), 2);
+    assert_eq!(bodies[0]["originalName"], "raw.tif");
+    assert_eq!(bodies[0].get("role"), None);
+    assert_eq!(bodies[1]["originalName"], "M31_linear.tif");
+    assert_eq!(bodies[1]["captureId"], "capture-new");
+    assert_eq!(bodies[1]["role"], "linear");
+    assert_eq!(bodies[1]["source"], "stacking");
+    // No placement, no frame count, no plan field, no proposal.
+    for key in [
+        "placement",
+        "progressionFrames",
+        "projectId",
+        "combinedNightIds",
+        "totalsByFilter",
+        "planRender",
+        "metadataSource",
+        "variantGeneratedTitle",
+        "variantGeneratedDescription",
+        "variantProcessing",
+        "imageQuality",
+        "planId",
+    ] {
+        assert_eq!(bodies[1].get(key), None, "{key}");
+    }
+    let _ = std::fs::remove_dir_all(&source);
+}
+
+/// Two series of poses of one target (6 min of 10 s frames, 3 h 34 of 30 s
+/// ones), each render written with its finish: the main image comes from the
+/// longest series, whatever the file names say ("10s" sorts before "30s").
+#[test]
+fn the_main_image_of_a_target_comes_from_its_longest_series() {
+    let night = online("night_bare.json");
+    let mut candidates = Vec::new();
+    for (n, (family, seconds)) in [("IRCUT_10s_g200", 360), ("IRCUT_30s_g200", 12_870)]
+        .into_iter()
+        .enumerate()
+    {
+        for (rank, pipeline) in ["raw", "hoo"].into_iter().enumerate() {
+            let sha = char::from(b'a' + u8::try_from(n * 2 + rank).unwrap());
+            let mut c = image(
+                "t-m45",
+                &format!("/n/M45/stacked/M45_2026-10-10_{family}_{pipeline}_strong.png"),
+                sha,
+                10,
+                ResultKind::Stacked,
+            );
+            c.render = Some(pipeline.into());
+            c.render_rank = Some(u32::try_from(rank).unwrap());
+            c.contrast = astro_sync_core::stacking::Contrast::Strong;
+            c.series_seconds = Some(seconds);
+            candidates.push(c);
+        }
+    }
+    let plans = plan_images(&night, &candidates, 100);
+    let main = plans
+        .iter()
+        .find(|p| p.decision == Decision::NewCapture)
+        .expect("a new capture");
+    assert!(
+        main.image
+            .path
+            .ends_with("M45_2026-10-10_IRCUT_30s_g200_raw_strong.png"),
+        "{:?}",
+        main.image.path
+    );
+    // Without the series known, the order of before: the first file.
+    for c in &mut candidates {
+        c.series_seconds = None;
+    }
+    let plans = plan_images(&night, &candidates, 100);
+    let main = plans
+        .iter()
+        .find(|p| p.decision == Decision::NewCapture)
+        .unwrap();
+    assert!(main.image.path.to_string_lossy().contains("10s_g200_raw"));
+}
+
+/// The two series of M45 (CAPTURES-SERIES-1), with renders of each.
+fn two_series_of_m45() -> Vec<ImageCandidate> {
+    let mut candidates = Vec::new();
+    for (n, (family, seconds)) in [("IRCUT_10s_g200", 360.0), ("IRCUT_30s_g200", 12_870.0)]
+        .into_iter()
+        .enumerate()
+    {
+        for (rank, pipeline) in ["raw", "hoo"].into_iter().enumerate() {
+            let sha = char::from(b'a' + u8::try_from(n * 2 + rank).unwrap());
+            let mut c = image(
+                "t-m45",
+                &format!("/n/M45/stacked/{family}_{pipeline}_strong.png"),
+                sha,
+                10,
+                ResultKind::Stacked,
+            );
+            c.render = Some(pipeline.into());
+            c.render_rank = Some(u32::try_from(rank).unwrap());
+            c.series_seconds = Some(seconds as u64);
+            c.series = astro_sync_core::series::Series::from_label(family, Some(seconds));
+            candidates.push(c);
+        }
+    }
+    candidates
+}
+
+/// One capture per series: each series of a target opens its own capture,
+/// its other renders are variants of it, never of the other series.
+#[test]
+fn each_series_of_a_target_makes_its_own_capture() {
+    let night = online("night_bare.json");
+    let candidates = two_series_of_m45();
+    let plans = plan_images(&night, &candidates, 100);
+    let by_path = |end: &str| {
+        plans
+            .iter()
+            .find(|p| p.image.path.to_string_lossy().ends_with(end))
+            .unwrap()
+            .decision
+            .clone()
+    };
+    assert_eq!(
+        by_path("IRCUT_30s_g200_raw_strong.png"),
+        Decision::NewCapture
+    );
+    assert_eq!(
+        by_path("IRCUT_10s_g200_raw_strong.png"),
+        Decision::NewCapture
+    );
+    assert_eq!(
+        by_path("IRCUT_30s_g200_hoo_strong.png"),
+        Decision::VariantOfNew {
+            first_sha256: "c".repeat(64)
+        }
+    );
+    assert_eq!(
+        by_path("IRCUT_10s_g200_hoo_strong.png"),
+        Decision::VariantOfNew {
+            first_sha256: "a".repeat(64)
+        }
+    );
+    // Each image leaves with its series, and the check says it too.
+    let main = plans
+        .iter()
+        .find(|p| {
+            p.image
+                .path
+                .to_string_lossy()
+                .ends_with("30s_g200_raw_strong.png")
+        })
+        .unwrap();
+    let body = serde_json::to_value(astro_sync_core::precheck::metadata_of(main, "s-1")).unwrap();
+    assert_eq!(body["series"]["exposureSeconds"], 30.0);
+    assert_eq!(body["series"]["frames"], 429);
+    schema_check::assert_valid("capture.schema.json", "uploadMetadata", &body);
+    // Without a series known: one capture for the target, as before.
+    let mut before = candidates.clone();
+    for c in &mut before {
+        c.series = None;
+    }
+    let plans = plan_images(&night, &before, 100);
+    assert_eq!(
+        plans
+            .iter()
+            .filter(|p| p.decision == Decision::NewCapture)
+            .count(),
+        1
+    );
+}
+
+/// What is online decides as the service does: the capture of the same
+/// series takes its images; a capture sent before (no series) whose main
+/// image names the 30 s family takes the 30 s series; the 10 s series opens
+/// a capture of its own.
+#[test]
+fn an_online_capture_takes_the_images_of_its_series_only() {
+    let mut night = online("night_bare.json");
+    let capture: astro_sync_core::night_online::OnlineCapture =
+        serde_json::from_value(serde_json::json!({
+            "id": "44444444-4444-4444-8444-444444444444",
+            "targetIds": ["t-m45"],
+            "source": "stacking",
+            "stage": "draft",
+            "visibility": "private",
+            "uploaded": true,
+            "createdAt": "2026-10-11T06:00:00.000Z",
+            "mainImage": {
+                "id": "55555555-5555-4555-8555-555555555555",
+                "main": true,
+                "sha256": "f".repeat(64),
+                "byteSize": 10,
+                "originalName": "IRCUT_30s_g200_raw_strong.png",
+                "source": "stacking",
+                "createdAt": "2026-10-11T06:00:00.000Z",
+                "skySolution": "missing"
+            },
+            "imageCount": 1,
+            "images": []
+        }))
+        .unwrap();
+    night
+        .targets
+        .push(astro_sync_core::night_online::OnlineTarget {
+            target_id: Some("t-m45".into()),
+            name: Some("M45".into()),
+            planned: true,
+            captures: vec![capture],
+        });
+    let plans = plan_images(&night, &two_series_of_m45(), 100);
+    for plan in &plans {
+        let path = plan.image.path.to_string_lossy();
+        if path.contains("30s") {
+            assert_eq!(
+                plan.decision,
+                Decision::Variant {
+                    capture_id: "44444444-4444-4444-8444-444444444444".into(),
+                    replaces_sha256: None,
+                },
+                "{path}"
+            );
+        } else if path.ends_with("10s_g200_raw_strong.png") {
+            assert_eq!(plan.decision, Decision::NewCapture);
+        }
+    }
+}
+
+/// The TIFF of an image set that takes the place of the render's TIFF online
+/// (`replacesSha256`): a service that knows the field answers which variant it
+/// would replace; one of before refuses the field, and the TIFF is checked
+/// again without it, to be added as before -- the summary never fails for it.
+#[test]
+fn the_check_of_a_replacing_tiff_falls_back_on_a_service_that_does_not_know_it() {
+    let numbers = r#"{"usedBytes":1,"quotaBytes":100,"maxFileBytes":50,"captureCount":2,"captureCountLimit":3,"variantLimit":12}"#;
+    let night = online("night_in_progress.json");
+    let replacing = |plans: &mut Vec<astro_sync_core::precheck::ImagePlan>| {
+        plans[0].decision = Decision::Variant {
+            capture_id: M31_CAPTURE.into(),
+            replaces_sha256: Some("f".repeat(64)),
+        };
+    };
+    for knows in [true, false] {
+        let service = FakeService::start(Wake::Instant, move |request| {
+            let body = request.json();
+            match (request.method.as_str(), request.path.as_str()) {
+                ("POST", "/api/v1/uploads/check") if body.get("replacesSha256").is_some() => {
+                    if knows {
+                        let answer = format!(
+                            r#"{{"result":"accepted","adds":"variant","replacesImageId":"img-old-tiff","storage":{numbers}}}"#
+                        );
+                        schema_check::assert_valid(
+                            "upload-check.schema.json",
+                            "",
+                            &serde_json::from_str(&answer).unwrap(),
+                        );
+                        Reply::Json(200, answer)
+                    } else {
+                        Reply::Json(
+                            400,
+                            serde_json::json!({ "error": {
+                                "code": "invalid_request",
+                                "message": "Unexpected metadata property \"replacesSha256\"."
+                            }})
+                            .to_string(),
+                        )
+                    }
+                }
+                ("POST", "/api/v1/uploads/check") => Reply::Json(
+                    200,
+                    format!(r#"{{"result":"accepted","adds":"variant","storage":{numbers}}}"#),
+                ),
+                _ => error_reply(404, "not_found", "no such route"),
+            }
+        });
+        let transport = HttpPortalGuiTransport::with_options(fast(), WaitHooks::silent()).unwrap();
+        let mut plans = plan_images(
+            &night,
+            &[image(
+                "m31",
+                "/n/M31/stacked/adjusted/m31_natural_adjusted.tif",
+                'c',
+                30,
+                ResultKind::Stacked,
+            )],
+            12,
+        );
+        replacing(&mut plans);
+        let findings = check_with_service(
+            &transport,
+            &service.base_url(),
+            "token",
+            &night.session_id,
+            &mut plans,
+        )
+        .unwrap();
+        assert!(findings.is_empty(), "{knows}: {findings:?}");
+        let checks: Vec<serde_json::Value> = service
+            .requests()
+            .into_iter()
+            .filter(|r| r.path == "/api/v1/uploads/check")
+            .map(|r| r.json())
+            .collect();
+        assert_eq!(checks[0]["replacesSha256"], "f".repeat(64));
+        if knows {
+            assert_eq!(checks.len(), 1);
+            assert!(matches!(
+                &plans[0].decision,
+                Decision::Variant {
+                    replaces_sha256: Some(_),
+                    ..
+                }
+            ));
+        } else {
+            // Checked again without it, and kept beside: the queue sends it as
+            // a variant, as before the field.
+            assert_eq!(checks.len(), 2);
+            assert!(checks[1].get("replacesSha256").is_none());
+            assert_eq!(
+                plans[0].decision,
+                Decision::Variant {
+                    capture_id: M31_CAPTURE.into(),
+                    replaces_sha256: None,
+                }
+            );
+        }
+    }
 }

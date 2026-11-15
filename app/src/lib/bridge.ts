@@ -10,6 +10,7 @@
 // the plain enums, `kebab-case`/`snake_case` string variants, called out
 // per type below).
 
+import type { EngineNotice } from "./engineNotice";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -24,6 +25,7 @@ import { SERVICE_EVENT, type ServiceEvent } from "./serviceWait";
 import { planFromCore, planToCore, type CorePlan } from "./imagePlans";
 import { contrastToCore, type Contrast } from "./contrast";
 import type { Colour, SoftStars } from "./finish";
+import type { AdjustValues } from "./imageAdjust";
 
 /** Every command's `Err` payload (`app/src-tauri/src/error.rs`). `code` is
  * the stable key the UI looks up in `errors.<code>` of the active locale;
@@ -247,6 +249,20 @@ export function spaceVerifyCode(
 /** Asks the service who this computer is and remembers the answer: one
  * short, silent attempt, so what is on disk answers when the service does
  * not. */
+/** `commands::SpaceCheck`: the connection once the service was asked. */
+export interface SpaceCheck {
+  status: SpaceStatus;
+  /** The service answered; `false`: it could not be reached. */
+  answered: boolean;
+}
+
+/** « Accueil » asks the service, patiently (the banner says a service that
+ * is starting), before it says « Connecté »: a space deleted while the
+ * service slept ends the sign-in here (the page is told). */
+export function spaceCheck(): Promise<SpaceCheck> {
+  return invoke<SpaceCheck>("space_check");
+}
+
 export function spaceRefresh(): Promise<SpaceStatus> {
   return invoke<SpaceStatus>("space_refresh");
 }
@@ -564,8 +580,9 @@ export interface QueueEntry {
   createdAt: string;
   updatedAt: string;
   /** Only results enter the queue; `plan`: the image of a multi-night plan,
-   * a capture of the plan. */
-  kind: "final" | "stacked" | "progression" | "plan";
+   * a capture of the plan; `linear`: the linear file ("Sans traitement"), a
+   * file attached to a capture, never an image. */
+  kind: "final" | "stacked" | "progression" | "plan" | "linear";
   /** What the upload is attributed to: the night, its targets, the capture
    * it is a variant of. */
   target: {
@@ -642,6 +659,18 @@ export interface EnqueueOutcome {
   /** Among them, the files already sent to the linked space: the page says
    * « Déjà envoyé le … » at once instead of « En file d'envoi ». */
   alreadySent?: AlreadySent[];
+  /** The renders set in « Régler l'image » that leave as their image set:
+   * the window follows the file that leaves (absent from an older core). */
+  sentInstead?: SentInstead[];
+}
+
+/** `upload_queue::SentInstead`: a render given to the queue that leaves as
+ * its image set. */
+export interface SentInstead {
+  renderSha256: string;
+  sha256: string;
+  path: string;
+  size: number;
 }
 
 /** `upload_queue::AlreadySent`: a file enqueued again that the linked space
@@ -1637,7 +1666,7 @@ export interface ImageCandidate {
   path: string;
   sha256: string;
   size: number;
-  kind: "final" | "stacked" | "progression";
+  kind: "final" | "stacked" | "progression" | "linear";
   render: string | null;
   /** A progression image: the light frames its milestone stacks. */
   frameCount?: number | null;
@@ -1645,6 +1674,9 @@ export interface ImageCandidate {
    * wrote it as PNG and TIFF (`render_files`): a TIFF with a twin is the
    * render in full resolution, sent only when the TIFF are joined. */
   twinSha256?: string | null;
+  /** The series of poses a render was stacked from (`crate::series`): the
+   * service keeps one capture per session, target and series. */
+  series?: import("./seriesOfPoses.ts").SeriesOfPoses | null;
 }
 
 /** `precheck::Decision` (tag `decision`). A progression image is the
@@ -1653,10 +1685,24 @@ export interface ImageCandidate {
 export type Decision =
   | { decision: "already_online"; captureId: string; imageId: string }
   | { decision: "new_capture" }
-  | { decision: "variant"; captureId: string }
+  /** `replacesSha256`: the variant of that capture this image takes the
+   * place of (the TIFF of an image set in « Régler l'image », in place of the
+   * render's TIFF online); absent, it is added. Passed back as it came: the
+   * core sends it, and adds the image beside when the service does not know
+   * it. */
+  | { decision: "variant"; captureId: string; replacesSha256?: string }
+  /** An image set in « Régler l'image » taking the place of the main image
+   * `imageId` online (its render, sent before): no new capture, no variant. */
+  | { decision: "replace"; captureId: string; imageId: string }
   | { decision: "variant_of_new"; firstSha256: string }
   | { decision: "progression"; captureId: string }
   | { decision: "progression_of_new"; firstSha256: string }
+  /** The linear file ("Sans traitement"): a file attached to the capture
+   * online (`file`) or to the one this sending creates (`file_of_new`), never
+   * an image; or already held by the space as a file (`file_online`). */
+  | { decision: "file"; captureId: string }
+  | { decision: "file_of_new"; firstSha256: string }
+  | { decision: "file_online"; captureId: string; attachmentId: string }
   | {
       decision: "not_sent";
       reason:
@@ -1665,7 +1711,11 @@ export type Decision =
         | "one_render_only"
         | "other_final_image"
         | "no_capture_for_progression"
-        | "too_large_for_space";
+        | "no_capture_for_file"
+        | "too_large_for_space"
+        /** An image set whose render is online as a variant: a device
+         * replaces only a main image, so it stays on this computer. */
+        | "adjusted_variant_online";
     };
 
 /** `metadata::Proposals`: what Astro Sync proposes for an image and its
@@ -1778,6 +1828,9 @@ export interface NightPrecheck {
    * TIFF (pleine résolution, ≈ 47 Mo chacun) »): joined or not, how many,
    * their weight. */
   fullResolution?: { joined: boolean; count: number; bytes: number };
+  /** The linear files the box leaves out: they stay on this computer
+   * (« Ne quitte jamais cet ordinateur »). Empty when the TIFF are joined. */
+  linearKeptHere?: ImageCandidate[];
 }
 
 export function nightPrecheck(
@@ -1792,6 +1845,10 @@ export function nightPrecheck(
   /** « Joindre aussi les TIFF »: the TIFF of the renders written as PNG too
    * leave beside them; absent: « Envoi des rendus » of Réglages. */
   includeTiff?: boolean,
+  /** « Conserver le TIFF existant »: the SHA-256 of the TIFF that stay
+   * beside the TIFF online instead of replacing it; the limits are checked
+   * with them added. */
+  keepTiffs?: string[],
 ): Promise<NightPrecheck> {
   return invoke<NightPrecheck>("night_precheck", {
     sessionId,
@@ -1800,6 +1857,7 @@ export function nightPrecheck(
     language: language ?? null,
     restack: restack ?? [],
     includeTiff: includeTiff ?? null,
+    keepTiffs: keepTiffs?.length ? keepTiffs : null,
   }).then((check) => ({
     ...check,
     // The core flattens each decision into its plan.
@@ -1990,6 +2048,9 @@ export interface ToolRow {
   /** The Python environment (and the stacking pipeline): an installation
    * that did not finish (« Reprendre l'installation »). */
   interrupted?: boolean;
+  /** The Python environment (and the stacking pipeline) found but
+   * outdated: what installing redoes (`python_env::EnvRedo`). */
+  redo?: EnvRedo;
   /** Astro Sync can make it here (a Python in the range was found). */
   installable?: boolean;
   /** What it waits for: `python` (none in the range), `siril`,
@@ -2215,8 +2276,14 @@ export interface SectionDependency {
   bytes: number | null;
   installable: boolean;
   interrupted: boolean;
+  redo?: EnvRedo;
   blockedBy: string[];
 }
+
+/** `python_env::EnvRedo`: why an environment that is here is outdated --
+ * never checked by this Astro Sync (an earlier one made it), the packages
+ * of another version, a Python out of the range. */
+export type EnvRedo = "unchecked" | "otherPins" | "otherPython";
 
 /** `pipelines::PipelineSection`. */
 export interface PipelineSection {
@@ -2292,7 +2359,12 @@ export interface RenderFile {
 /** `commands_night::StackRun`. */
 export interface StackRun {
   /** `stacking::StackOutcome`, the fields the window reads. */
-  outcome?: { renders: StackedRender[] };
+  outcome?: {
+    renders: StackedRender[];
+    integrations?: IntegrationMaster[];
+    /** The renders made by another engine than the one asked for. */
+    engineNotices?: EngineNotice[];
+  };
   candidates: ImageCandidate[];
 }
 
@@ -3916,6 +3988,15 @@ export interface FoundSoFar {
 
 export const DETECT_FOUND_EVENT = "detect-found";
 
+/** `commands_detect::DETECT_PHASE_EVENT`: what the detection is doing. */
+export const DETECT_PHASE_EVENT = "detect-phase";
+
+export function onDetectPhase(
+  handler: (phase: string) => void,
+): Promise<UnlistenFn> {
+  return listen<string>(DETECT_PHASE_EVENT, (event) => handler(event.payload));
+}
+
 export function onDetectFound(
   handler: (found: FoundSoFar) => void,
 ): Promise<UnlistenFn> {
@@ -4091,4 +4172,145 @@ export function resultFileReveal(path: string): Promise<void> {
 export async function resultFilePreview(path: string): Promise<Blob | null> {
   const bytes = await invoke<ArrayBuffer>("result_file_preview", { path });
   return bytes.byteLength > 0 ? new Blob([bytes], { type: "image/png" }) : null;
+}
+
+/* ---------------------------- « Régler l'image » --------------------------- */
+
+/** The image set of a render: its values, where it is, what leaves. */
+export interface AdjustState {
+  values: AdjustValues;
+  path: string;
+  sha256: string;
+  size: number;
+  /** The image set's TIFF (16 bits), which leaves in place of the render's
+   * TIFF when the TIFF are joined; absent for a render without a TIFF. */
+  tiff?: { path: string; sha256: string; size: number } | null;
+}
+
+/** Where the star layer stands: separated, to separate, StarNet2 not
+ * installed, the image under 512 pixels. */
+export type AdjustStars = "ready" | "todo" | "missing" | "small";
+
+export interface AdjustOpen {
+  width: number;
+  height: number;
+  previewWidth: number;
+  previewHeight: number;
+  size: number;
+  stars: AdjustStars;
+  state: AdjustState | null;
+  seconds: number;
+}
+
+/** Opens « Régler l'image » on a PNG render: the preview prepared (once per
+ * render), the star layer's state, the image set already saved. */
+export function imageAdjustOpen(path: string): Promise<AdjustOpen> {
+  return invoke<AdjustOpen>("image_adjust_open", { path });
+}
+
+/** One picture of the preview (`base`, `mask`, `stars`) as PNG bytes. */
+export async function imageAdjustLayer(
+  path: string,
+  layer: "base" | "mask" | "stars",
+): Promise<Blob> {
+  const bytes = await invoke<ArrayBuffer>("image_adjust_layer", {
+    path,
+    layer,
+  });
+  return new Blob([bytes], { type: "image/png" });
+}
+
+/** The star layer separated by StarNet2, once per render. */
+export function imageAdjustStars(
+  path: string,
+): Promise<{ stars: AdjustStars; seconds: number }> {
+  return invoke("image_adjust_stars", { path });
+}
+
+/** The preview smoothed at `amount` % (≈ 1 s), as PNG bytes. */
+export async function imageAdjustSmooth(
+  path: string,
+  amount: number,
+): Promise<Blob> {
+  const bytes = await invoke<ArrayBuffer>("image_adjust_smooth", {
+    path,
+    amount,
+  });
+  return new Blob([bytes], { type: "image/png" });
+}
+
+/** « Enregistrer l'image réglée »: the whole image, beside the render. */
+export function imageAdjustSave(
+  path: string,
+  values: AdjustValues,
+): Promise<AdjustState> {
+  return invoke<AdjustState>("image_adjust_save", { path, values });
+}
+
+/** The image set of a render, when it has a valid one. */
+export function imageAdjustState(path: string): Promise<AdjustState | null> {
+  return invoke<AdjustState | null>("image_adjust_state", { path });
+}
+
+/** « Revenir au rendu d'origine ». */
+export function imageAdjustRevert(path: string): Promise<void> {
+  return invoke<void>("image_adjust_revert", { path });
+}
+
+/** A setting kept under a name (`image_adjust::SavedAdjustment`): five
+ * values, free of any device or target. */
+export interface SavedAdjustment {
+  name: string;
+  values: AdjustValues;
+}
+
+/** The saved settings, in the order they were saved. */
+export function imageAdjustSavedList(): Promise<SavedAdjustment[]> {
+  return invoke<SavedAdjustment[]>("image_adjust_saved_list");
+}
+
+/** « Enregistrer le réglage » (`adjust_name_taken` for a name already
+ * there, whatever its case). */
+export function imageAdjustSavedSave(
+  name: string,
+  values: AdjustValues,
+): Promise<SavedAdjustment[]> {
+  return invoke<SavedAdjustment[]>("image_adjust_saved_save", {
+    name,
+    values,
+  });
+}
+
+/** « Renommer ». */
+export function imageAdjustSavedRename(
+  from: string,
+  to: string,
+): Promise<SavedAdjustment[]> {
+  return invoke<SavedAdjustment[]>("image_adjust_saved_rename", { from, to });
+}
+
+/** « Supprimer »: the images already set with it do not change. */
+export function imageAdjustSavedRemove(
+  name: string,
+): Promise<SavedAdjustment[]> {
+  return invoke<SavedAdjustment[]>("image_adjust_saved_remove", { name });
+}
+
+/** « Exporter… »: the file written, `null` when the dialog was dismissed. */
+export function imageAdjustSavedExport(
+  fileName: string,
+): Promise<string | null> {
+  return invoke<string | null>("image_adjust_saved_export", { fileName });
+}
+
+/** « Importer… »: the list after the import, the names added, those left
+ * out (a name already taken is never overwritten); `null` when dismissed. */
+export interface SavedImport {
+  list: SavedAdjustment[];
+  added: string[];
+  skipped: string[];
+}
+
+export function imageAdjustSavedImport(): Promise<SavedImport | null> {
+  return invoke<SavedImport | null>("image_adjust_saved_import");
 }

@@ -135,6 +135,11 @@ pub struct LocalSettings {
     /// same change.
     #[serde(default = "report_errors_default")]
     pub report_errors: bool,
+    /// The settings of « Régler l'image » kept under a name, to apply to
+    /// another image (`image_adjust::SavedAdjustment`); empty by default.
+    /// Free: tied to no device and no target, never applied by themselves.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_adjustments: Vec<crate::image_adjust::SavedAdjustment>,
 }
 
 /// What leaves of the renders of a stacking, by default
@@ -212,6 +217,7 @@ impl Default for LocalSettings {
             renders_upload: RendersUpload::default(),
             last_folders: LastFolders::default(),
             report_errors: REPORT_ERRORS_DEFAULT,
+            saved_adjustments: Vec::new(),
         }
     }
 }

@@ -2618,6 +2618,20 @@ body {
   font-size: 0.875rem;
 }
 
+/* A long path goes to the line after a « / », never inside a folder's name
+   (« Astro Sync »): each part is unbroken, unless one alone is wider than the
+   row. */
+.as-folder-row__text {
+  min-width: 0;
+}
+
+.as-folder-row__part {
+  display: inline-block;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .as-utc-grid {
   display: flex;
   flex-wrap: wrap;
@@ -3000,4 +3014,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--as-space-xs);
+}
+
+/* A target with several series of poses in the « Récapitulatif »: why they
+   are not stacked together, which one gives the main image, one box per
+   series. */
+.as-summary-series {
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-summary-series__box {
+  display: flex;
+  align-items: baseline;
+  gap: var(--as-space-sm);
+}
+
+.as-summary-series__box input {
+  accent-color: var(--as-color-gold-accent);
 }

@@ -7,7 +7,7 @@
 import type { TranslateParams } from "../i18n/locale.ts";
 import type { MissingCapture, SolveFailure, ToolRow } from "./bridge";
 import { dayInSentence } from "./tabs.ts";
-import { formatSize, pluralText } from "./written.ts";
+import { formatSpaceSize, pluralText } from "./written.ts";
 
 type Translate = (key: string, params?: TranslateParams) => string;
 
@@ -97,7 +97,7 @@ export function runningText(
   return here
     ? t("annotations.solvingHere")
     : t("annotations.downloading", {
-        size: formatSize(t, capture.byteSize, locale),
+        size: formatSpaceSize(t, capture.byteSize, locale),
       });
 }
 

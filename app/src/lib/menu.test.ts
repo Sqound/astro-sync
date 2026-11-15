@@ -57,7 +57,7 @@ test("the section titles exist in the ten languages", async () => {
     fr: ["Vos nuits", "Application"],
     en: ["Your nights", "Application"],
     de: ["Deine Nächte", "Anwendung"],
-    ja: ["夜", "アプリ"],
+    ja: ["観測した夜", "アプリ"],
   };
   for (const [locale, [nights, app]] of Object.entries(expected)) {
     const t = createTranslator(locale as never);

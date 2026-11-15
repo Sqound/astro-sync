@@ -76,6 +76,13 @@ export const IMPORT_ENTRY: MenuEntry = {
   section: "nights",
 };
 
+/** The label of « Import en cours »: it follows the import -- « Import
+ * terminé » once the nights are sent, until the person leaves the import.
+ * Never « en cours » over a finished import. */
+export function importEntryLabelKey(done: boolean): string {
+  return done ? "import.done.title" : IMPORT_ENTRY.labelKey;
+}
+
 /** The entries of a group as the sidebar draws them: « Import en cours »
  * after « Sessions » while an import is shown. */
 export function groupEntries(

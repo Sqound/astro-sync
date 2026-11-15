@@ -244,6 +244,7 @@ fn the_proposals_write_only_the_fields_a_device_may_propose() {
         variant_generated_title: Some(english("Natural render")),
         variant_generated_description: Some(english("The sensor's colours.")),
         image_quality: Some(quality(Some(3.1))),
+        series: None,
     };
     let json = serde_json::to_value(&proposals).unwrap();
     let mut keys: Vec<&str> = json
@@ -438,6 +439,8 @@ fn night_with(optics: bool) -> Night {
 
 fn candidate(night: &Night, relative: &str, kind: ResultKind, sha: &str) -> ImageCandidate {
     ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         target_id: target_id(),
         path: night.folder.join(relative),
@@ -705,6 +708,7 @@ fn the_decision_decides_what_each_image_carries() {
             stacked("b"),
             Decision::Variant {
                 capture_id: "capture-1".into(),
+                replaces_sha256: None,
             },
         ),
         plan(
@@ -1325,6 +1329,7 @@ fn the_decision_decides_who_carries_the_quality() {
             stacked("b"),
             Decision::Variant {
                 capture_id: "capture-1".into(),
+                replaces_sha256: None,
             },
         ),
         plan(
@@ -1556,4 +1561,319 @@ fn a_finish_title_is_kept_whole_up_to_ninety_characters() {
         longest > 60,
         "a title longer than 60 characters is sent whole: {longest}"
     );
+}
+
+/// A device night: the renders of a Seestar's own stack, named after the
+/// family (`<target>_<date>_<filter>_<exposure>_<gain>_<render>[_strong]`),
+/// each with its finished twin, as a night's `stacked/` holds them.
+fn device_family_night() -> Night {
+    let night = night();
+    let stem = "M31_2026-10-10_IRCUT_10s_g200";
+    let mut outputs = Vec::new();
+    for pipeline in ["raw", "dualband-correction"] {
+        for (suffix, contrast) in [("", None), ("_strong", Some("strong"))] {
+            let file = format!("{stem}_{pipeline}{suffix}.png");
+            let mut entry = serde_json::json!({ "pipeline": pipeline, "file": file });
+            if let Some(contrast) = contrast {
+                entry["contrast"] = contrast.into();
+            }
+            outputs.push(entry);
+            fs::write(
+                night.folder.join("M31/stacked").join(&file),
+                file.as_bytes(),
+            )
+            .unwrap();
+        }
+    }
+    fs::write(
+        night.folder.join(format!("M31/stacked/{stem}_stacking.json")),
+        serde_json::json!({
+            "format": 1,
+            "frames": { "lights": 0, "darks": 0, "flats": 0, "dark_flats": 0, "biases": 0 },
+            "stackedFrames": 36,
+            "tools": { "siril": null, "starnet2": false },
+            "quality": null,
+            "outputs": outputs,
+            "deviceMaster": { "file": "Stacked_36.fit", "device": "Seestar S50 Pro", "stackedFrames": 36 }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    night
+}
+
+/// Every render sent from a device's night carries its name, its finish and
+/// where it comes from, whichever decision sends it.
+#[test]
+fn every_image_of_a_device_night_carries_its_title_its_finish_and_its_origin() {
+    let night = device_family_night();
+    let list = pipelines::read_manifests(None, None, "en");
+    let ctx = ProposalContext {
+        night_folder: &night.folder,
+        detection: &night.detection,
+        language: "en",
+        pipelines: Some(&list),
+        image_quality: false,
+    };
+    let stem = "M31_2026-10-10_IRCUT_10s_g200";
+    let mut plans = Vec::new();
+    for (n, (pipeline, suffix)) in [
+        ("raw", ""),
+        ("raw", "_strong"),
+        ("dualband-correction", ""),
+        ("dualband-correction", "_strong"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let relative = format!("M31/stacked/{stem}_{pipeline}{suffix}.png");
+        let mut image = candidate(&night, &relative, ResultKind::Stacked, &format!("sha{n}"));
+        image.render = Some(pipeline.to_string());
+        let decision = match n {
+            0 => Decision::NewCapture,
+            1 => Decision::VariantOfNew {
+                first_sha256: "sha0".into(),
+            },
+            2 => Decision::Variant {
+                capture_id: "c1".into(),
+                replaces_sha256: None,
+            },
+            _ => Decision::AlreadyOnline {
+                capture_id: "c1".into(),
+                image_id: "i1".into(),
+            },
+        };
+        plans.push(plan(image, decision));
+    }
+    attach_proposals(&mut plans, &bare_online(), &ctx);
+    for plan in &plans {
+        let proposals = plan.metadata.as_ref().expect("proposals");
+        assert!(title_of(proposals, "en").is_some(), "{:?}", plan.image.path);
+        assert!(description_of(proposals, "en").is_some());
+        let steps = proposals.variant_processing.as_ref().unwrap();
+        assert!(
+            steps
+                .steps
+                .as_deref()
+                .unwrap()
+                .contains("Seestar S50 Pro stack")
+        );
+    }
+    let strong = title_of(plans[1].metadata.as_ref().unwrap(), "en").unwrap();
+    assert!(strong.ends_with("Contrast 3.6"), "{strong}");
+}
+
+fn ctx_en<'a>(night: &'a Night, list: &'a crate::pipelines::PipelineList) -> ProposalContext<'a> {
+    ProposalContext {
+        night_folder: &night.folder,
+        detection: &night.detection,
+        language: "en",
+        pipelines: Some(list),
+        image_quality: false,
+    }
+}
+
+/// A render whose record is gone (or never listed it) still says what it is:
+/// the file name the stacker gave it names the pipeline and the finish.
+#[test]
+fn a_render_without_its_record_is_named_by_its_file_name() {
+    let night = night();
+    let families = progression_images::target_families(&night.folder, "M31");
+    let list = pipelines::read_manifests(None, None, "en");
+    let plain = night
+        .folder
+        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction.png");
+    let strong = night
+        .folder
+        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction_strong.png");
+    for path in [&plain, &strong] {
+        fs::write(path, path.to_string_lossy().as_bytes()).unwrap();
+    }
+    let ctx = ctx_en(&night, &list);
+    let plain_proposals = proposals_for_image(&plain, ResultKind::Stacked, None, &families, &ctx);
+    let strong_proposals = proposals_for_image(&strong, ResultKind::Stacked, None, &families, &ctx);
+    let title = title_of(&plain_proposals, "en").expect("a title");
+    assert!(description_of(&plain_proposals, "en").is_some());
+    assert_eq!(
+        title_of(&strong_proposals, "en").unwrap(),
+        format!("{title} · Contrast 3.6")
+    );
+    let steps = strong_proposals.variant_processing.unwrap();
+    assert_eq!(
+        steps.software,
+        Some(format!("Astro Sync {}", crate::version()))
+    );
+    assert_eq!(
+        steps.steps.as_deref(),
+        Some("dualband-correction · contrast strong")
+    );
+}
+
+/// An image moved out of its record's folder (or renamed) is found by its
+/// digest in the records of the night's targets, device or not; the person's
+/// own image of `final/` is concerned only when a record holds its digest.
+#[test]
+fn a_render_moved_away_from_its_record_is_found_by_its_digest() {
+    let night = night();
+    let families = progression_images::target_families(&night.folder, "M31");
+    let list = pipelines::read_manifests(None, None, "en");
+    let moved = night.folder.join("M31/final/my-own-name.png");
+    fs::write(&moved, b"the render").unwrap();
+    let digest = crate::scanner::file_sha256(&moved).unwrap();
+    fs::write(
+        night
+            .folder
+            .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_stacking.json"),
+        serde_json::json!({
+            "frames": { "lights": 0 },
+            "stackedFrames": 36,
+            "tools": { "siril": null },
+            "outputs": [{
+                "pipeline": "dualband-correction", "file": "gone.png",
+                "sha256": digest, "contrast": "strong"
+            }],
+            "deviceMaster": { "device": "Seestar S50 Pro" }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let ctx = ctx_en(&night, &list);
+    let proposals = proposals_for_image(&moved, ResultKind::Final, None, &families, &ctx);
+    let title = title_of(&proposals, "en").expect("a title");
+    assert!(title.ends_with("Contrast 3.6"), "{title}");
+    assert_eq!(
+        proposals.variant_processing.unwrap().steps.as_deref(),
+        Some("dualband-correction · Seestar S50 Pro stack · contrast strong · 36 lights")
+    );
+    // A final image no record holds, however it is named, proposes no rendering.
+    let own = night.folder.join("M31/final/M31_x_hoo.png");
+    fs::write(&own, b"retouched elsewhere").unwrap();
+    let alone = proposals_for_image(&own, ResultKind::Final, None, &families, &ctx);
+    assert_eq!(alone.variant_generated_title, None);
+}
+
+/// « Images à envoyer » of « Détecter les sessions » enqueues the renders it
+/// lists itself: each one carries what the night's « Récapitulatif » would
+/// have proposed for it (the capture everything, a variant of the capture the
+/// sending creates its title, its description and its steps), not nothing.
+#[test]
+fn a_render_ticked_in_the_import_carries_what_the_night_wizard_proposes() {
+    let night = night();
+    let list = pipelines::read_manifests(None, None, "en");
+    let ctx = ctx_en(&night, &list);
+    let families = progression_images::target_families(&night.folder, "M31");
+    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let wizard = proposals_for_image(&raw, ResultKind::Stacked, Some("raw"), &families, &ctx);
+
+    let capture = import_render_proposals(
+        &raw,
+        ResultKind::Stacked,
+        Some("raw"),
+        true,
+        Some(&list),
+        false,
+    )
+    .expect("the capture's proposals");
+    assert_eq!(capture, wizard);
+    assert_eq!(capture.acquisition.len(), 2);
+    assert_eq!(capture.calibration.as_deref(), Some("3 darks · 2 flats"));
+    assert_eq!(title_of(&capture, "en").as_deref(), Some("Natural render"));
+
+    let other = night
+        .folder
+        .join("M31/stacked/M31_2026-10-07_dualband-correction.tif");
+    let variant = import_render_proposals(
+        &other,
+        ResultKind::Stacked,
+        Some("dualband-correction"),
+        false,
+        Some(&list),
+        false,
+    )
+    .expect("the variant's proposals");
+    assert!(variant.acquisition.is_empty());
+    assert_eq!(variant.processing, None);
+    assert_eq!(
+        title_of(&variant, "en").as_deref(),
+        Some("Dual-band correction")
+    );
+    assert!(variant.variant_processing.is_some());
+}
+
+/// A render of a Seestar night whose record says nothing more than the file
+/// name still leaves with its name and its finish when it is imported.
+#[test]
+fn an_imported_render_without_a_record_is_named_by_its_file_name() {
+    let night = night();
+    let list = pipelines::read_manifests(None, None, "en");
+    let image = night
+        .folder
+        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_hoo_strong.png");
+    fs::write(&image, b"png").unwrap();
+    let proposals = import_render_proposals(
+        &image,
+        ResultKind::Stacked,
+        Some("hoo"),
+        false,
+        Some(&list),
+        false,
+    )
+    .expect("proposals");
+    let title = title_of(&proposals, "en").expect("a title");
+    assert!(title.starts_with("HOO palette"), "{title}");
+    assert!(title.ends_with("Contrast 3.6"), "{title}");
+}
+
+/// What is not a render of `<target>/stacked/` proposes nothing from here,
+/// nor does the linear file (a file attached to the capture).
+#[test]
+fn the_import_proposes_nothing_for_a_file_outside_stacked_nor_for_the_linear_file() {
+    let night = night();
+    let list = pipelines::read_manifests(None, None, "en");
+    let elsewhere = night.folder.join("M31/final/M31_2026-10-07_raw.png");
+    fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+    fs::write(&elsewhere, b"png").unwrap();
+    assert_eq!(
+        import_render_proposals(
+            &elsewhere,
+            ResultKind::Stacked,
+            Some("raw"),
+            true,
+            Some(&list),
+            false
+        ),
+        None
+    );
+    let linear = night.folder.join("M31/stacked/M31_2026-10-07_linear.tif");
+    assert_eq!(
+        import_render_proposals(
+            &linear,
+            ResultKind::Linear,
+            Some("linear"),
+            false,
+            Some(&list),
+            false
+        ),
+        None
+    );
+}
+
+/// The series a render was stacked from is read from its record, never guessed.
+#[test]
+fn the_series_of_a_render_is_its_recorded_total_exposure() {
+    let night = night();
+    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    assert_eq!(recorded_series_seconds(&raw), None);
+    fs::write(
+        night
+            .folder
+            .join("M31/stacked/M31_2026-10-07_stacking.json"),
+        serde_json::json!({
+            "outputs": [{ "pipeline": "raw", "file": "M31_2026-10-07_raw.tif" }],
+            "integration": { "family": "Ha_300s_g100", "totalSeconds": 2399.6 }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    assert_eq!(recorded_series_seconds(&raw), Some(2400));
 }

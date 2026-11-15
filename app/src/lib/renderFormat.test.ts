@@ -24,7 +24,8 @@ const text = (segs: readonly Seg[]) =>
   segs
     .map((s) => (typeof s === "string" ? s : "strong" in s ? s.strong : s.code))
     .join("");
-const MB = 1_000_000;
+// The space counts in base 1 024, as the service and the portal do.
+const MB = 1024 * 1024;
 
 /** A file of a render of this sending's stacking. */
 function file(
@@ -125,7 +126,7 @@ test("a refusal for room says what the sending weighs without the TIFF when that
     limit: "storage_quota" as const,
     toSendBytes: 667 * MB,
     remainingBytes: 560 * MB,
-    quotaBytes: 1000 * MB,
+    quotaBytes: 1024 * MB,
   };
   const refused = (fullResolutionBytes: number) => {
     const check = precheck([NATURAL_PNG, NATURAL_TIFF], {

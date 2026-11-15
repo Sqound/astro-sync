@@ -68,26 +68,31 @@ export function oneDecimal(value: number, locale: string): string {
   }).format(value);
 }
 
+/** The units of what the space counts (its quota, its ceiling, the files
+ * sent), in base 1 024 as the service and the portal count them (« 50 Go »
+ * is 50 × 1 024 Mo). */
+const KIBI = 1024;
+const MEBI = 1024 * KIBI;
+const GIBI = 1024 * MEBI;
+
 /** Renders a byte count in the largest unit that keeps it readable, through
  * the locale's own `common.*` templates, with one decimal in the language's
- * own decimal mark (« 4,1 Go », « 15,6 Go »). */
+ * own decimal mark (« 4,1 Go », « 15,6 Go »). The units are in base 1 024,
+ * as the service and the portal count them: the quota of a space of
+ * 150 × 1 024 × 1 024 bytes reads « 150 » here as on the portal. */
 export function formatBytes(
   t: Translate,
   bytes: number,
   locale: string,
 ): string {
-  if (bytes >= 1_000_000_000) {
-    return t("common.gigabytes", {
-      value: oneDecimal(bytes / 1_000_000_000, locale),
-    });
+  if (bytes >= GIBI) {
+    return t("common.gigabytes", { value: oneDecimal(bytes / GIBI, locale) });
   }
-  if (bytes >= 1_000_000) {
-    return t("common.megabytes", {
-      value: oneDecimal(bytes / 1_000_000, locale),
-    });
+  if (bytes >= MEBI) {
+    return t("common.megabytes", { value: oneDecimal(bytes / MEBI, locale) });
   }
-  if (bytes >= 1_000) {
-    return t("common.kilobytes", { value: oneDecimal(bytes / 1_000, locale) });
+  if (bytes >= KIBI) {
+    return t("common.kilobytes", { value: oneDecimal(bytes / KIBI, locale) });
   }
   return t("common.bytes", { value: bytes });
 }
@@ -107,12 +112,35 @@ export function pluralText(
   return t(`${base}.${one ? "one" : "other"}`, { count, ...params });
 }
 
-/** A size as the screens write it: the largest readable unit, one decimal only
- * when it says something (« 412 Mo », « 1,3 Go », « 250 Go », « 38 ko »). */
+/** A size on this computer as the screens write it (the disk, the files of
+ * a night: base 1 000, as the system counts them): the largest readable
+ * unit, one decimal only when it says something (« 412 Mo », « 1,3 Go »,
+ * « 250 Go », « 38 ko »). What the space counts is `formatSpaceSize`. */
 export function formatSize(
   t: Translate,
   bytes: number,
   locale: string,
+): string {
+  return sizeIn(t, bytes, locale, 1_000);
+}
+
+/** A size the space counts (its quota, what is left, its ceiling, the images
+ * to send), written as `formatSize` but in base 1 024, as the service and the
+ * portal count it: a quota of 150 × 1 024 × 1 024 bytes reads « 150 Mo »
+ * here as on the portal. */
+export function formatSpaceSize(
+  t: Translate,
+  bytes: number,
+  locale: string,
+): string {
+  return sizeIn(t, bytes, locale, KIBI);
+}
+
+function sizeIn(
+  t: Translate,
+  bytes: number,
+  locale: string,
+  unit: number,
 ): string {
   // One decimal, never rounded up (« 230,9 Go » left, not « 231 »), and
   // none when it is zero (« 412 Mo »).
@@ -121,14 +149,14 @@ export function formatSize(
       minimumFractionDigits: 0,
       maximumFractionDigits: 1,
     }).format(Math.floor(amount * 10 + 1e-6) / 10);
-  if (bytes >= 1_000_000_000) {
-    return t("common.gigabytes", { value: value(bytes / 1_000_000_000) });
+  if (bytes >= unit ** 3) {
+    return t("common.gigabytes", { value: value(bytes / unit ** 3) });
   }
-  if (bytes >= 1_000_000) {
-    return t("common.megabytes", { value: value(bytes / 1_000_000) });
+  if (bytes >= unit ** 2) {
+    return t("common.megabytes", { value: value(bytes / unit ** 2) });
   }
-  if (bytes >= 1_000) {
-    return t("common.kilobytes", { value: value(bytes / 1_000) });
+  if (bytes >= unit) {
+    return t("common.kilobytes", { value: value(bytes / unit) });
   }
   return t("common.bytes", { value: bytes });
 }

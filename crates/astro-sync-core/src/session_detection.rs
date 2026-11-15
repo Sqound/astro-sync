@@ -241,6 +241,15 @@ pub struct KnownPlan {
 }
 
 impl KnownPlan {
+    /// Whether the plan still holds its night: planned or in progress, not
+    /// closed (executed, partly done, abandoned, archived). A closed plan
+    /// frees the night for the next one; "Advanced Planning" changes
+    /// nothing to that.
+    #[must_use]
+    pub fn holds_night(&self) -> bool {
+        matches!(self.status.as_str(), "pending" | "active" | "")
+    }
+
     /// Planned and never executed.
     #[must_use]
     pub fn is_pending(&self) -> bool {
@@ -626,6 +635,17 @@ pub struct DetectedTarget {
     pub device_images: Vec<String>,
     /// Absolute paths, in the order taken.
     pub files: Vec<String>,
+    /// The existing session this target's frames go to, when the night has
+    /// several sessions and the choice was made by the clock (the session
+    /// whose window holds the frames, else the nearest). Absent: the
+    /// night's session (`DetectedSession::existing`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// The frames fall between two sessions (or outside both): they went to
+    /// the nearest and are to be read again by the person, never merged
+    /// alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub to_review: bool,
     /// The start of each file (same order), UTC, shift applied: the « UTC »
     /// column of the detection sheet.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -688,7 +708,8 @@ pub enum SessionMatch {
     /// detected (ticked by default).
     #[serde(rename_all = "camelCase")]
     ReplacePlan { plan_id: String, plan_name: String },
-    /// "One plan per night": a plan already done that night, none created.
+    /// "One plan at a time": a plan still planned or in progress that night,
+    /// none created (a closed plan frees the night).
     #[serde(rename_all = "camelCase")]
     PlanExists { plan_id: String, plan_name: String },
 }

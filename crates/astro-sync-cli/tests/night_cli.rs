@@ -694,7 +694,10 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
         "--json",
     ]);
     assert!(!ok && !all.contains("capabilities unknown"), "{all}");
-    assert!(all.contains("Settings › Dependencies"), "{all}");
+    assert!(
+        all.contains("astro-sync tools --install") && !all.contains("Settings ›"),
+        "{all}"
+    );
     assert!(!folder.join("M31/stacked").exists(), "nothing written");
 
     let (ok, rows, all) = run(&["tools", "--data", &s(&data), "--json"]);

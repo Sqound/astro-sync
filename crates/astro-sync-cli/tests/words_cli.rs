@@ -334,7 +334,7 @@ fn a_space_without_the_progression_is_not_refused_the_stacking() {
             .unwrap()
             .to_string();
         assert!(!shown.contains(&refused), "{locale}: {shown}");
-        let expected = dictionary(locale)["errors.stacking.tool_missing"]
+        let expected = dictionary(locale)["cli.stack.tool_missing"]
             .as_str()
             .unwrap()
             .to_string();
@@ -395,7 +395,7 @@ fn a_dry_run_of_a_space_without_the_progression_names_the_tools_not_the_offer() 
         args
     };
     for locale in ["fr", "en"] {
-        let expected = dictionary(locale)["errors.stacking.tool_missing"]
+        let expected = dictionary(locale)["cli.stack.tool_missing"]
             .as_str()
             .unwrap()
             .to_string();
@@ -601,14 +601,15 @@ fn a_stacked_image_over_the_ceiling_leaves_the_final_image_to_go_and_says_why() 
     let folder = night(&root);
     std::fs::write(folder.join("M31/final/M31_final.png"), png(300, 200, 1000)).unwrap();
     std::fs::create_dir_all(folder.join("M31/stacked")).unwrap();
-    // 30 MB: over the 25 MB a file may weigh in this space.
+    // 30 MB: over the 25 MB a file may weigh in this space (base 1 024, as
+    // the space counts).
     std::fs::write(
         folder.join("M31/stacked/M31_20261007_raw.tif"),
-        vec![9_u8; 30_000_000],
+        vec![9_u8; 30 * 1024 * 1024],
     )
     .unwrap();
     let storage = fixture("space_storage.json")
-        .replace("\"maxFileBytes\": 1073741824", "\"maxFileBytes\": 25000000");
+        .replace("\"maxFileBytes\": 1073741824", "\"maxFileBytes\": 26214400");
     let online = fixture("night_bare.json");
     let service = FakeService::start(Wake::Instant, move |request| {
         match (request.method.as_str(), request.path.as_str()) {
@@ -616,7 +617,7 @@ fn a_stacked_image_over_the_ceiling_leaves_the_final_image_to_go_and_says_why() 
             ("GET", path) if path.ends_with("/online") => Reply::Json(200, online.clone()),
             ("POST", "/api/v1/uploads/check") => Reply::Json(
                 200,
-                r#"{"result":"accepted","adds":"capture","storage":{"usedBytes":1,"quotaBytes":100000,"maxFileBytes":25000000,"captureCount":2,"captureCountLimit":30,"variantLimit":12}}"#.to_string(),
+                r#"{"result":"accepted","adds":"capture","storage":{"usedBytes":1,"quotaBytes":100000,"maxFileBytes":26214400,"captureCount":2,"captureCountLimit":30,"variantLimit":12}}"#.to_string(),
             ),
             _ => error_reply(404, "not_found", "no"),
         }
@@ -691,9 +692,13 @@ fn a_limit_that_stops_the_sending_is_said_with_its_numbers() {
     let root = parent.join("Astro Sync");
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
-    std::fs::write(folder.join("M31/final/M31.png"), png(300, 200, 30_000_000)).unwrap();
+    std::fs::write(
+        folder.join("M31/final/M31.png"),
+        png(300, 200, 30 * 1024 * 1024),
+    )
+    .unwrap();
     let storage = fixture("space_storage.json")
-        .replace("\"maxFileBytes\": 1073741824", "\"maxFileBytes\": 25000000");
+        .replace("\"maxFileBytes\": 1073741824", "\"maxFileBytes\": 26214400");
     let online = fixture("night_bare.json");
     let service = FakeService::start(Wake::Instant, move |request| {
         match (request.method.as_str(), request.path.as_str()) {
@@ -701,7 +706,7 @@ fn a_limit_that_stops_the_sending_is_said_with_its_numbers() {
             ("GET", path) if path.ends_with("/online") => Reply::Json(200, online.clone()),
             ("POST", "/api/v1/uploads/check") => Reply::Json(
                 200,
-                r#"{"result":"accepted","adds":"capture","storage":{"usedBytes":1,"quotaBytes":100000,"maxFileBytes":25000000,"captureCount":2,"captureCountLimit":30,"variantLimit":12}}"#.to_string(),
+                r#"{"result":"accepted","adds":"capture","storage":{"usedBytes":1,"quotaBytes":100000,"maxFileBytes":26214400,"captureCount":2,"captureCountLimit":30,"variantLimit":12}}"#.to_string(),
             ),
             _ => error_reply(404, "not_found", "no"),
         }

@@ -68,6 +68,7 @@
         "createdAt"
       ],
       "properties": {
+        "series": { "$ref": "capture.schema.json#/$defs/series" },
         "id": {
           "type": "string",
           "minLength": 1

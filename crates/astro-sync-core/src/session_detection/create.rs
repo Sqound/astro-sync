@@ -426,6 +426,9 @@ pub fn bulk_body(request: &BulkCreateRequest) -> BulkBody {
             .map_or(0, |s| s.hours);
         let offset = f64::from(chosen - session.shift_hours) * 3600.0;
         let mut targets = Vec::new();
+        // The session each wanted target goes to when the night has several
+        // (chosen by the clock); None: the night's own.
+        let mut routes: Vec<Option<String>> = Vec::new();
         for target in &session.targets {
             let line = |reason: &str| format!("{reason}:{}/{}", session.id, target.key);
             let wanted = match target.existing {
@@ -444,7 +447,10 @@ pub fn bulk_body(request: &BulkCreateRequest) -> BulkBody {
                 continue;
             }
             match target_body(target, offset) {
-                Some(body) => targets.push(body),
+                Some(body) => {
+                    targets.push(body);
+                    routes.push(target.session_id.clone());
+                }
                 None => skipped.push(SkippedElement {
                     kind: "target".into(),
                     id: format!("{}/{}", session.id, target.key),
@@ -478,23 +484,46 @@ pub fn bulk_body(request: &BulkCreateRequest) -> BulkBody {
             });
             continue;
         }
-        let mut entry = json!({
-            "ref": session.id,
-            "eveningDate": session.evening_date,
-            "startedAt": shifted(&session.start, offset),
-            "finishedAt": shifted(&session.end, offset),
-            "place": place_of.get(session.place.as_str()).cloned().unwrap_or(Value::Null),
-            "equipment": equipment_of(proposal, session),
-            "targets": targets,
-        });
-        if let Some(id) = existing {
-            entry["sessionId"] = json!(id);
+        let entry_of = |targets: Vec<Value>, session_id: Option<String>, reference: String| {
+            let mut entry = json!({
+                "ref": reference,
+                "eveningDate": session.evening_date,
+                "startedAt": shifted(&session.start, offset),
+                "finishedAt": shifted(&session.end, offset),
+                "place": place_of.get(session.place.as_str()).cloned().unwrap_or(Value::Null),
+                "equipment": equipment_of(proposal, session),
+                "targets": targets,
+            });
+            if let Some(id) = session_id {
+                entry["sessionId"] = json!(id);
+            }
+            if let Some(plan) = &plan {
+                entry["plan"] = plan.clone();
+            }
+            entry
+        };
+        // A night with several sessions: one entry per session, the targets
+        // each takes; never a merge of two sessions.
+        let mut by_session: Vec<(Option<String>, Vec<Value>)> = Vec::new();
+        for (body, route) in targets.into_iter().zip(routes) {
+            let id = route.or_else(|| existing.clone());
+            match by_session.iter_mut().find(|(known, _)| *known == id) {
+                Some((_, bodies)) => bodies.push(body),
+                None => by_session.push((id, vec![body])),
+            }
         }
-        if let Some(plan) = plan {
-            entry["plan"] = plan;
+        if by_session.is_empty() {
+            by_session.push((existing.clone(), Vec::new()));
+        }
+        for (index, (id, bodies)) in by_session.into_iter().enumerate() {
+            let reference = if index == 0 {
+                session.id.clone()
+            } else {
+                format!("{}#{}", session.id, index + 1)
+            };
+            sessions.push(entry_of(bodies, id, reference));
         }
         sent.insert(&session.id);
-        sessions.push(entry);
     }
 
     let mut multi = Vec::new();

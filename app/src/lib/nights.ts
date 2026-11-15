@@ -96,20 +96,24 @@ export function hourOf(
   }).format(date);
 }
 
-/** « 21:05 – 04:40 », or « 21:10 – en cours » while the night is open. */
+/** The hours of a night, wherever the window shows them (the list of
+ * « Sessions », the header of its wizard): in UTC and saying so -- « 19:05
+ * → 02:40 UTC », or « 19:10 UTC – en cours » while the night is open. One
+ * rule, the web's night page's and the import's: a session carries
+ * instants, not the time zone of its place, and an hour without its zone
+ * reads as the computer's. */
 export function hoursLine(
   t: Translate,
   session: Pick<SessionSummary, "startedAt" | "finishedAt" | "status">,
   locale: string,
-  timeZone?: string,
 ): string {
-  const start = hourOf(session.startedAt, locale, timeZone);
+  const start = hourOf(session.startedAt, locale, "UTC");
   if (session.status !== "finished" || !session.finishedAt) {
     return t("nights.hoursOpen", { start });
   }
   return t("nights.hours", {
     start,
-    end: hourOf(session.finishedAt, locale, timeZone),
+    end: hourOf(session.finishedAt, locale, "UTC"),
   });
 }
 
@@ -159,11 +163,7 @@ export function nightHeader(
       locale,
     ),
   });
-  const start = hourOf(session.startedAt, locale, "UTC");
-  const hours =
-    session.status === "finished" && session.finishedAt
-      ? `${start} → ${hourOf(session.finishedAt, locale, "UTC")} UTC`
-      : `${start} UTC`;
+  const hours = hoursLine(t, session, locale);
   const count = (night.online?.targets ?? []).filter(
     (target) => target.targetId,
   ).length;
@@ -413,14 +413,13 @@ export function nightRow(
     session: SessionSummary;
     detail?: NightDetail | null;
     view?: NightView | null;
-    timeZone?: string;
     /** Its read is not back yet. */
     reading?: boolean;
     /** The tags of its multi-night plans. */
     tags?: readonly PlanTag[];
   },
 ): NightRow {
-  const { session, detail, view, timeZone } = input;
+  const { session, detail, view } = input;
   const names = new Map(
     (view?.online.targets ?? [])
       .filter((target) => target.targetId && target.name)
@@ -430,7 +429,7 @@ export function nightRow(
   return {
     sessionId: session.id,
     day: nightCell(eveningOfSession(session, longitudeOf(detail)), locale),
-    hours: hoursLine(t, session, locale, timeZone),
+    hours: hoursLine(t, session, locale),
     open: session.status !== "finished",
     placeAndTargets: placeAndTargets(
       placeOf(detail),
@@ -564,6 +563,58 @@ export function knownPlaces(
   return [...counts.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([place]) => place);
+}
+
+/** The places the creation window offers, and the one it proposes: the
+ * space's saved places (its default one first proposed), then the places of
+ * its nights that are not among them -- read by the window when it opens,
+ * never only from the nights the list happens to have read already. */
+export function createPlaces(
+  fromNights: readonly string[],
+  saved: {
+    places: readonly { id: string; name: string }[];
+    defaultPlaceId?: string | null;
+  } | null,
+): { names: string[]; proposed: string } {
+  const names: string[] = [];
+  for (const name of [
+    ...(saved?.places ?? []).map((place) => place.name),
+    ...fromNights,
+  ]) {
+    const trimmed = name.trim();
+    if (trimmed !== "" && !names.includes(trimmed)) names.push(trimmed);
+  }
+  const preferred = saved?.places.find(
+    (place) => place.id === saved.defaultPlaceId,
+  )?.name;
+  return { names, proposed: preferred?.trim() || names[0] || "" };
+}
+
+/** What the creation window says under « Lieu »: the places being read,
+ * none saved (and how to add one), their read failed -- nothing once they
+ * are there. */
+export type CreatePlacesRead = "loading" | "ready" | "failed";
+
+export function createPlacesNote(
+  read: CreatePlacesRead,
+  count: number,
+): string | null {
+  if (read === "loading") return "nights.createForm.placesLoading";
+  if (read === "failed") return "nights.createForm.placesFailed";
+  return count === 0 ? "nights.createForm.placesEmpty" : null;
+}
+
+/** Why « Créer cette session » waits, beside it: the place is the one
+ * field the person may not have filled. */
+export function createFormReason(form: CreateForm): string | null {
+  return form.place.trim() === "" ? "nights.createForm.placeRequired" : null;
+}
+
+/** The date the creation window opens at: today on this computer's
+ * calendar (an ISO date in UTC is yesterday's evening before the morning
+ * in Asia, tomorrow's after the evening in America). */
+export function todayOnThisComputer(now: Date = new Date()): string {
+  return eveningDateOf(now.toISOString());
 }
 
 /** `AAAA-MM-JJ` of the evening a night starts, in the computer's zone. */

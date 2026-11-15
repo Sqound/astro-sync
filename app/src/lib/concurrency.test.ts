@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createLimiter, mapWithLimit } from "./concurrency.ts";
+import { createLimiter, latestOnly, mapWithLimit } from "./concurrency.ts";
 
 /** A promise settled by hand. */
 function gate<T>() {
@@ -81,4 +81,42 @@ test("a task that throws or rejects frees its place", async () => {
   );
   await assert.rejects(limiter.run(() => Promise.reject(new Error("async"))));
   assert.equal(await limiter.run(async () => "still runs"), "still runs");
+});
+
+test("the latest read wins: an older answer that comes back later is dropped (« Vérifier à nouveau » shows its own read, not the one before)", async () => {
+  const reads = latestOnly();
+  const shown: string[] = [];
+  const read = async (answer: string, delay: number) => {
+    const ticket = reads.begin();
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    if (reads.isLatest(ticket)) shown.push(answer);
+  };
+  // The opening read (before the image was dropped) is slow; the check
+  // started after it answers first.
+  await Promise.all([read("no final image", 30), read("final image", 5)]);
+  assert.deepEqual(shown, ["final image"]);
+  // A lone read is always the latest.
+  await read("again", 0);
+  assert.deepEqual(shown, ["final image", "again"]);
+});
+
+test("« Vérifier à nouveau » of « Fichiers »: its read is the latest, and the button waits for it", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const wizard = await readFile(
+    new URL("../screens/night/NightWizard.tsx", import.meta.url),
+    "utf8",
+  );
+  const refresh = wizard.slice(wizard.indexOf("const refreshView"));
+  const body = refresh.slice(0, refresh.indexOf("}, [input"));
+  assert.match(body, /const ticket = viewReads\.begin\(\);/);
+  assert.match(
+    body,
+    /if \(!viewReads\.isLatest\(ticket\)\) return null;\s+setView\(next\)/,
+  );
+  const files = await readFile(
+    new URL("../screens/night/FilesStep.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(files, /disabled=\{checking\}/);
+  assert.match(files, /"wizard\.files\.checking"/);
 });

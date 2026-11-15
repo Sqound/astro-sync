@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://astroportal.invalid/schemas/api/capture-attachment.schema.json",
+  "title": "Astro Portal API v1 — the files attached to a capture",
+  "description": "A file attached to a capture is a file to download, never an image of the gallery: no thumbnail, no shared copy, no sky solution, no automatic check, never a variant, never the main image, never public (no gallery, no public route, no public export ever serves or names it). One role today, `linear` (« Fichier linéaire »: the calibrated, aligned stack, not stretched, for processing elsewhere — Astro Sync's « Sans traitement »); the list of roles may grow. Astro Sync sends it with `POST /v1/uploads` (either transport) naming `captureId` and `role: \"linear\"`; it is counted against the storage (`storage.quota_bytes`, `storage.max_file_bytes`) and nothing else — not `capture.count_limit`, not `capture.variant_limit` — and it never replaces anything. A digest is held once per space, as an image or as an attached file: the same bytes sent again are « already present » (`POST /v1/uploads/check` answers `present` with `attachmentId`). `GET /v1/captures/{id}/attachments` lists the files of a capture (`list`), `GET /v1/captures/{id}/attachments/{attachmentId}` serves the bytes as a download (a device token of the space or the owner's web session), `DELETE /v1/manage/captures/{id}/attachments/{attachmentId}` deletes one (the owner's web session with its CSRF token; answers the capture). The deletion of the capture deletes its attached files. See api/v1.md, « Files attached to a capture ».",
+  "$defs": {
+    "role": {
+      "description": "What the file is to its capture. `linear`: the linear master (calibrated, aligned, not stretched), word on screen « Fichier linéaire ».",
+      "enum": ["linear"]
+    },
+    "attachment": {
+      "type": "object",
+      "description": "One file attached to a capture. `contentType` is read from the bytes (`image/tiff` for a TIFF, `application/octet-stream` for a file the service does not recognise), never from what the sender declared. `width`, `height` and `bitDepth` (bits per sample) are read from the file's header when it is a TIFF, `null` otherwise or until they are read. `createdAt` is the instant the file arrived (for a file reclassified at deployment, the instant its image had arrived).",
+      "required": [
+        "id",
+        "captureId",
+        "role",
+        "originalName",
+        "contentType",
+        "byteSize",
+        "sha256",
+        "width",
+        "height",
+        "bitDepth",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "captureId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        },
+        "originalName": {
+          "description": "The name the file was sent with, exactly; the download is served under it. Never a path.",
+          "type": "string",
+          "minLength": 1
+        },
+        "contentType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bitDepth": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "description": "`GET /v1/captures/{id}/attachments`: the files attached to one capture of the space, newest first (`[]` when it has none).",
+      "required": ["attachments"],
+      "properties": {
+        "attachments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attachment"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "refusal": {
+      "type": "object",
+      "description": "400 `invalid_request`; 401 `authentication_required`; 403 `csrf_invalid`, `web_session_required` (a device token on the deletion); 404 `capture_not_found` (an unknown or another space's capture), `attachment_not_found` (no such file on that capture, or its bytes are no longer stored); 503 `capture_storage_unavailable`.",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "authentication_required",
+                "csrf_invalid",
+                "web_session_required",
+                "capture_not_found",
+                "attachment_not_found",
+                "capture_storage_unavailable"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/attachment"
+    },
+    {
+      "$ref": "#/$defs/list"
+    },
+    {
+      "$ref": "#/$defs/refusal"
+    }
+  ]
+}

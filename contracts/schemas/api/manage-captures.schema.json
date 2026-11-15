@@ -4,6 +4,21 @@
   "title": "Astro Portal API v1 — the owner's captures (« Mon espace » → « Captures »)",
   "description": "What the web session of a space reads and writes of its own captures: `GET /v1/manage/captures` (the list, newest first), `GET /v1/manage/captures/{id}` and `PATCH /v1/manage/captures/{id}` (one capture), and their refusals. A capture here is the resource of capture.schema.json plus its state (the rule `captureState`), whether the list may draw its original (`preview`) and its detail for its owner — the place included, which no other reader ever receives. A web session only; a device bearer is refused (`web_session_required`). See api/v1.md, section \"The owner's captures\".",
   "$defs": {
+    "seriesSeparation": {
+      "type": "object",
+      "description": "The answer of `POST /v1/manage/captures/{id}/separate` (« Séparer par série ») and `POST /v1/manage/captures/{id}/regroup` (« Regrouper »): whether anything changed (both are idempotent), the captures concerned (this one first, then those that received images, or those removed by « Regrouper »), and the capture as it now stands. A web session only. Nothing is deleted: every image keeps its file, its visibility and its sky solution; the capture keeps its titles, notes, tags and publication.",
+      "required": ["changed", "captureIds", "capture"],
+      "additionalProperties": false,
+      "properties": {
+        "changed": { "type": "boolean" },
+        "captureIds": {
+          "type": "array",
+          "items": { "type": "string", "format": "uuid" },
+          "minItems": 1
+        },
+        "capture": { "$ref": "#/$defs/capture" }
+      }
+    },
     "timestamp": {
       "type": "string",
       "format": "date-time"
@@ -703,6 +718,30 @@
         "variants"
       ],
       "properties": {
+        "series": { "$ref": "capture.schema.json#/$defs/series" },
+        "generatedTitle": {
+          "type": ["object", "null"],
+          "description": "The title the service generates for a capture of a series, by language (« M45 · 429 × 30 s · 3 h 34 »): the target's name, the frames, one frame's exposure and the total. Kept apart from the owner's title, which takes its place when written.",
+          "additionalProperties": { "type": "string", "maxLength": 200 }
+        },
+        "targetMain": {
+          "type": "boolean",
+          "description": "On a capture of a series: whether it is the main capture of its target in its session (the owner's choice, else the longest series in total, the oldest at equal time). Absent on a capture without a series."
+        },
+        "splitFromId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The capture « Séparer par série » took it from (« Regrouper » undoes it)."
+        },
+        "seriesCount": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Present only when the images of the capture name several series of poses (a capture sent before series existed): « {n} séries de poses dans cette capture », the condition of « Séparer par série »."
+        },
+        "separated": {
+          "const": true,
+          "description": "Present when images of this capture were separated by series: « Regrouper » brings them back."
+        },
         "id": {
           "$ref": "capture.schema.json#/$defs/uuid"
         },
@@ -847,6 +886,10 @@
           },
           "additionalProperties": false
         },
+        "orientation": {
+          "description": "Additive: the quarter turns the owner gave the whole capture, clockwise — 0 (as shot), 90, 180 or 270 (`capture.schema.json` `capture.orientation`). A display instruction: the original keeps its bytes and its digest; the owner's thumbnail and preview, the galleries' files and the sky annotations are drawn turned. Changed by `PATCH` `{ orientation }`, from the web and from a device; optional so that a reader of an earlier answer still validates (it reads 0).",
+          "enum": [0, 90, 180, 270]
+        },
         "projectId": {
           "description": "Additive: only on the image of a multi-night plan (role `plan`): the plan it belongs to, as the items of `GET /v1/captures` carry it, so that the page of the capture knows it is the plan's image (its « Intégrations » come from the sessions it combines). Absent on every other capture.",
           "$ref": "capture.schema.json#/$defs/uuid"
@@ -879,7 +922,12 @@
           }
         },
         "integrationMinutes": {
-          "description": "The minutes the night's debriefing says were acquired on the capture's first target; `null` when the capture has no night, the target no debriefed time (« non noté »).",
+          "description": "The minutes the night's debriefing says were acquired on the capture's first target; `null` when the capture has no night, the target no debriefed time (« non noté »). For a capture of a series of poses whose target has several such captures in the session, the minutes of its own series — `null` when the series does not say them, never the target's total (which `targetIntegrationMinutes` carries).",
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "targetIntegrationMinutes": {
+          "description": "The minutes the night's debriefing says were acquired on the capture's first target, all its series together (« M45 : 3 h 40 » for a main capture of 3 h 34 and a secondary one of 6 min). Present only on a capture of a series whose target has several such captures in the session; `null` when the debriefing has no time for the target.",
           "type": ["integer", "null"],
           "minimum": 1
         },
@@ -896,6 +944,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/progressionImage"
+          }
+        },
+        "attachments": {
+          "description": "The files attached to the capture (`capture-attachment.schema.json`), newest first: files to download, never images — never among `variants`, never in a gallery, never public, no thumbnail. The owner's page shows each in its zone « Fichier linéaire » (`role: linear`). Absent on an answer written before the files existed; a reader assumes `[]`.",
+          "type": "array",
+          "items": {
+            "$ref": "capture-attachment.schema.json#/$defs/attachment"
           }
         }
       },
@@ -1677,6 +1732,16 @@
           "additionalProperties": false
         },
         {
+          "description": "« Orientation »: the quarter turns of the whole capture, clockwise (0 as shot, 90, 180, 270) — « Pivoter à gauche » / « Pivoter à droite » and « Revenir à l'orientation d'origine » (0). A display instruction: no file is rewritten, the original keeps its bytes and its digest. A device writes it too. Refused in the read-only window (`403 entitlement_read_only`).",
+          "required": ["orientation"],
+          "properties": {
+            "orientation": {
+              "enum": [0, 90, 180, 270]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
           "description": "« Afficher la qualité en public »: the same switch for the public gallery, on for a new capture. A device writes it too.",
           "required": ["qualityPublic"],
           "properties": {
@@ -1773,7 +1838,7 @@
       "pattern": "^\"[1-9][0-9]*\"$"
     },
     "deviceMetadataField": {
-      "description": "Additive: the metadata fields (`metadataChange`) the owner's hand writes from the phone, by its device token, through `PATCH /v1/captures/{id}` `{ metadata }`: every field of `metadataChange` except `sessionId` (changing the capture's session stays the web session's; the phone leaves it). The tags (`{ tags }`), the stage (`{ stage }`) and, the switches of the quality (`{ qualityPrivate }`, `{ qualityPublic }`) are written by a device too; an image's title and description are written by a device too (`PATCH /v1/captures/{id}/variants/{imageId}` with no `source`, `capture-variant.schema.json` `deviceTexts`); the visibility, the main image, an image's visibility, the deletion, the original and `skyAnnotations` stay the web session's.",
+      "description": "Additive: the metadata fields (`metadataChange`) the owner's hand writes from the phone, by its device token, through `PATCH /v1/captures/{id}` `{ metadata }`: every field of `metadataChange` except `sessionId` (changing the capture's session stays the web session's; the phone leaves it). The tags (`{ tags }`), the stage (`{ stage }`) and, the switches of the quality (`{ qualityPrivate }`, `{ qualityPublic }`) and the orientation (`{ orientation }`) are written by a device too; an image's title and description are written by a device too (`PATCH /v1/captures/{id}/variants/{imageId}` with no `source`, `capture-variant.schema.json` `deviceTexts`); the visibility, the main image, an image's visibility, the deletion, the original and `skyAnnotations` stay the web session's.",
       "enum": [
         "title",
         "description",

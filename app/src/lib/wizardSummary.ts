@@ -12,6 +12,7 @@ import {
   type DeviceChoices,
 } from "./deviceMaster.ts";
 import type {
+  ImageCandidate,
   ImagePlan,
   ImageQuality,
   NightDetection,
@@ -25,10 +26,23 @@ import { calibrationFindings, stackedWithoutText } from "./missingMessages.ts";
 import type { Seg } from "./wizardFiles.ts";
 import { baseName } from "./wizardSteps.ts";
 import { NO_PROCESSING_ID } from "./pipelineChoice.ts";
+import { isAdjustable } from "./imageAdjust.ts";
 import { formatDuration } from "./duration.ts";
-import { formatSize, pluralText, shortDigest } from "./written.ts";
+import {
+  seriesBoxKey,
+  seriesKey,
+  targetsWithSeries,
+  type TargetSeries,
+} from "./seriesOfPoses.ts";
+import {
+  formatSize,
+  formatSpaceSize,
+  pluralText,
+  shortDigest,
+} from "./written.ts";
 import {
   isFullResolutionTwin,
+  isTiffPath,
   renderFormatText,
   withoutTiffText,
 } from "./renderFormat.ts";
@@ -48,6 +62,15 @@ export interface SummaryRow {
   render?: boolean;
   /** That file is the TIFF in full resolution of a render. */
   fullResolution?: boolean;
+  /** A PNG render that « Régler l'image » can set (never « Sans
+   * traitement » nor a TIFF): its file, its target and its name. */
+  adjust?: { path: string; target: string; render: string };
+  /** The TIFF of an image set that would take the place of the TIFF online:
+   * the box « Conserver le TIFF existant » faces it (`sha256`: the TIFF
+   * sent), `noteId` the note under it, which the box is described by. */
+  keepTiff?: { sha256: string; checked: boolean; noteId: string };
+  /** The id of a note, for what describes itself by it. */
+  id?: string;
 }
 
 export interface SummaryGroup {
@@ -135,7 +158,7 @@ export function refusalText(
   names: (targetId: string) => string,
   privateServer: boolean,
 ): string {
-  const size = (bytes: number) => formatSize(t, bytes, locale);
+  const size = (bytes: number) => formatSpaceSize(t, bytes, locale);
   switch (finding.limit) {
     case "file_too_large":
       return t(
@@ -267,6 +290,155 @@ export function progressionSetAside(
   }));
 }
 
+/** The lines of the linear files of a sending ("Sans traitement"): a file
+ * attached to a capture, with its sentence, never counted among its images.
+ * One group per target. */
+export function linearRows(
+  t: Translate,
+  input: {
+    plans: readonly ImagePlan[];
+    /** The files the TIFF box leaves on this computer. */
+    kept: readonly ImageCandidate[];
+    names: (targetId: string) => string;
+    size: (bytes: number) => string;
+    /** The ceiling per file of the space, written. */
+    max: string;
+    allowed: boolean;
+    overPaths: ReadonlySet<string>;
+  },
+): {
+  sent: SummaryRow[];
+  kept: SummaryRow[];
+  setAside: SummaryRow[];
+  stays: SummaryRow[];
+}[] {
+  const rows: ReturnType<typeof linearRows> = [];
+  const sentence = (): SummaryRow => ({
+    segs: [t("wizard.linear.sentence")],
+    value: "",
+    note: true,
+  });
+  for (const plan of input.plans.filter(
+    (item) => item.image.kind === "linear",
+  )) {
+    const target = input.names(plan.image.targetId);
+    const group = { sent: [], kept: [], setAside: [], stays: [] } as Pick<
+      ReturnType<typeof linearRows>[number],
+      "sent" | "kept" | "setAside" | "stays"
+    >;
+    const d = plan.decision;
+    if (d.decision === "file_online" || d.decision === "already_online") {
+      group.kept.push({
+        segs: [t("wizard.summary.keptIdenticalLinear", { target })],
+        value: input.size(plan.image.size),
+      });
+    } else if (d.decision === "not_sent") {
+      group.setAside.push({
+        segs: [
+          t(
+            d.reason === "too_large_for_space"
+              ? "wizard.summary.setAsideTooLarge"
+              : "wizard.summary.setAsideNoCaptureFile",
+            {
+              file: baseName(plan.image.path),
+              size: input.size(plan.image.size),
+              max: input.max,
+            },
+          ),
+        ],
+        value: input.size(plan.image.size),
+      });
+    } else {
+      group.sent.push({
+        segs: [
+          t("wizard.linear.of", { target }),
+          t("detect.join"),
+          { strong: t("wizard.linear.format") },
+          ...(input.allowed
+            ? [
+                t("wizard.summary.digest"),
+                { code: shortDigest(plan.image.sha256) },
+              ]
+            : []),
+        ],
+        value: input.size(plan.image.size),
+        over: input.overPaths.has(plan.image.path),
+      });
+      group.sent.push(sentence());
+    }
+    rows.push({ ...group });
+  }
+  for (const file of input.kept) {
+    const target = input.names(file.targetId);
+    rows.push({
+      sent: [],
+      kept: [],
+      setAside: [],
+      stays: [
+        {
+          segs: [
+            t("wizard.linear.of", { target }),
+            t("detect.join"),
+            { strong: t("wizard.linear.format") },
+          ],
+          value: input.size(file.size),
+        },
+        sentence(),
+        {
+          segs: [t("wizard.linear.onlyIfJoined")],
+          value: "",
+          note: true,
+        },
+      ],
+    });
+  }
+  return rows;
+}
+
+/** Whether the series of `plan` is left unticked (`seriesBoxKey`). */
+export function isSeriesUnticked(
+  plan: ImagePlan,
+  untickedSeries: ReadonlySet<string> | undefined,
+): boolean {
+  const series = plan.image.series;
+  if (!series || !untickedSeries?.size) return false;
+  return untickedSeries.has(
+    seriesBoxKey(plan.image.targetId, seriesKey(series)),
+  );
+}
+
+/** The targets of the night that have several series of poses among their
+ * stacked images, the longest first, with the main and the minor ones: one
+ * box per series in the « Récapitulatif ». */
+export function summarySeries(
+  precheck: NightPrecheck,
+): Map<string, TargetSeries[]> {
+  return targetsWithSeries(
+    precheck.plans
+      .filter((plan) => plan.image.kind === "stacked")
+      .map((plan) => ({
+        targetId: plan.image.targetId,
+        series: plan.image.series ?? null,
+      })),
+  );
+}
+
+/** The TIFF of an image set that takes the place of the TIFF online
+ * (`replacesSha256`, set by the core): the case where « Conserver le TIFF
+ * existant » is offered. */
+export function replacesOnlineTiff(
+  plan: ImagePlan,
+  keepTiffs?: ReadonlySet<string>,
+): boolean {
+  return (
+    isTiffPath(plan.image.path) &&
+    plan.decision.decision === "variant" &&
+    // A check made with the box ticked has no `replacesSha256` left: the box
+    // stays on its line, to be unticked.
+    (!!plan.decision.replacesSha256 || !!keepTiffs?.has(plan.image.sha256))
+  );
+}
+
 export function summaryView(
   t: Translate,
   locale: string,
@@ -291,11 +463,17 @@ export function summaryView(
     /** « Joindre aussi les TIFF » is ticked: the stacking to come sends the
      * PNG and the TIFF of each render. */
     includeTiff?: boolean;
+    /** The series of poses left unticked in the « Récapitulatif »
+     * (`seriesBoxKey`): their images stay on this computer. */
+    untickedSeries?: ReadonlySet<string>;
+    /** « Conserver le TIFF existant » ticked: the SHA-256 of the TIFF that
+     * stay beside the TIFF online instead of replacing it. */
+    keepTiffs?: ReadonlySet<string>;
   },
 ): SummaryView {
   const { precheck, detection, online, treatments, resume } = input;
   const names = (targetId: string) => designation(detection, online, targetId);
-  const size = (bytes: number) => formatSize(t, bytes, locale);
+  const size = (bytes: number) => formatSpaceSize(t, bytes, locale);
   const allowed = precheck.quota.allowed;
   const overPaths = new Set(
     precheck.quota.findings
@@ -305,6 +483,9 @@ export function summaryView(
   const sent: SummaryRow[] = [];
   const kept: SummaryRow[] = [];
   const setAside: SummaryRow[] = [];
+  // What stays on this computer: the FITS, the raw logs, and the linear files
+  // the TIFF box does not join.
+  const stays: SummaryRow[] = [];
   const restacked = (plan: ImagePlan) =>
     treatments.has("stacking") && input.stackTargets.has(plan.image.targetId);
   const plans = precheck.plans.filter(
@@ -341,14 +522,19 @@ export function summaryView(
   // images · 52 Mo »), one per file with its format (« Rendu naturel ·
   // PNG »), so the weight of the TIFF is seen before the sending.
   const renderName = input.renderName ?? ((id: string) => id);
+  const unticked = (plan: ImagePlan) =>
+    isSeriesUnticked(plan, input.untickedSeries);
   const sendsAsImage = (plan: ImagePlan) =>
     plan.decision.decision !== "already_online" &&
     plan.decision.decision !== "not_sent" &&
+    !unticked(plan) &&
     (treatments.has("final_image") || plan.image.kind !== "final");
   const rendersSaid = new Set<string>();
   for (const plan of plans) {
-    // The progression images have their own line, per target (below).
-    if (plan.image.kind === "progression") continue;
+    // The progression images have their own line, per target (below); the
+    // linear file has its own too, apart from the images.
+    if (plan.image.kind === "progression" || plan.image.kind === "linear")
+      continue;
     if (
       plan.image.kind === "stacked" &&
       sendsAsImage(plan) &&
@@ -359,7 +545,13 @@ export function summaryView(
     const file = baseName(plan.image.path);
     const digest = shortDigest(plan.image.sha256);
     const d = plan.decision;
-    if (d.decision === "already_online") {
+    if (unticked(plan) && d.decision !== "already_online") {
+      // A series left unticked: its images stay on this computer.
+      setAside.push({
+        segs: [t("wizard.summary.setAsideSeries", { file })],
+        value: size(plan.image.size),
+      });
+    } else if (d.decision === "already_online") {
       kept.push({
         segs: [
           t(
@@ -386,7 +578,9 @@ export function summaryView(
             : t(
                 d.reason === "variants_not_allowed"
                   ? "wizard.summary.setAsideNotKept"
-                  : "wizard.summary.setAsideOther",
+                  : d.reason === "adjusted_variant_online"
+                    ? "wizard.summary.setAsideAdjustedVariant"
+                    : "wizard.summary.setAsideOther",
                 { file },
               ),
         ],
@@ -412,6 +606,10 @@ export function summaryView(
         }),
       });
       for (const render of renders) {
+        const replacesTiff = replacesOnlineTiff(render, input.keepTiffs);
+        const keepsTiff =
+          replacesTiff && !!input.keepTiffs?.has(render.image.sha256);
+        const noteId = `keep-tiff-${render.image.sha256}`;
         const name =
           render.image.render === NO_PROCESSING_ID
             ? t("wizard.treatments.noProcessing")
@@ -434,7 +632,51 @@ export function summaryView(
           over: overPaths.has(render.image.path),
           render: true,
           fullResolution: isFullResolutionTwin(render.image),
+          ...(render.image.render !== NO_PROCESSING_ID &&
+          isAdjustable({
+            path: render.image.path,
+            fullResolution: isFullResolutionTwin(render.image),
+          })
+            ? { adjust: { path: render.image.path, target, render: name } }
+            : {}),
+          ...(replacesTiff
+            ? {
+                keepTiff: {
+                  sha256: render.image.sha256,
+                  checked: keepsTiff,
+                  noteId,
+                },
+              }
+            : {}),
         });
+        // An adjusted TIFF taking the place of the TIFF online (or, the box
+        // ticked, staying beside it): said under its line.
+        if (replacesTiff) {
+          sent.push({
+            segs: [
+              t(
+                keepsTiff
+                  ? "wizard.summary.keepsTiff"
+                  : "wizard.summary.replacesTiff",
+                {
+                  target,
+                },
+              ),
+            ],
+            value: "",
+            note: true,
+            id: noteId,
+          });
+        }
+        // An image set taking the place of its render online: said, no new
+        // capture nor variant.
+        if (render.decision.decision === "replace") {
+          sent.push({
+            segs: [t("wizard.summary.replacesMain", { target })],
+            value: "",
+            note: true,
+          });
+        }
       }
       const quality = renders.find((item) => item.metadata?.imageQuality)
         ?.metadata?.imageQuality;
@@ -495,6 +737,23 @@ export function summaryView(
       }
     }
   }
+  // The linear file ("Sans traitement") is a file attached to the capture,
+  // never one of its images: it has its own lines, sent, kept online, set
+  // aside, or kept on this computer when the TIFF are not joined.
+  for (const rows of linearRows(t, {
+    plans,
+    kept: precheck.linearKeptHere ?? [],
+    names,
+    size,
+    max: size(precheck.storage.maxFileBytes),
+    allowed,
+    overPaths,
+  })) {
+    sent.push(...rows.sent);
+    kept.push(...rows.kept);
+    setAside.push(...rows.setAside);
+    stays.push(...rows.stays);
+  }
   // The main image online of a target that receives a variant is kept.
   // So is the one of a target about to be stacked again: the new image is a
   // variant of it. Said once per target, and not when an identical image is
@@ -512,7 +771,8 @@ export function summaryView(
       plans.some(
         (p) =>
           p.image.targetId === targetId &&
-          p.decision.decision === "already_online",
+          (p.decision.decision === "already_online" ||
+            p.decision.decision === "replace"),
       )
     )
       continue;
@@ -588,6 +848,7 @@ export function summaryView(
   const imagesToSolve =
     plans.filter(
       (plan) =>
+        plan.image.kind !== "linear" &&
         plan.decision.decision !== "not_sent" &&
         plan.decision.decision !== "already_online",
     ).length +
@@ -645,8 +906,10 @@ export function summaryView(
     );
   }
 
-  // What never leaves this computer.
-  const never: SummaryRow[] = [];
+  // What never leaves this computer: sized as the system sizes its files,
+  // not as the space counts.
+  const never: SummaryRow[] = [...stays];
+  const localSize = (bytes: number) => formatSize(t, bytes, locale);
   if (detection && treatments.has("stacking")) {
     // The image a device stacked is read in place: it never leaves, only the
     // render does.
@@ -661,7 +924,7 @@ export function summaryView(
             " · ",
             { code: image.fileName },
           ],
-          value: size(image.bytes),
+          value: localSize(image.bytes),
         });
         never.push({
           segs: [t("deviceMaster.summary.neverNote")],
@@ -687,7 +950,7 @@ export function summaryView(
     if (lights + calibration > 0) {
       never.push({
         segs: [t("wizard.summary.fits", { lights, calibration })],
-        value: size(lightBytes + calibrationBytes),
+        value: localSize(lightBytes + calibrationBytes),
       });
     }
     const kinds = [...new Set(detection.logs.map((log) => log.kind))]
@@ -722,7 +985,17 @@ export function summaryView(
 
   // The check before the sending.
   const storage = precheck.storage;
-  const toSend = precheck.quota.toSendBytes;
+  // A series left unticked stays on this computer: its images are not to
+  // send (CAPTURES-SERIES-2; the check of the service counted them).
+  const leftHere = plans
+    .filter(
+      (plan) =>
+        unticked(plan) &&
+        plan.decision.decision !== "already_online" &&
+        plan.decision.decision !== "not_sent",
+    )
+    .reduce((sum, plan) => sum + plan.image.size, 0);
+  const toSend = Math.max(0, precheck.quota.toSendBytes - leftHere);
   const checks: CheckLine[] = [];
   const remainingText = size(storage.remainingBytes);
   const after = size(Math.max(0, storage.remainingBytes - toSend));
@@ -754,8 +1027,16 @@ export function summaryView(
     checks.push({
       ok: true,
       text: t("wizard.summary.check.captures", {
-        adding: plans.filter((plan) => plan.decision.decision === "new_capture")
-          .length,
+        // One capture per session and target, whatever its series (the
+        // service's count): two series of one target add one.
+        adding: new Set(
+          plans
+            .filter(
+              (plan) =>
+                plan.decision.decision === "new_capture" && !unticked(plan),
+            )
+            .map((plan) => plan.image.targetId),
+        ).size,
         left: Math.max(0, captureLimit - storage.captureCount),
         limit: captureLimit,
       }),
@@ -763,13 +1044,18 @@ export function summaryView(
   }
   // What is left of the plans (the final image of a target stacked again, or
   // a stacked image of an earlier run, is replaced and sent no more).
-  const sending = plans.filter(
-    (plan) =>
-      plan.decision.decision === "new_capture" ||
-      plan.decision.decision === "variant" ||
-      plan.decision.decision === "variant_of_new" ||
-      isProgressionPlan(plan),
-  );
+  const sending = plans
+    .filter(
+      (plan) =>
+        plan.decision.decision === "new_capture" ||
+        plan.decision.decision === "variant" ||
+        plan.decision.decision === "replace" ||
+        plan.decision.decision === "variant_of_new" ||
+        plan.decision.decision === "file" ||
+        plan.decision.decision === "file_of_new" ||
+        isProgressionPlan(plan),
+    )
+    .filter((plan) => !unticked(plan));
   const largest = [...sending].sort((a, b) => b.image.size - a.image.size)[0];
   if (largest) {
     checks.push({
@@ -942,11 +1228,21 @@ export function sendingItems(
   }
   for (const plan of input.plans) {
     const d = plan.decision.decision;
-    if (d === "new_capture" || d === "variant" || d === "variant_of_new") {
+    if (d === "file" || d === "file_of_new") {
+      add(
+        `image:${plan.image.sha256}`,
+        t("wizard.linear.of", { target: names(plan.image.targetId) }),
+      );
+    } else if (
+      d === "new_capture" ||
+      d === "variant" ||
+      d === "replace" ||
+      d === "variant_of_new"
+    ) {
       add(
         `image:${plan.image.sha256}`,
         t(
-          d === "new_capture"
+          d === "new_capture" || d === "replace"
             ? "wizard.sending.final"
             : "wizard.sending.variant",
           {
@@ -993,8 +1289,8 @@ export function overallText(
   total: number,
 ): string {
   return t("wizard.sending.overall", {
-    sent: formatSize(t, sent, locale),
-    total: formatSize(t, total, locale),
+    sent: formatSpaceSize(t, sent, locale),
+    total: formatSpaceSize(t, total, locale),
   });
 }
 
@@ -1016,7 +1312,7 @@ export function sentLines(
     designation(input.detection, input.online, targetId);
   const lines: string[] = [];
   const captures = input.plans.filter((plan) =>
-    ["new_capture", "variant", "variant_of_new"].includes(
+    ["new_capture", "variant", "replace", "variant_of_new"].includes(
       plan.decision.decision,
     ),
   );
@@ -1154,7 +1450,7 @@ const STACKING_CODES: Record<string, string> = {
   starnet_missing: "starnet_missing",
   tool_missing: "tool_missing_here",
   calibration_failed: "siril_failed",
-  registration_failed: "siril_failed",
+  registration_failed: "registration_failed",
   integration_failed: "siril_failed",
   starnet_failed: "starnet_failed",
   render_failed: "tool_failed",
@@ -1203,7 +1499,11 @@ export function stackingFailureText(
       if (!code) return t("errors.stacking_failed");
       // The two failures that leave journals say where (`logs`: the folder
       // of Astro Sync's data they were copied to before the scratch went).
-      if (code === "siril_failed" || code === "tool_failed") {
+      if (
+        code === "siril_failed" ||
+        code === "registration_failed" ||
+        code === "tool_failed"
+      ) {
         const logs = String(details.logs ?? "");
         return logs
           ? t(`errors.stacking.${code}`, { logs })

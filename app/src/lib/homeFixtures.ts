@@ -472,9 +472,13 @@ export function precheck(
     options.toSend ??
     plans
       .filter((p) =>
-        ["new_capture", "variant", "variant_of_new"].includes(
-          p.decision.decision,
-        ),
+        [
+          "new_capture",
+          "variant",
+          "variant_of_new",
+          "file",
+          "file_of_new",
+        ].includes(p.decision.decision),
       )
       .reduce((sum, p) => sum + p.image.size, 0);
   return {
@@ -600,21 +604,35 @@ export function dependencyTools(
     /** This system has no file in the registry for ASTAP. */
     noDownload?: boolean;
     /** The stacking's Python environment. */
-    environment?: "present" | "missing" | "interrupted" | "noPython";
+    environment?:
+      | "present"
+      | "missing"
+      | "interrupted"
+      | "noPython"
+      /** The environment an earlier Astro Sync left (0.1.0, no mark). */
+      | "found";
   } = {},
 ): ToolRow[] {
   const astap = options.astap ?? "present";
   const environment = options.environment ?? "present";
   const envPresent = environment === "present";
+  const envFound = environment === "found";
   const envRow = {
-    state: envPresent ? ("present" as const) : ("missing" as const),
-    version: envPresent ? "3.13.7" : null,
-    path: envPresent
-      ? "~/Library/Application Support/Astro Sync/stacking-env"
-      : null,
+    state: envPresent
+      ? ("present" as const)
+      : envFound
+        ? ("outdated" as const)
+        : ("missing" as const),
+    version: envPresent ? "3.13.7" : envFound ? "3.13.1" : null,
+    path:
+      envPresent || envFound
+        ? "~/Library/Application Support/Astro Sync/stacking-env"
+        : null,
     page: "https://www.python.org/downloads/",
     interrupted: environment === "interrupted",
-    installable: environment === "missing" || environment === "interrupted",
+    ...(envFound ? { redo: "unchecked" as const } : {}),
+    installable:
+      environment === "missing" || environment === "interrupted" || envFound,
     blockedBy: envPresent
       ? []
       : environment === "noPython"

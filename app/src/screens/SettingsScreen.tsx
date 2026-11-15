@@ -35,7 +35,7 @@ import {
 } from "../lib/bridge";
 import { settingsVersionLine } from "../lib/buildInfo";
 import { formatError } from "../lib/format";
-import { displayPath, homeOf } from "../lib/home";
+import { displayPath, homeOf, pathParts } from "../lib/home";
 import {
   OFFSET_FIELDS,
   offsetDraft,
@@ -295,7 +295,13 @@ function GeneralTab({
         <div className="as-folder-row">
           <span className="as-folder-row__path">
             <Icon name="folder" />
-            {shown}
+            <span className="as-folder-row__text">
+              {pathParts(shown).map((part, index) => (
+                <span key={index} className="as-folder-row__part">
+                  {part}
+                </span>
+              ))}
+            </span>
           </span>
           <button
             type="button"
@@ -344,7 +350,11 @@ function GeneralTab({
               </option>
             ))}
           </select>
-          <p className={helpTextClassName}>{localeName(locale)}</p>
+          {/* The language in effect, when the list follows the system's:
+              a language chosen is already written in the list. */}
+          {storedLocale === null && (
+            <p className={helpTextClassName}>{localeName(locale)}</p>
+          )}
         </div>
       </section>
 

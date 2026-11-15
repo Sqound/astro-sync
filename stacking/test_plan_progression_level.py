@@ -106,82 +106,75 @@ class MilestoneLevel(unittest.TestCase):
 
 @NEEDS_NUMPY
 class PolishedMilestoneLevel(unittest.TestCase):
-    """The same for the « Rendu soigné »: its sky match aims at the imposed level, not at the poses' own."""
+    """The same for the « Rendu soigné »: a milestone takes the curve of the image of the plan, not its own."""
 
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
-        (self.root / "big").mkdir()
+        (self.root / "work" / "render").mkdir(parents=True)
         self.masters = [cumulative_master(self.root, index) for index in range(3)]
 
     def prepare(self, index: int, display: dict[str, object] | None = None, graxpert: bool = True):
-        import renders
-        from test_render_pipelines import fake_graxpert
-
-        tool = fake_graxpert(self.root) if graxpert else None
-        measured: dict[str, object] = {}
-        with redirect_stdout(io.StringIO()):
-            image, done = renders.prepare_polished(
-                self.masters[index], tool, self.root / "work", f"N{index}", None, 1, 0.05, None,
-                imposed=display, measured=measured,
-            )
-        return image, measured, done
-
-    def test_each_polished_milestone_alone_has_a_level_of_its_own(self) -> None:
-        levels = [shown_sky(self.prepare(index)[0]) for index in range(3)]
-        self.assertGreater(levels[0] / levels[2], 1.2)
-        self.assertGreater(levels[0], levels[1])
-
-    def test_with_the_display_of_the_plan_image_every_polished_milestone_has_its_level(self) -> None:
-        plan_image, display, done = self.prepare(2)
-        self.assertEqual(done["background"], "graxpert")
-        self.assertEqual(sorted(display), ["black", "scale", "sky"])
-        reference = shown_sky(plan_image)
-        for index in range(3):
-            image, used, _ = self.prepare(index, display)
-            self.assertEqual(used, display)
-            self.assertAlmostEqual(shown_sky(image) / reference, 1.0, delta=0.05)
-
-    def test_the_polynomial_polished_render_has_a_display_too(self) -> None:
-        plan_image, display, done = self.prepare(2, graxpert=False)
-        self.assertEqual(done["background"], "polynomial")
-        self.assertEqual(sorted(display), ["black", "scale"])
-        reference = shown_sky(plan_image)
-        for index in range(3):
-            image, _, _ = self.prepare(index, display, graxpert=False)
-            self.assertAlmostEqual(shown_sky(image) / reference, 1.0, delta=0.05)
-
-    def test_the_final_match_aims_at_the_imposed_level_when_the_stars_are_separated(self) -> None:
         import argparse
 
         import astro_sync_stack as stack
         import renders
-        from test_render_pipelines import fake_graxpert, fake_starnet
+        from test_render_pipelines import fake_graxpert
 
-        big = [cumulative_master(self.root / "big", index, (520, 520)) for index in range(3)]
-        args = argparse.Namespace(work=self.root / "work", name="N", gradient_degree=1, black_percentile=0.05, deconv_fwhm=None)
-        (self.root / "work" / "render").mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(work=self.root / "work", name=f"N{index}", gradient_degree=1, black_percentile=0.05,
+                                  deconv_fwhm=None)
+        measured: dict[str, object] = {}
+        notes: dict[str, object] = {}
+        with redirect_stdout(io.StringIO()):
+            nebula, stars = stack.prepared_layers(args, "polished", self.masters[index], None,
+                                                  fake_graxpert(self.root) if graxpert else None, None, notes,
+                                                  imposed=display, measured=measured)
+        return renders.polished_deep(nebula, stars), measured, notes["polished"]
 
-        def final(index: int, imposed: dict[str, object] | None) -> tuple[float, dict[str, object]]:
-            measured: dict[str, object] = {}
-            with redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                nebula, stars = stack.prepared_layers(args, "polished", big[index], fake_starnet(self.root),
-                                                      fake_graxpert(self.root), None, {}, imposed=imposed, measured=measured)
-            return float(np.median(renders.lum(renders.polished_deep(nebula, stars)))), measured
+    @staticmethod
+    def cloud(image: np.ndarray) -> float:
+        import renders
 
-        reference, display = final(2, None)
-        self.assertIn("finalWithStars", display)
-        own = final(0, None)[0]
-        imposed, used = final(0, display)
-        self.assertEqual(used["finalWithStars"], display["finalWithStars"])
-        self.assertGreater(abs(own / reference - 1.0), abs(imposed / reference - 1.0))
-        self.assertAlmostEqual(imposed / reference, 1.0, delta=0.05)
+        level = renders.lum(image)
+        return float(np.median(level[70:90, 90:110]))
+
+    def test_the_sky_of_every_polished_milestone_is_dark_whatever_its_noise(self) -> None:
+        # The curve puts the sky at its level by the noise of each image: a noisier stack is not shown greyer.
+        # (On these small frames the sky the curve reads, its 64 px tiles, sits a little under the bare corners.)
+        levels = [shown_sky(self.prepare(index)[0]) for index in range(3)]
+        self.assertLess(max(levels), 2.5 * renders_sky())
+        self.assertLess(max(levels) / min(levels), 1.15)
+
+    def test_with_the_display_of_the_plan_image_every_polished_milestone_shows_the_cloud_at_its_level(self) -> None:
+        plan_image, display, done = self.prepare(2)
+        self.assertEqual(done["background"], "graxpert")
+        self.assertEqual(sorted(display), ["black", "curve", "scale"])
+        self.assertEqual(sorted(display["curve"]), ["black", "gains", "lift", "midtones", "top"])
+        reference = self.cloud(plan_image)
+        own = self.cloud(self.prepare(0)[0])
+        image, used, _ = self.prepare(0, display)
+        self.assertEqual(used, display)
+        self.assertLess(abs(self.cloud(image) / reference - 1.0), abs(own / reference - 1.0))
+        self.assertAlmostEqual(self.cloud(image) / reference, 1.0, delta=0.08)
+
+    def test_the_polynomial_polished_render_has_a_display_too(self) -> None:
+        _, display, done = self.prepare(2, graxpert=False)
+        self.assertEqual(done["background"], "polynomial")
+        self.assertEqual(sorted(display), ["black", "curve", "scale"])
 
     def test_the_display_imposed_on_its_own_image_changes_nothing(self) -> None:
+        import json
+
         image, display, _ = self.prepare(1)
-        again, used, _ = self.prepare(1, display)
-        self.assertTrue(np.array_equal(image, again))
+        again, used, _ = self.prepare(1, json.loads(json.dumps(display)))
+        np.testing.assert_allclose(image, again, atol=1e-5)
         self.assertEqual(used, display)
+
+
+def renders_sky() -> float:
+    import renders
+
+    return renders.POLISHED.sky
 
 
 @NEEDS_NUMPY
@@ -198,14 +191,16 @@ class JobDisplay(unittest.TestCase):
 
         good = {"display": {"black": [0.01, 0.02, 0.03], "scale": 0.5}}
         self.assertEqual(plan_stack.imposed_display(good), good["display"])
-        polished = {"display": {**good["display"], "sky": {"displayed": 0.1, "final": 0.2}, "finalWithStars": 0.25,
-                                "imposed": False}}
-        self.assertEqual(plan_stack.imposed_display(polished), {k: v for k, v in polished["display"].items() if k != "imposed"})
+        curve = {"black": 0.001, "top": 0.8, "midtones": 0.007, "lift": 0.85, "gains": [0.95, 1.0, 1.05]}
+        polished = {"display": {**good["display"], "curve": curve, "imposed": False}}
+        self.assertEqual(plan_stack.imposed_display(polished), {**good["display"], "curve": curve})
         for bad in ({"black": [0.01, 0.02], "scale": 0.5}, {"black": [0.01, 0.02, 0.03], "scale": 0},
                     {"black": [0.01, 0.02, float("nan")], "scale": 1.0},
                     {"scale": 0.5}, "dark",
-                    {"black": [0.01, 0.02, 0.03], "scale": 0.5, "sky": {"displayed": 0.1}},
-                    {"black": [0.01, 0.02, 0.03], "scale": 0.5, "finalWithStars": float("inf")}):
+                    {"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.0, "top": 0.8}},
+                    {"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.0, "top": 0.8, "midtones": 1.2}},
+                    {"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.0, "top": 0.8, "midtones": 0.01,
+                                                                          "gains": [1.0, float("inf"), 1.0]}}):
             with self.assertRaises(stack.StackingError) as raised:
                 plan_stack.imposed_display({"display": bad})
             self.assertEqual(raised.exception.code, "bad_job")

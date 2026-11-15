@@ -276,6 +276,10 @@ export function toolPill(
   const { id, row } = input;
   const python = row?.kind === "python-packages" || id === "python-env";
   const present = row?.state === "present" || row?.state === "downloaded";
+  // An environment that is here but not this Astro Sync's as it stands:
+  // « À mettre à jour », never « Absent », and no download size (what is
+  // there is kept).
+  const toUpdate = python && row?.state === "outdated";
   const downloading = id in input.progress;
   const bytes =
     input.bytes ?? row?.downloadBytes ?? row?.download?.bytes ?? null;
@@ -285,13 +289,15 @@ export function toolPill(
     : row?.download
       ? "download"
       : "page";
-  const label = python
-    ? size
-      ? t("wizard.pipelines.install", { size })
-      : t("wizard.pipelines.installNoSize")
-    : size
-      ? t("wizard.pipelines.download", { size })
-      : t("wizard.pipelines.downloadNoSize");
+  const label = toUpdate
+    ? t("wizard.pipelines.update")
+    : python
+      ? size
+        ? t("wizard.pipelines.install", { size })
+        : t("wizard.pipelines.installNoSize")
+      : size
+        ? t("wizard.pipelines.download", { size })
+        : t("wizard.pipelines.downloadNoSize");
   return {
     id,
     name: python ? t("wizard.pipelines.python") : toolName(row, id, locale),
@@ -303,9 +309,11 @@ export function toolPill(
         : t("wizard.pipelines.tool.optional")
       : downloading
         ? null
-        : input.required
-          ? t("wizard.pipelines.tool.absent")
-          : t("wizard.pipelines.tool.notInstalled"),
+        : toUpdate
+          ? t("wizard.pipelines.tool.toUpdate")
+          : input.required
+            ? t("wizard.pipelines.tool.absent")
+            : t("wizard.pipelines.tool.notInstalled"),
     action: present || downloading ? null : { label, kind },
     percent: downloading ? (input.progress[id] ?? null) : null,
   };
@@ -527,7 +535,9 @@ export function pipelineDialogView(
     produces: t("wizard.pipelines.producesLinear"),
     ticked: input.selection.includes(NO_PROCESSING_ID),
     disabled: false,
-    note: null,
+    // The linear file is a TIFF the person chooses to send: without « Joindre
+    // aussi les TIFF », it stays here.
+    note: t("wizard.pipelines.noProcessingStays"),
     engine: null,
     fallback: null,
   });

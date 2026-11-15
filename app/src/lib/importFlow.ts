@@ -24,6 +24,7 @@ import {
   EMPTY_DETECT_WINDOW,
   scanPercent,
   type DetectWindowState,
+  type ScanPhase,
 } from "./detectFlow.ts";
 import type { ReviewState } from "./detectReview";
 import {
@@ -38,7 +39,11 @@ import {
 import {
   canTickImage,
   imageRoom,
+  isMinorSeries,
+  isTiffChoice,
   summaryImages,
+  tickedImageCount,
+  tickedTargets,
   treatmentCards,
   type SummaryImage,
   type TreatmentResult,
@@ -95,6 +100,8 @@ export interface ScanProgress {
   /** The files met by the search so far, and the folder it is in. */
   walked: number;
   folder: string | null;
+  /** What the detection is doing (`detectFlow.ScanPhase`). */
+  phase: ScanPhase;
 }
 
 /** What the primary of step 4 did to the incidents of one night. */
@@ -273,6 +280,7 @@ export type ImportAction =
   | { type: "scanProgress"; read: number; total: number; current?: string }
   /** The search for the files, before any header: how many met, in which folder. */
   | { type: "scanWalk"; found: number; folder?: string }
+  | { type: "scanPhase"; phase: ScanPhase }
   | { type: "scanFound"; found: FoundSoFar }
   | {
       type: "scanDone";
@@ -373,8 +381,13 @@ export function importReducer(
           found: null,
           walked: 0,
           folder: null,
+          phase: "space",
         },
       };
+    case "scanPhase":
+      return state.scan
+        ? { ...state, scan: { ...state.scan, phase: action.phase } }
+        : state;
     case "scanWalk":
       return state.scan && state.scan.total <= 0
         ? {
@@ -529,7 +542,7 @@ export function importReducer(
       const rows = summaryImages(state.made, state.storage);
       const room = imageRoom(state.storage);
       const others = state.ticked.filter(
-        (key) => !rows.some((row) => row.key === key && row.fullResolution),
+        (key) => !rows.some((row) => row.key === key && isTiffChoice(row)),
       );
       return {
         ...state,
@@ -537,13 +550,27 @@ export function importReducer(
         ticked: action.on ? withTiffTicked(rows, others, room) : others,
       };
     }
-    case "toggleImage":
+    case "toggleImage": {
+      if (!state.ticked.includes(action.key))
+        return { ...state, ticked: [...state.ticked, action.key] };
+      const next = state.ticked.filter((key) => key !== action.key);
+      // The linear file is attached to the capture of an image of its target:
+      // without any image ticked, it is unticked too.
+      const rows = summaryImages(state.made, state.storage);
+      const left = tickedTargets(rows, next);
       return {
         ...state,
-        ticked: state.ticked.includes(action.key)
-          ? state.ticked.filter((key) => key !== action.key)
-          : [...state.ticked, action.key],
+        ticked: next.filter(
+          (key) =>
+            !rows.some(
+              (row) =>
+                row.key === key &&
+                row.role === "file" &&
+                !left.has(row.targetId),
+            ),
+        ),
       };
+    }
     case "incidents": {
       const draft = draftReducer(
         state.incidents[action.sessionId] ?? EMPTY_DRAFT,
@@ -977,7 +1004,10 @@ export function recapPlan(state: ImportState, separator: string): RecapPlan {
     isolated,
     tidy: state.tidy.on || inPlace ? { ...state.tidy, on: true } : null,
     tidyFiles: state.tidy.on ? (state.tidyOverview?.toDo ?? 0) : 0,
-    images: state.ticked.length,
+    images: tickedImageCount(
+      summaryImages(state.made, state.storage),
+      state.ticked,
+    ),
     logs: nightsWithLogs(state),
   };
 }
@@ -1095,13 +1125,17 @@ export function preTickedImages(
 ): string[] {
   const ticked: string[] = [];
   for (const row of rows) {
-    if (row.fullResolution && !joinTiff) continue;
+    if (isTiffChoice(row) && !joinTiff) continue;
+    // A series far shorter than another of the same filter opens unticked;
+    // its box stays free.
+    if (isMinorSeries(row, rows)) continue;
     if (canTickImage(row, rows, ticked, room)) ticked.push(row.key);
   }
   return ticked;
 }
 
-/** `ticked` and every TIFF row the space can take beside it. */
+/** `ticked` and every TIFF row (the full-resolution TIFF of the renders and
+ * the linear files) the space can take beside it. */
 export function withTiffTicked(
   rows: readonly SummaryImage[],
   ticked: readonly string[],
@@ -1110,7 +1144,7 @@ export function withTiffTicked(
   const next = [...ticked];
   for (const row of rows) {
     if (
-      row.fullResolution &&
+      isTiffChoice(row) &&
       !next.includes(row.key) &&
       canTickImage(row, rows, next, room)
     )

@@ -53,6 +53,28 @@ export function scanPercent(read: number, total: number): number {
   return Math.min(100, Math.round((read / total) * 100));
 }
 
+/** What the detection is doing, said instead of a count that stays at 0:
+ * `space` (the places, equipment and plans read from the service before
+ * anything else), `catalogue` (the target catalogue refreshed), `files` (the
+ * search for the files, then their headers, counted), `sessions` (the
+ * sessions of the dates found, read from the service). The core says
+ * `catalogue`, `files` and `sessions` (`detect-phase`). */
+export type ScanPhase = "space" | "catalogue" | "files" | "sessions";
+
+export function isScanPhase(value: unknown): value is ScanPhase {
+  return (
+    value === "space" ||
+    value === "catalogue" ||
+    value === "files" ||
+    value === "sessions"
+  );
+}
+
+/** The words of a phase other than the files' (their own head counts). */
+export function scanPhaseKey(phase: ScanPhase): string | null {
+  return phase === "files" ? null : `detect.scan.phase.${phase}`;
+}
+
 /** The error codes of the engine that the window explains itself. */
 const ENGINE_ERRORS = ["no_fits_folder", "folder_missing", "scan_failed"];
 

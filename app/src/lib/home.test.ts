@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  connectionCard,
   displayPath,
+  pathParts,
   homeOf,
   homeState,
   HOW_STEPS,
   RESUME_LIMIT,
+  rememberServiceAnswered,
+  serviceAnsweredThisLaunch,
 } from "./home.ts";
 import { createTranslator } from "../i18n/locale.ts";
 
@@ -81,4 +86,70 @@ test("how it works says its four steps of one sentence, word for word", () => {
     displayPath("D:\\Astro Sync", homeOf("D:\\Astro Sync")),
     "D:\\Astro Sync",
   );
+});
+
+test("« Connecté » only once the service answered since the launch, never on the faith of the token kept here (the smoke's deleted space said « Connected » for 50 s)", async () => {
+  assert.equal(connectionCard({ paired: false, answered: null }), "signedOut");
+  assert.equal(connectionCard({ paired: true, answered: null }), "checking");
+  assert.equal(connectionCard({ paired: true, answered: true }), "connected");
+  assert.equal(connectionCard({ paired: true, answered: false }), "unchecked");
+  // Once answered, a home mounted again says it at once.
+  assert.equal(serviceAnsweredThisLaunch(), false);
+  rememberServiceAnswered(false);
+  assert.equal(serviceAnsweredThisLaunch(), false);
+  rememberServiceAnswered(true);
+  assert.equal(serviceAnsweredThisLaunch(), true);
+  // The screen draws the card from the check, and « Connecté » from it only.
+  const { readFile } = await import("node:fs/promises");
+  const screen = await readFile(
+    new URL("../screens/HomeScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(screen, /spaceCheck\(\)/);
+  assert.match(screen, /connectionCard\(\{ paired, answered \}\)/);
+  assert.match(
+    screen,
+    /card === "connected" \? \(\s*<>\s*<Icon name="check"[^]*?"home\.connection\.connected"/,
+  );
+  const fr = createTranslator("fr");
+  assert.equal(
+    fr("home.connection.checking"),
+    "Vérification de la connexion avec le service…",
+  );
+});
+
+test("a long path breaks only after a separator, never inside a folder's name (« Astro Sync » stays whole)", () => {
+  const parts = pathParts("/mnt/disk/archive/Documents/Astro Sync");
+  assert.deepEqual(parts, [
+    "/",
+    "mnt/",
+    "disk/",
+    "archive/",
+    "Documents/",
+    "Astro Sync",
+  ]);
+  assert.equal(parts.join(""), "/mnt/disk/archive/Documents/Astro Sync");
+  assert.deepEqual(pathParts("~/Documents/Astro Sync"), [
+    "~/",
+    "Documents/",
+    "Astro Sync",
+  ]);
+  assert.deepEqual(pathParts("C:\\Users\\a b\\Astro Sync"), [
+    "C:\\",
+    "Users\\",
+    "a b\\",
+    "Astro Sync",
+  ]);
+  assert.deepEqual(pathParts(""), []);
+  // The working folder of « Réglages » is drawn that way, each part unbroken.
+  const screen = readFileSync(
+    new URL("../screens/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(screen, /pathParts\(shown\)\.map/);
+  const css = readFileSync(
+    new URL("../theme/primitives.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /\.as-folder-row__part \{[^}]*display: inline-block;/);
 });

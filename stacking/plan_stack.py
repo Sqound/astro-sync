@@ -49,9 +49,9 @@ PlanImageJob``) naming the masters kept by the stacking of each night
    milestone of the progression is given those of the image of the plan (job ``display``:
    ``{"black": [r, g, b], "scale": s}``) and shows its poses at the same level -- a stack of one night is
    noisier, its own percentile would fall lower and its sky would look brighter --; ``imposed`` is then true in its
-   record.  The natural and the polished preparations have it -- the polished one also records the sky levels its
-   two matches aim at (``sky``, ``finalWithStars``), and aims at the imposed ones instead of the natural render
-   of its own, noisier, poses --; "No processing" has none (``display: null``);
+   record.  The natural and the polished preparations have it -- the polished one also records the curve of its
+   render (``curve``: its black point, its top, its midtones and the star gains of its colour), and takes the
+   imposed one instead of reading it on its own, noisier, poses --; "No processing" has none (``display: null``);
 3. **renders** the result like the stacking of a night does
    (``astro_sync_stack.render_outputs``: "Natural render", "Dual-band
    correction", or a pipeline the person added) or, for "No
@@ -140,9 +140,9 @@ def read_job(path: Path) -> dict[str, object]:
 def imposed_display(job: dict[str, object]) -> dict[str, object] | None:
     """The display a milestone is shown with (job ``display``), ``None``: its own.
 
-    ``{"black": [r, g, b], "scale": s}``, and for the polished render the sky levels its matches aim at:
-    ``"sky": {"displayed": d, "final": f}`` and ``"finalWithStars": t``.  ``bad_job`` when it is not three finite
-    black points, a finite positive scale and finite levels.
+    ``{"black": [r, g, b], "scale": s}``, and for the polished render the curve of its render: ``"curve":
+    {"black": b, "top": t, "midtones": m, "lift": p, "gains": [r, g, b] | null}``.  ``bad_job`` when it is not three finite
+    black points, a finite positive scale and a curve of finite numbers (a positive top, midtones in 0..1).
     """
     display = job.get("display")
     if display is None:
@@ -153,13 +153,19 @@ def imposed_display(job: dict[str, object]) -> dict[str, object] | None:
         if len(black) != 3 or not all(math.isfinite(v) for v in black) or not (math.isfinite(scale) and scale > 0):
             raise ValueError("expected three black points and a scale")
         used: dict[str, object] = {"black": black, "scale": scale}
-        if display.get("sky") is not None:
-            used["sky"] = {key: float(display["sky"][key]) for key in ("displayed", "final")}
-        if display.get("finalWithStars") is not None:
-            used["finalWithStars"] = float(display["finalWithStars"])
-        levels = [*used.get("sky", {}).values(), used.get("finalWithStars", 0.0)]
-        if not all(math.isfinite(v) for v in levels):
-            raise ValueError("a sky level is not finite")
+        curve = display.get("curve")
+        if curve is not None:
+            shown = {key: float(curve[key]) for key in ("black", "top", "midtones")}
+            if curve.get("lift") is not None:
+                shown["lift"] = float(curve["lift"])
+                if not 0 < shown["lift"] <= 1:
+                    raise ValueError("the lift is not usable")
+            gains = None if curve.get("gains") is None else [float(v) for v in curve["gains"]]
+            if not all(math.isfinite(v) for v in shown.values()) or shown["top"] <= 0 or not 0 < shown["midtones"] < 1:
+                raise ValueError("the curve is not usable")
+            if gains is not None and (len(gains) != 3 or not all(math.isfinite(v) and v > 0 for v in gains)):
+                raise ValueError("expected three positive star gains")
+            used["curve"] = {**shown, "gains": gains}
     except (KeyError, TypeError, ValueError) as error:
         raise stack.StackingError("bad_job", f"the display of the job cannot be used: {error}", stack.EXIT_INPUT) from error
     return used

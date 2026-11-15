@@ -37,6 +37,7 @@ name or setting of a machine is kept here.
 | `test_pipeline_defs.py`                                                                                                                                                                             | Tests of the loader and of `list-pipelines` (standard library: `python3 -m unittest test_pipeline_defs`).                                                                                                                                                                                                                                                                                                                                                                             |
 | `test_render_finish.py`                                                                                                                                                                             | Tests of the finish of a render (`render_finish.py`): softened stars (the mask is the stars, not the nebula; nothing darker than the sky around them), colour intensity (the luminance kept, no clipping), the order contrast → stars → colour, the names of the twin images, the options of the command line and of the plan's job. Run with the stacking environment.                                                                                                               |
 | `test_render_pipelines.py`                                                                                                                                                                          | Tests of the "Polished render" and "HOO palette" renders: the polished steps on a synthetic gradient, with a stand-in GraXpert, a stand-in Siril and without either (the engines and their fallbacks, the sky level kept, the SCNR skipped on a dual-band capture, the deconvolution floor, no dark ring around clipped stars), the HOO palette (neutral sky, smooth mask) on a synthetic dual-band nebula. Run with the stacking environment.                                        |
+| `test_render_stretched_master.py`                                                                                                                                                                   | Tests of the display of a master a device already stretched (straight scale instead of a second arcsinh stretch): detection, the sky of the natural, dual-band and HOO renders, the unchanged renders of a linear master. Run with the stacking environment.                                                                                                                                                                                                                          |
 | `requirements.in` / `.txt`                                                                                                                                                                          | The pins, and the same pins with every SHA-256 digest (`uv pip compile`, command in the header). Python `>=3.12,<3.14`.                                                                                                                                                                                                                                                                                                                                                               |
 | `DEPENDENCIES.md`                                                                                                                                                                                   | Every dependency: version, size, licence, installation, use; the render pipelines.                                                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -55,20 +56,26 @@ calls and the tools it needs, and (optional) the steps it runs, shown under
   towards cyan, red towards red-violet) that brings the colours of a capture
   made with a dual-band filter (H-alpha + OIII) back towards natural tones.
   Without such a filter it changes the image: take the natural render (`raw`).
-- **`polished`** ("Polished render"; filter `none`): the natural render
-  pushed further without changing its colours, from its own linear preparation
-  (`renders.prepare_polished`): the background and a light denoising on the
-  linear image by the engine the task chose (`--polished-engine`: `graxpert-ai`,
+- **`polished`** ("Polished render"; filter `none`): a dark, neutral sky and a
+  stronger nebula, from its own linear preparation (`renders.prepare_polished`,
+  then `renders.polished_layers`; RENDER-R5-01): the background and the denoising
+  on the linear image by the engine the task chose (`--polished-engine`: `graxpert-ai`,
   the default, GraXpert's AI models 1.0.1 and 3.0.2 at strength 0.3, or `siril`,
-  `subsky -rbf` and `denoise`, no model), the natural neutral sky and a moderate
-  SCNR (half of the green excess; skipped on a dual-band capture, whose green is
-  OIII), the masked deconvolution aimed at 0.85 × the measured FWHM (skipped on
-  an undersampled field, under 2.0 px; the clipped cores of the brightest stars and
-  10 px of sky around them are held out, and a step of 5 iterations that gains less
-  than 0.03 px is not kept: otherwise Richardson-Lucy digs a dark ring around them), the natural stretch with a soft shoulder,
-  a moderate local contrast on the nebula layer only, the stars held at × 0.48.
-  The sky stays as deep as the natural render's (the median luminance
-  within 2 %). Without GraXpert (`--graxpert`, else `graxpert` on `PATH`), or when
+  `subsky -rbf` and `denoise` at full dose, no model), the natural neutral sky, the
+  masked deconvolution aimed at 0.85 × the measured FWHM (skipped on an undersampled
+  field, under 2.0 px; the clipped cores of the brightest stars and 10 px of sky around
+  them are held out, and a step of 5 iterations that gains less than 0.03 px is not
+  kept); StarNet2's split carried back to linear light; the colour by the capture's
+  band (`capture_band`: the field stars' mean made white and the sky neutral; the
+  green of the nebula taken back -- SCNR, full -- on a capture known to be broadband
+  only; a dual-band capture keeps its balance and its green, OIII; a capture whose band
+  is not known keeps its green); the clipped cores made neutral; a midtones transfer
+  that puts the sky at 0.03 with its black point 2.8 noise widths under it (no flat
+  black), the channels brought into gamut towards white (a bright coloured halo is never
+  darkened under its core: no ring), the highlights faded to white around a clipped star only; a non-local-means
+  smoothing of the nebula, the midtones lifted (more on a faint object such as a galaxy),
+  a local contrast, the bright core of a nebula bent under the white (its structure kept), the colour of the signal × 1.3; the stars put back at × 0.9, their
+  colour × 0.3. The figures are `renders.PolishedSettings`. Without GraXpert (`--graxpert`, else `graxpert` on `PATH`), or when
   it fails, Siril does the background and the denoising; without Siril too, the
   polynomial and no denoising. `<name>_stacking.json` says which engine worked
   (`recipe.render.polished.engine`, `engineRequested` and `fallbackReason` when it

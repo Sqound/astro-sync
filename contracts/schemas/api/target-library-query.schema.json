@@ -294,7 +294,21 @@
         },
         "constellation": {
           "type": "string",
-          "description": "The IAU abbreviation of a constellation (`Lyr`), or any name that names it (`Lyre`, `Lyra`): it filters every type, the bright stars and the constellations included."
+          "description": "The IAU abbreviation of a constellation (`Lyr`), or any name that names it (`Lyre`, `Lyra`): it filters every type, the bright stars and the constellations included. Several, « ou », are separated by commas (`Cyg,Lyr`)."
+        },
+        "magnitudeMax": {
+          "type": "number",
+          "description": "The faintest integrated magnitude kept (`9`: « plus brillante que 9 », a small number is a bright target). A target with no magnitude is left out while this is set. Absent: no limit."
+        },
+        "sizeMin": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The smallest major axis kept, in arcminutes (the limit is included). A target with no size is left out while this or `sizeMax` is set. Absent: no limit."
+        },
+        "sizeMax": {
+          "type": "number",
+          "minimum": 0,
+          "description": "The largest major axis kept, in arcminutes (the limit is included). A `sizeMin` above `sizeMax` keeps nothing. Absent: no limit."
         },
         "catalogue": {
           "type": "string"

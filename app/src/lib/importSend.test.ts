@@ -5,7 +5,12 @@ import test from "node:test";
 import type { ImageToSend, StackedRender } from "./bridge.ts";
 import { imageKey, summaryImages } from "./detectTreatments.ts";
 import type { TreatmentResult } from "./detectTreatments.ts";
-import { importSends, renderOf, variantCount } from "./importSend.ts";
+import {
+  imageCount,
+  importSends,
+  renderOf,
+  variantCount,
+} from "./importSend.ts";
 
 // Two renders of one plan ticked in step 4 are one capture and
 // one variant, the capture first. An earlier import sent them as two
@@ -162,7 +167,7 @@ test("the primary of step 4 queues through importSends and step 5 is told how ma
   assert.match(provider, /variantCount\(chosen\)/);
   assert.match(
     provider,
-    /dispatch\(\{ type: "sent", count: chosen\.length, variants \}\)/,
+    /dispatch\(\{ type: "sent", count: imageCount\(chosen\), variants \}\)/,
   );
   const done = source("screens/detect/ImportDone.tsx");
   assert.match(done, /import\.done\.sentSplit/);
@@ -274,4 +279,31 @@ test("the row of a TIFF leaves as the render's TIFF, a variant of the capture it
     alone.map(({ send, variant }) => [renderOf(send).path, variant]),
     [["/stacked/raw.tif", false]],
   );
+});
+
+test("the linear file is attached to the capture of the image it follows, and is neither a variant nor an image", () => {
+  const linear = {
+    ...nightImage("m31", "linear", "c".repeat(64)),
+    file: "linear" as const,
+  };
+  const made = [nightImage("m31", "raw", "a".repeat(64)), linear];
+  const rows = summaryImages(made, null);
+  const sends = importSends(
+    rows,
+    made,
+    rows.map((row) => row.key),
+  );
+  assert.deepEqual(
+    sends.map((item) => [renderOf(item.send).sha256[0], item.variant]),
+    [
+      ["a", false],
+      ["c", false],
+    ],
+  );
+  const file = sends[1].send;
+  assert.equal(file.kind === "night" && file.variantOfSha256, "a".repeat(64));
+  assert.equal(variantCount(sends), 0);
+  assert.equal(imageCount(sends), 1);
+  // Alone, with no image ticked, it stays on the computer.
+  assert.deepEqual(importSends(rows, made, [rows[1].key]), []);
 });

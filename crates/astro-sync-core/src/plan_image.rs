@@ -55,7 +55,10 @@
 //!   render as a capture of the plan (`role: "plan"`, `projectId`, `combinedNightIds`,
 //!   `totalsByFilter`, `planRender`; [`ResultKind::Plan`]), behind the
 //!   right of the multi-night plans ([`crate::multi_night::MultiNightGate`]):
-//!   without it nothing is made.
+//!   without it nothing is made. The image of "No processing" is the linear
+//!   file of the plan: attached to the capture of the plan (`role: "linear"`,
+//!   [`ResultKind::Linear`], no plan field), sent only with the TIFF, never
+//!   the capture itself.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -98,7 +101,10 @@ pub enum Band {
 }
 
 /// The words of a dual-band filter's name (letters and digits only, lower
-/// case): the names the makers give them, and « dual »/« bibande ».
+/// case): the names the makers give them, and « dual »/« bibande ». The
+/// window's `bandOfFilters` (`app/src/lib/detectTreatments.ts`) mirrors this
+/// list word for word, and a test of the window reads it here: one decision
+/// for the import's step and the night's.
 pub const DUALBAND_WORDS: [&str; 13] = [
     "dual", "duo", "bibande", "extreme", "enhance", "ultimate", "alpt", "nbz", "hao3", "haoiii",
     "hoo", "triad", "quadband",
@@ -708,10 +714,10 @@ pub struct PlanFrameMaster {
 
 /// The display of the image of a plan (`display` of the record, `renders.py`): the
 /// black point subtracted from each channel and the scale of the stretch,
-/// measured on the image -- and, for the polished render, the sky levels its
-/// two matches aim at. A milestone of the progression is given it, so that
-/// it is shown at the level of the image of the plan -- a stack of one night
-/// is noisier, and its own measures would show its sky brighter.
+/// measured on the image -- and, for the polished render, the curve of its
+/// render. A milestone of the progression is given it, so that it is shown
+/// at the level of the image of the plan -- a stack of one night is noisier,
+/// and its own measures would show its sky brighter.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanDisplay {
@@ -719,23 +725,41 @@ pub struct PlanDisplay {
     pub black: [f64; 3],
     /// The luminance the stretch maps to white.
     pub scale: f64,
-    /// The polished render: the sky level of the natural render the linear match aims at.
+    /// The polished render: the curve of its render (`polished_curve` of `renders.py`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sky: Option<PlanSky>,
-    /// The polished render: the sky level, stars included, the final match aims at.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub final_with_stars: Option<f64>,
+    pub curve: Option<PlanCurve>,
 }
 
-/// The sky levels of the natural render that the polished render's linear match aims at
-/// (`sky` of the display: `natural_sky_levels` of `renders.py`).
+/// The curve of the polished render (`curve` of the display): its black
+/// point, the luminance shown at the top, the midtones of its transfer, the
+/// power of its lift, and the gains that made the field stars white (none
+/// for a dual-band capture).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct PlanSky {
-    /// The median luminance of the natural display image.
-    pub displayed: f64,
-    /// The same once the natural tone is applied.
-    #[serde(rename = "final")]
-    pub final_level: f64,
+pub struct PlanCurve {
+    pub black: f64,
+    pub top: f64,
+    pub midtones: f64,
+    /// The power of the midtones' lift (1: none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lift: Option<f64>,
+    #[serde(default)]
+    pub gains: Option<[f64; 3]>,
+}
+
+impl PlanCurve {
+    /// Finite numbers, a positive top, midtones strictly between 0 and 1, positive gains.
+    #[must_use]
+    pub fn usable(&self) -> bool {
+        self.black.is_finite()
+            && self.top.is_finite()
+            && self.top > 0.0
+            && self.midtones > 0.0
+            && self.midtones < 1.0
+            && self.lift.is_none_or(|p| p > 0.0 && p <= 1.0)
+            && self
+                .gains
+                .is_none_or(|g| g.iter().all(|v| v.is_finite() && *v > 0.0))
+    }
 }
 
 /// The frame the image of a plan is cut to (« Image du plan multi-nuits »,
@@ -814,9 +838,9 @@ pub struct PlanImageJob {
     pub display: Option<PlanDisplay>,
     /// The render chosen: one pipeline, or "No processing" ([`LINEAR_PIPELINE`]).
     pub pipeline: PipelineChoice,
-    /// The contrast of presentation: the image is also written with
-    /// the curve (`<name>_<id>_presentation.tif`); the plain one stays the
-    /// image of the plan.
+    /// The contrast of presentation: the image is written with the curve
+    /// (`<name>_<id>_presentation.tif`) beside the plain one; only the one
+    /// with the curve leaves, the plain one stays on this computer.
     #[serde(default, skip_serializing_if = "crate::stacking::Contrast::is_none")]
     pub contrast: crate::stacking::Contrast,
     /// The colour intensity and the softened stars of that same image (the
@@ -1542,10 +1566,12 @@ pub struct PlanImageOutcome {
     pub project_id: String,
     pub target_id: String,
     /// The render that leaves as the capture of the plan (its PNG, its 16-bit
-    /// TIFF beside it in `full_resolution`): the job's image without a finish.
+    /// TIFF beside it in `full_resolution`): the job's image with the finish
+    /// chosen, else without (the image without it stays in `other_files` when
+    /// the job wrote both).
     pub render: StackedRender,
-    /// The other renders the job wrote: the same render with its contrast
-    /// and its finish (colours, softened stars). Each leaves as an image of
+    /// The other renders the job wrote that leave beside the first (a second
+    /// treatment of the same render). Each leaves as an image of
     /// the capture, named after its treatment.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub finishes: Vec<PlanFinish>,
@@ -1623,10 +1649,7 @@ pub fn recorded_display(job: &PlanImageJob) -> Option<PlanDisplay> {
     let usable = display.scale.is_finite()
         && display.scale > 0.0
         && display.black.iter().all(|b| b.is_finite())
-        && display
-            .sky
-            .is_none_or(|s| s.displayed.is_finite() && s.final_level.is_finite())
-        && display.final_with_stars.is_none_or(f64::is_finite);
+        && display.curve.is_none_or(|c| c.usable());
     usable.then_some(display)
 }
 
@@ -1913,6 +1936,7 @@ pub fn run_plan_image(
         ));
     }
     let render = renders.remove(main);
+    let (render, renders) = keep_the_chosen_finish(render, renders, &mut other_files);
     let finishes: Vec<PlanFinish> = renders
         .into_iter()
         .map(|render| PlanFinish {
@@ -1963,6 +1987,35 @@ pub fn run_plan_image(
     })
 }
 
+/// The image the person chose leaves, not its bare twin. A job with a
+/// contrast, colours or softened stars writes the image of the render
+/// without them too; that one stays on this computer (it joins
+/// `other_files`, its TIFF with it) and the image with the finish becomes the
+/// render of the outcome -- the capture's main image. A render without a
+/// finished twin (and "No processing") is unchanged.
+fn keep_the_chosen_finish(
+    plain: StackedRender,
+    mut finished: Vec<StackedRender>,
+    other_files: &mut Vec<PathBuf>,
+) -> (StackedRender, Vec<StackedRender>) {
+    let has_finish = |r: &StackedRender| !r.contrast.is_none() || !r.retouch.is_none();
+    if plain.pipeline_id == LINEAR_PIPELINE || has_finish(&plain) {
+        return (plain, finished);
+    }
+    let Some(at) = finished
+        .iter()
+        .position(|r| r.pipeline_id == plain.pipeline_id && has_finish(r))
+    else {
+        return (plain, finished);
+    };
+    let chosen = finished.remove(at);
+    other_files.push(plain.path);
+    if let Some(twin) = plain.full_resolution {
+        other_files.push(twin.path);
+    }
+    (chosen, finished)
+}
+
 impl PlanImageOutcome {
     /// The same image in full resolution: its render and its finishes
     /// replaced by their TIFF ([`StackedRender::full_resolution`]), those
@@ -2008,6 +2061,10 @@ impl PlanImageOutcome {
 /// image of the same capture.
 #[must_use]
 pub fn plan_results(outcome: &PlanImageOutcome, include_tiff: bool) -> Vec<ResultFile> {
+    // The linear file never creates the capture of the plan.
+    if outcome.is_linear() {
+        return Vec::new();
+    }
     let mut results = vec![plan_result(
         outcome,
         &outcome.render,
@@ -2033,7 +2090,9 @@ pub fn plan_results(outcome: &PlanImageOutcome, include_tiff: bool) -> Vec<Resul
 /// description, quality and steps, and nothing of the capture -- how the
 /// *capture* was made is the main image's to say, and the service keeps each
 /// image's own steps to show them when it becomes the main one. Their TIFF
-/// follow with `include_tiff`.
+/// follow with `include_tiff`. The linear render is the exception: it leaves
+/// as the linear file of the capture, whenever it is asked for (joining the
+/// TIFF is the caller's choice, [`plan_results_of`]).
 #[must_use]
 pub fn plan_variant_results(
     outcome: &PlanImageOutcome,
@@ -2054,7 +2113,11 @@ fn plan_images_with(
     include_tiff: bool,
 ) -> Vec<ResultFile> {
     let mut results = plan_images_of(outcome, variant_of);
-    if include_tiff && let Some(full) = outcome.full_resolution() {
+    // The linear render is its own TIFF: it has no full-resolution twin.
+    if include_tiff
+        && !outcome.is_linear()
+        && let Some(full) = outcome.full_resolution()
+    {
         results.extend(plan_images_of(&full, variant_of));
     }
     results
@@ -2062,8 +2125,11 @@ fn plan_images_with(
 
 /// Every image of `outcome` as an image of the capture `variant_of` names
 /// (the identifier of a capture online, or `sha256:<digest>` of the image of
-/// the same sending that creates it).
+/// the same sending that creates it); the linear render, as its linear file.
 fn plan_images_of(outcome: &PlanImageOutcome, variant_of: &str) -> Vec<ResultFile> {
+    if outcome.is_linear() {
+        return vec![plan_linear_file(outcome, variant_of)];
+    }
     let mut results = vec![plan_result(
         outcome,
         &outcome.render,
@@ -2073,6 +2139,33 @@ fn plan_images_of(outcome: &PlanImageOutcome, variant_of: &str) -> Vec<ResultFil
     )];
     results.extend(plan_finish_results(outcome, variant_of));
     results
+}
+
+/// The linear render of a plan as a file attached to `variant_of`: the capture
+/// of the plan, and nothing of the plan (the service refuses a plan field, a
+/// proposal or a frame count with `role: "linear"`).
+fn plan_linear_file(outcome: &PlanImageOutcome, variant_of: &str) -> ResultFile {
+    ResultFile {
+        path: outcome.render.path.clone(),
+        sha256: outcome.render.sha256.clone(),
+        size: outcome.render.size,
+        kind: ResultKind::Linear,
+        target: EntryTarget {
+            session_id: None,
+            target_ids: vec![outcome.target_id.clone()],
+            variant_of: Some(variant_of.to_string()),
+            source: Some("stacking".to_string()),
+            ..EntryTarget::default()
+        },
+    }
+}
+
+impl PlanImageOutcome {
+    /// The render is "No processing": the plan's linear file, not an image.
+    #[must_use]
+    pub fn is_linear(&self) -> bool {
+        self.render.pipeline_id == LINEAR_PIPELINE
+    }
 }
 
 /// The treatments of the job beside its main render, as images of the capture
@@ -2132,6 +2225,8 @@ fn plan_result(
                 totals_by_filter: outcome.totals_by_filter.clone(),
                 plan_render: outcome.plan_render.clone(),
             }),
+            placement: None,
+            replaces_sha256: None,
         },
     }
 }
@@ -2188,27 +2283,37 @@ pub fn plan_results_of(
     capture: Option<&str>,
     include_tiff: bool,
 ) -> Vec<ResultFile> {
+    // The linear render is a file, not an image: it leaves only with the TIFF.
+    let (files, images): (Vec<&PlanImageOutcome>, Vec<&PlanImageOutcome>) =
+        outcomes.iter().partition(|outcome| outcome.is_linear());
+    let files = files.into_iter().filter(move |_| include_tiff);
     if let Some(capture) = capture {
         // The main render goes first: it is the one that would be the capture.
-        let first = main_outcome(outcomes, main);
+        let first = main_outcome(&images, main);
         return first
             .into_iter()
             .chain(
-                outcomes
+                images
                     .iter()
+                    .copied()
                     .filter(|o| first.is_none_or(|f| !std::ptr::eq(*o, f))),
             )
+            .chain(files)
             .flat_map(|outcome| plan_images_with(outcome, capture, include_tiff))
             .collect();
     }
-    let Some(first) = main_outcome(outcomes, main) else {
+    // Nothing creates the capture without an image: a plan of "No processing"
+    // alone sends nothing (the linear file would have nothing to be attached to).
+    let Some(first) = main_outcome(&images, main) else {
         return Vec::new();
     };
     let mut results = plan_results(first, include_tiff);
     results.extend(
-        outcomes
+        images
             .iter()
+            .copied()
             .filter(|outcome| !std::ptr::eq(*outcome, first))
+            .chain(files)
             .flat_map(|outcome| plan_variant_results(outcome, &first.render.sha256, include_tiff)),
     );
     results
@@ -2217,11 +2322,16 @@ pub fn plan_results_of(
 /// The outcome whose render is the capture's main image: the pipeline `main`
 /// names, else the first one made.
 fn main_outcome<'a>(
-    outcomes: &'a [PlanImageOutcome],
+    outcomes: &[&'a PlanImageOutcome],
     main: Option<&str>,
 ) -> Option<&'a PlanImageOutcome> {
-    main.and_then(|id| outcomes.iter().find(|o| o.render.pipeline_id == id))
-        .or_else(|| outcomes.first())
+    main.and_then(|id| {
+        outcomes
+            .iter()
+            .copied()
+            .find(|o| o.render.pipeline_id == id)
+    })
+    .or_else(|| outcomes.first().copied())
 }
 
 #[cfg(test)]

@@ -14,6 +14,7 @@ import type {
   AlreadySent,
   QueueDriveEvent,
   QueueEntry,
+  SentInstead,
   SkyAnnotation,
 } from "./bridge";
 import type { TranslateParams } from "../i18n/locale";
@@ -45,6 +46,9 @@ export interface UploadRow {
   target: string | null;
   /** « SHO », the rendering (pipeline) of the image. */
   rendering: string | null;
+  /** The linear file (« Sans traitement »): a file attached to a capture,
+   * never an image -- no sky annotations, counted apart. */
+  file: boolean;
   /** The file's path as the queue named it when its turn came: what
    * « Fichier introuvable » says of a file that is gone. */
   path: string | null;
@@ -110,6 +114,27 @@ export interface TrackedFile {
   size: number;
   target?: string | null;
   rendering?: string | null;
+  /** The linear file, not an image. */
+  file?: boolean;
+}
+
+/** The files a gesture queued, each render set in « Régler l'image » taken
+ * as the image set the queue holds in its place (`sentInstead` of the
+ * enqueueing): its digest is the one every event of the run names, and its
+ * name and size are those of the file that leaves. */
+export function followSentFiles(
+  files: readonly TrackedFile[],
+  sentInstead: readonly SentInstead[] | undefined,
+): TrackedFile[] {
+  if (!sentInstead || sentInstead.length === 0) return files.slice();
+  return files.map((file) => {
+    const set = sentInstead.find(
+      (item) => item.renderSha256.toLowerCase() === file.sha256.toLowerCase(),
+    );
+    return set
+      ? { ...file, sha256: set.sha256, path: set.path, size: set.size }
+      : file;
+  });
 }
 
 export type UploadsAction =
@@ -157,6 +182,7 @@ function blank(sha256: string, batch: number): UploadRow {
     size: 0,
     target: null,
     rendering: null,
+    file: false,
     path: null,
     status: "queued",
     sent: 0,
@@ -225,6 +251,7 @@ export function uploadsReducer(
             total: file.size,
             target: file.target ?? row.target,
             rendering: file.rendering ?? row.rendering,
+            file: file.file ?? row.file,
           }),
           () => blank(file.sha256, batch),
         );
@@ -248,6 +275,7 @@ export function uploadsReducer(
           size: entry.size,
           total: entry.size,
           sent: entry.offset,
+          file: entry.kind === "linear",
           status: entry.state === "held" ? "held" : "queued",
           code: entry.state === "held" ? entry.lastErrorCode : null,
           message: entry.state === "held" ? entry.lastError : null,
@@ -934,12 +962,15 @@ export function bannerLines(
   // The sky annotations of the files sent: « 1 image envoyée · annotations
   // du ciel envoyées », « … en cours », or a line of their own when they are
   // not there.
-  const annotated = group.done.map((row) => sky[row.sha256]);
-  const skyFailed = group.done.filter(
+  // The linear file is no image: it has no annotations and is told apart.
+  const doneImages = group.done.filter((row) => !row.file);
+  const doneFiles = group.done.filter((row) => row.file);
+  const annotated = doneImages.map((row) => sky[row.sha256]);
+  const skyFailed = doneImages.filter(
     (row) => sky[row.sha256]?.state === "failed",
   );
-  if (group.done.length > 0) {
-    let text = pluralText(t, locale, "detect.result.done", group.done.length);
+  if (doneImages.length > 0) {
+    let text = pluralText(t, locale, "detect.result.done", doneImages.length);
     const settled = annotated.every(
       (item) => item?.state === "sent" || item?.state === "already",
     );
@@ -950,6 +981,12 @@ export function bannerLines(
       text += t("detect.join") + t("detect.result.sky.running");
     }
     lines.push({ tone: "success", text });
+  }
+  if (doneFiles.length > 0) {
+    lines.push({
+      tone: "success",
+      text: pluralText(t, locale, "detect.result.fileDone", doneFiles.length),
+    });
   }
   if (group.known.length > 0) {
     lines.push({

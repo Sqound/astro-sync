@@ -55,10 +55,11 @@ test("Annotations: each row says what it is and where its image is, from the pho
     failureText(fr, { code: "too_few_stars" }),
     "Trop peu d’étoiles reconnues dans l’image.",
   );
-  // WEB.17b.5: astrometry.net without index files says where to put them.
+  // astrometry.net without index files: the window does not install them,
+  // and the annotations wait for later.
   same(
     failureText(fr, { code: "no_index" }),
-    "astrometry.net n’a aucun fichier d’index\u00a0: installez-les dans Réglages › Dépendances.",
+    "astrometry.net n’a aucun fichier d’index, et Astro Sync ne les installe pas\u00a0: ils viennent de sa propre page. Les annotations pourront être résolues plus tard, depuis la page Annotations.",
   );
   same(stateText(fr, "failed"), "Échec");
   assert.equal(
@@ -82,7 +83,7 @@ test("Annotations: one capture at a time, the download of the original said befo
   );
   same(
     runningText(fr, "fr", m31, false),
-    "Téléchargement de l’original (14 Mo), puis résolution sur cet ordinateur",
+    "Téléchargement de l’original (13,3 Mo), puis résolution sur cet ordinateur",
   );
   same(runningText(fr, "fr", ic, true), "Résolution sur cet ordinateur");
   same(fr("annotations.running"), "Résolution en cours…");
@@ -145,4 +146,14 @@ test("Annotations: no solver, the notice towards Réglages › Dépendances, the
     failureText(fr, { code: "timeout", seconds: 120 }),
     "Pas de solution après 120 s : la résolution a été arrêtée.",
   );
+});
+
+test("astrometry.net without index files never sends the person to an installation the window does not offer: the annotations wait for later, on their page", async () => {
+  const { SUPPORTED_LOCALES } = await import("../i18n/locale.ts");
+  for (const locale of SUPPORTED_LOCALES) {
+    const say = createTranslator(locale);
+    const text = failureText(say, { code: "no_index" } as never);
+    assert.doesNotMatch(text, /›/, `${locale}: ${text}`);
+    assert.ok(text.includes(say("nav.annotations")), `${locale}: ${text}`);
+  }
 });

@@ -536,3 +536,39 @@ test("the trust dialog: the question word for word, one primary, the refusal rec
     assert.match(text, /pipelineTrustSet\(/u, screen);
   }
 });
+
+test("the environment an earlier Astro Sync left is found, said with its Python and what installing redoes, never « Absent » (the smoke's Python « Missing » over the 0.1.0 stacking-env)", async () => {
+  const fr = createTranslator("fr");
+  const tools = dependencyTools({ environment: "found" });
+  const env = dependencyRows(fr, "fr", tools, {}).find(
+    (row) => row.id === "stacking-pipeline",
+  );
+  assert.ok(env, "the row of the environment");
+  const text = JSON.stringify(env);
+  assert.ok(
+    text.includes("Trouvé dans les données d’Astro Sync (Python 3.13.1)"),
+    text,
+  );
+  assert.ok(!text.includes(fr("deps.badge.missing")), text);
+  const { toolPill } = await import("./pipelineChoice.ts");
+  const pill = toolPill(fr, "fr", {
+    id: "python-env",
+    required: true,
+    row: tools.find((row) => row.id === "python-env"),
+    progress: {},
+  });
+  assert.equal(pill.stateLabel, "À mettre à jour");
+  assert.equal(pill.action?.label, "Mettre à jour");
+});
+
+test("Réglages › Langue: the language in effect is written under the list only when the list follows the system, never twice", async () => {
+  const { readFileSync } = await import("node:fs");
+  const screen = readFileSync(
+    new URL("../screens/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    screen,
+    /storedLocale === null && \(\s*<p className=\{helpTextClassName\}>\{localeName\(locale\)\}<\/p>/,
+  );
+});

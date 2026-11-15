@@ -131,7 +131,7 @@ export const DETECT_USER = {
 };
 
 /** The same data for an account without the advanced planning nor a
- * subscription: one plan per night. */
+ * subscription: one plan at a time per night. */
 export const DETECT_USER_FREE = {
   ...DETECT_USER,
   account: { advancedPlanning: false, severalPlansPerNight: false },
@@ -849,7 +849,7 @@ export const PROPOSAL_FREE = (() => {
     notes: [
       {
         key: "account.free",
-        text: "Sans abonnement ni Planification avancée : un plan par nuit.",
+        text: "Sans abonnement ni Planification avancée : un seul plan à la fois par nuit.",
       },
     ],
     lines: [],

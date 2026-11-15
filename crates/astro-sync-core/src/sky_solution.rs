@@ -295,7 +295,8 @@ pub enum SolveFailure {
     /// ASTAP's star database is missing.
     NoDatabase,
     /// astrometry.net is here and has no index file to match the stars
-    /// against (WEB.17b.5): "Settings › Dependencies" says where to put them.
+    /// against: Astro Sync does not install them (its own page does), and
+    /// the annotations wait for later.
     NoIndex,
     Timeout {
         seconds: u64,
@@ -319,7 +320,7 @@ impl SolveFailure {
             SolveFailure::NotSolved => "The stars of the image match no field of the catalogue.".to_string(),
             SolveFailure::OutsideDatabase => "Field outside the installed indexes: ASTAP’s star database does not cover a field of this size.".to_string(),
             SolveFailure::NoDatabase => "ASTAP’s star database cannot be found.".to_string(),
-            SolveFailure::NoIndex => "astrometry.net has no index files: install them in Settings › Dependencies.".to_string(),
+            SolveFailure::NoIndex => "astrometry.net has no index files, and Astro Sync does not install them: they come from its own page. The annotations can be solved later, from the Annotations page.".to_string(),
             SolveFailure::Timeout { seconds } => {
                 format!("No solution after {seconds} s: solving was stopped.")
             }

@@ -25,7 +25,13 @@ import {
   shiftText,
   skippedRows,
 } from "../../lib/detectResult";
-import { imageRoom, summaryImages } from "../../lib/detectTreatments";
+import {
+  imageRoom,
+  isTiffChoice,
+  summaryImages,
+  tickedImageCount,
+  type SummaryImage,
+} from "../../lib/detectTreatments";
 import { formatError } from "../../lib/format";
 import { displayPath, homeOf } from "../../lib/home";
 import {
@@ -116,7 +122,13 @@ export function summaryHead(
  */
 export function ImportSummary({
   onOpenNight,
+  onAdjust,
+  adjustKey,
 }: {
+  /** « Régler l'image » on a row of « Images à envoyer ». */
+  onAdjust?: (row: SummaryImage, render: string) => void;
+  /** Changes when an image was set: the rows read their state again. */
+  adjustKey?: number;
   onOpenNight: (
     sessionId: string,
     step: WizardStep | null,
@@ -422,14 +434,14 @@ export function ImportSummary({
         />
         {/* « Joindre aussi les TIFF »: the same box as the night's
             « Récapitulatif », over the list, when a render has a TIFF. */}
-        {images.some((row) => row.fullResolution) && (
+        {images.some(isTiffChoice) && (
           <JoinTiffBox
             checked={state.joinTiff}
             disabled={state.sending}
             fullResolution={{
-              count: images.filter((row) => row.fullResolution).length,
+              count: images.filter(isTiffChoice).length,
               bytes: images
-                .filter((row) => row.fullResolution)
+                .filter(isTiffChoice)
                 .reduce((sum, row) => sum + row.size, 0),
             }}
             onChange={imp.joinTiff}
@@ -448,6 +460,8 @@ export function ImportSummary({
           room={room}
           pipelineName={pipelineName}
           onToggle={imp.toggleImage}
+          onAdjust={state.sending || state.sent !== null ? undefined : onAdjust}
+          adjustKey={adjustKey}
         />
         {room && (
           <div className="as-result__why">
@@ -500,7 +514,12 @@ export function ImportSummary({
           rule.primary && {
             label:
               rule.primary.kind === "send"
-                ? pluralText(t, locale, "detect.send.send", state.ticked.length)
+                ? pluralText(
+                    t,
+                    locale,
+                    "detect.send.send",
+                    tickedImageCount(images, state.ticked),
+                  )
                 : plainPrimaryLabel(
                     t,
                     rule.primary.kind === "createSend" ||

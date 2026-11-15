@@ -156,6 +156,7 @@ fn build_harness(policy: WakePolicy, sky_after_upload: bool) -> Harness {
             commands::space_request_code,
             commands::space_verify_code,
             commands::space_refresh,
+            commands::space_check,
             commands::space_rename,
             commands::space_detach,
             commands::scan_folder,
@@ -322,7 +323,7 @@ impl Pending {
     }
 }
 
-fn portal_app(request: &fake_service::Recorded) -> Reply {
+pub(crate) fn portal_app(request: &fake_service::Recorded) -> Reply {
     let path = request.path.as_str();
     match (request.method.as_str(), path) {
         ("GET", "/api/v1/service") => identity_reply(),

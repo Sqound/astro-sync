@@ -13,10 +13,12 @@ use std::error::Error;
 use astro_sync_core::analysis::AnalysisError;
 use astro_sync_core::detection::DetectionError;
 use astro_sync_core::gui_bridge::{GuiBridgeError, HttpPortalGuiTransport};
+use astro_sync_core::python_env::EnvFailure;
 use astro_sync_core::scanner::ScanError;
 use astro_sync_core::service_wait::{ServiceEvent, ServiceWaitError, WaitHooks, WakePolicy};
 use astro_sync_core::session_detection::DetectError;
-use astro_sync_core::stacking::StackFailure;
+use astro_sync_core::stacking::{EngineCause, EngineNotice, StackFailure};
+use astro_sync_core::tools::DownloadFailure;
 use astro_sync_core::uploader::{HttpUploadTransport, UploadError};
 use serde_json::Value;
 
@@ -197,11 +199,24 @@ pub fn reason_text(code: &str, message: &str, locale: &str) -> String {
         .unwrap_or_else(|| message.to_string())
 }
 
-/// A size as the window writes it: the largest readable unit, one decimal only
-/// when it says something ("46 Mo", "1,3 Go"), in the language's own
-/// units and decimal mark.
+/// A size on this computer as the window writes it (base 1 000, as the system
+/// counts): the largest readable unit, one decimal only when it says
+/// something ("46 Mo", "1,3 Go"), in the language's own units and decimal
+/// mark. What the space counts is [`space_size_text`].
 #[must_use]
 pub fn size_text(locale: &str, bytes: u64) -> String {
+    size_in(locale, bytes, 1_000)
+}
+
+/// A size the space counts (its quota, what is left, its ceiling, the files
+/// sent), written as [`size_text`] but in base 1 024, as the service and the
+/// portal count it: a quota of 150 x 1 024 x 1 024 bytes reads "150 MB".
+#[must_use]
+pub fn space_size_text(locale: &str, bytes: u64) -> String {
+    size_in(locale, bytes, 1_024)
+}
+
+fn size_in(locale: &str, bytes: u64, unit: u64) -> String {
     let comma = matches!(locale, "fr" | "de" | "es" | "it" | "pt-BR" | "ru");
     let value = |amount: f64| {
         let floored = (amount * 10.0 + 1e-6).floor() / 10.0;
@@ -212,12 +227,13 @@ pub fn size_text(locale: &str, bytes: u64) -> String {
         };
         if comma { text.replace('.', ",") } else { text }
     };
-    let (key, amount) = if bytes >= 1_000_000_000 {
-        ("common.gigabytes", value(bytes as f64 / 1e9))
-    } else if bytes >= 1_000_000 {
-        ("common.megabytes", value(bytes as f64 / 1e6))
-    } else if bytes >= 1_000 {
-        ("common.kilobytes", value(bytes as f64 / 1e3))
+    let (kilo, mega, giga) = (unit, unit * unit, unit * unit * unit);
+    let (key, amount) = if bytes >= giga {
+        ("common.gigabytes", value(bytes as f64 / giga as f64))
+    } else if bytes >= mega {
+        ("common.megabytes", value(bytes as f64 / mega as f64))
+    } else if bytes >= kilo {
+        ("common.kilobytes", value(bytes as f64 / kilo as f64))
     } else {
         ("common.bytes", bytes.to_string())
     };
@@ -278,7 +294,8 @@ fn stacking_failure_key(code: &str) -> Option<&'static str> {
         "siril_missing" => "siril_missing",
         "starnet_missing" => "starnet_missing",
         "tool_missing" => "tool_missing_here",
-        "calibration_failed" | "registration_failed" | "integration_failed" => "siril_failed",
+        "registration_failed" => "registration_failed",
+        "calibration_failed" | "integration_failed" => "siril_failed",
         "starnet_failed" => "starnet_failed",
         "render_failed" | "script_failed" | "tool_failed" => "tool_failed",
         _ => return None,
@@ -292,7 +309,7 @@ pub fn stack_failure_text(failure: &StackFailure, locale: &str) -> String {
     let plain = |key: &str| say(locale, &format!("errors.stacking.{key}"), &[]);
     let sentence = match failure {
         StackFailure::NotInSubscription => plain("not_in_subscription"),
-        StackFailure::ToolMissing => plain("tool_missing"),
+        StackFailure::ToolMissing => say(locale, "cli.stack.tool_missing", &[]),
         StackFailure::OneRenderOnly { .. } => plain("one_render_only"),
         StackFailure::NoLights => plain("no_lights"),
         StackFailure::Cancelled => plain("cancelled"),
@@ -311,10 +328,16 @@ pub fn stack_failure_text(failure: &StackFailure, locale: &str) -> String {
             ],
         ),
         StackFailure::Failed { code, logs, .. } => match stacking_failure_key(code) {
-            Some(key @ ("siril_failed" | "tool_failed")) => match logs {
+            Some(key @ ("siril_failed" | "registration_failed" | "tool_failed")) => match logs {
                 Some(logs) => say(locale, &format!("errors.stacking.{key}"), &[("logs", logs)]),
                 None => plain(&format!("{key}_no_logs")),
             },
+            // The window sends to « Réglages › Dépendances »; the command
+            // line has its own commands.
+            Some(key @ ("siril_missing" | "starnet_missing" | "tool_missing_here")) => {
+                say(locale, &format!("cli.stack.{key}"), &[])
+            }
+            Some("unknown_pipeline") => say(locale, "cli.stack.unknown_pipeline", &[]),
             Some(key) => plain(key),
             None => say(locale, "errors.stacking_failed", &[]),
         },
@@ -322,6 +345,128 @@ pub fn stack_failure_text(failure: &StackFailure, locale: &str) -> String {
     sentence.unwrap_or_else(|| {
         say(locale, "errors.stacking_failed", &[]).unwrap_or_else(|| "stacking failed".into())
     })
+}
+
+/// Why a download of a tool stopped, in the window's sentences
+/// (`deps.line.*`): what happened and whether anything is installed.
+#[must_use]
+pub fn download_failure_text(failure: &DownloadFailure, locale: &str) -> String {
+    let kept = say(locale, "deps.line.kept", &[]);
+    let joined = |line: Option<String>| {
+        [line, kept.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let line = match failure {
+        DownloadFailure::NoAutomaticDownload => say(locale, "deps.line.noAutomatic", &[]),
+        DownloadFailure::Interrupted {
+            kept_bytes, total, ..
+        } => {
+            let done = size_text(locale, *kept_bytes);
+            return joined(match total {
+                Some(total) => say(
+                    locale,
+                    "deps.line.interrupted",
+                    &[("done", &done), ("total", &size_text(locale, *total))],
+                ),
+                None => say(locale, "deps.line.interruptedPlain", &[("done", &done)]),
+            });
+        }
+        DownloadFailure::Cancelled { kept_bytes } => {
+            let done = size_text(locale, *kept_bytes);
+            return joined(say(
+                locale,
+                "deps.line.interruptedPlain",
+                &[("done", &done)],
+            ));
+        }
+        DownloadFailure::DigestMismatch => say(locale, "deps.line.digest", &[]),
+        DownloadFailure::Extraction { .. } => say(locale, "deps.line.extraction", &[]),
+        DownloadFailure::Io { .. } => say(locale, "deps.line.io", &[]),
+    };
+    line.unwrap_or_else(|| format!("{failure:?}"))
+}
+
+/// Why the Python environment's installation stopped, in the window's
+/// sentences (`deps.env.*`).
+#[must_use]
+pub fn env_failure_text(failure: &EnvFailure, locale: &str) -> String {
+    let (line, keeps) = match failure {
+        EnvFailure::NoPython { first, last } => (
+            say(
+                locale,
+                "deps.env.noPython",
+                &[("first", first), ("last", last)],
+            ),
+            false,
+        ),
+        EnvFailure::NoResources => (say(locale, "deps.env.noResources", &[]), false),
+        EnvFailure::Venv { .. } => (say(locale, "deps.env.venv", &[]), false),
+        EnvFailure::Packages { .. } => (say(locale, "deps.env.packages", &[]), true),
+        EnvFailure::Check { problems, .. } if !problems.is_empty() => (
+            say(
+                locale,
+                "deps.env.check",
+                &[("problems", &problems.join(", "))],
+            ),
+            false,
+        ),
+        EnvFailure::Check { .. } => (say(locale, "deps.env.checkPlain", &[]), false),
+        EnvFailure::Cancelled => (say(locale, "deps.env.cancelled", &[]), true),
+    };
+    let Some(line) = line else {
+        return format!("{failure:?}");
+    };
+    let keep = if keeps {
+        say(locale, "deps.env.kept", &[])
+    } else {
+        None
+    };
+    [Some(line), keep]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What the stacking did when it fell back on another engine than the one
+/// asked for (GraXpert, then Siril, then a polynomial): the cause, then what
+/// did the work instead, in the person's language.
+#[must_use]
+pub fn engine_notice_text(notice: &EngineNotice, locale: &str) -> String {
+    let cause = notice
+        .causes
+        .iter()
+        .filter_map(|cause| {
+            let key = match cause {
+                EngineCause::GraxpertMissing => "graxpertMissing",
+                EngineCause::GraxpertNoLibrary => "graxpertNoLibrary",
+                EngineCause::GraxpertFailed => "graxpertFailed",
+                EngineCause::SirilMissing => "sirilMissing",
+                EngineCause::SirilFailed => "sirilFailed",
+            };
+            say(locale, &format!("cli.stack.engine.{key}"), &[])
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let used = say(
+        locale,
+        if notice.used == "siril" {
+            "cli.stack.engine.usedSiril"
+        } else {
+            "cli.stack.engine.usedPolynomial"
+        },
+        &[],
+    )
+    .unwrap_or_default();
+    say(
+        locale,
+        "cli.stack.engineNotice",
+        &[("cause", &cause), ("used", &used)],
+    )
+    .unwrap_or_else(|| format!("{cause} {used}"))
 }
 
 /// The code a failure carries, when it is one of Astro Sync's own.
@@ -427,5 +572,96 @@ mod tests {
         .unwrap();
         assert!(sentence.contains("a.tif") && sentence.contains("46 Mo"));
         assert!(!sentence.contains('{'));
+    }
+
+    #[test]
+    fn what_the_space_counts_is_written_in_base_1024_as_the_portal_writes_it() {
+        // The quota of a space: 150 x 1 024 x 1 024 bytes, « 150 MB » on the
+        // portal.
+        assert_eq!(space_size_text("en", 157_286_400), "150 MB");
+        assert_eq!(
+            space_size_text("fr", 157_286_400).replace('\u{a0}', " "),
+            "150 Mo"
+        );
+        assert_eq!(space_size_text("en", 1_536), "1.5 KB");
+        // On this computer, the system's base 1 000 stays.
+        assert_eq!(size_text("en", 157_286_400), "157.2 MB");
+    }
+}
+
+#[cfg(test)]
+mod failure_text_tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_download_says_why_nothing_is_installed() {
+        for (locale, _) in DICTIONARIES {
+            let text = download_failure_text(&DownloadFailure::DigestMismatch, locale);
+            assert_ne!(text, "DigestMismatch", "{locale}");
+            assert!(text.chars().count() > 15, "{locale}");
+        }
+        let digest_line = say("fr", "deps.line.digest", &[]).expect("fr digest line");
+        assert!(
+            download_failure_text(&DownloadFailure::DigestMismatch, "fr").contains(&digest_line)
+        );
+        let cut = download_failure_text(
+            &DownloadFailure::Interrupted {
+                kept_bytes: 184_000_000,
+                total: Some(410_000_000),
+                detail: String::new(),
+            },
+            "en",
+        );
+        assert!(cut.contains("184 MB") && cut.contains("410 MB"), "{cut}");
+        assert!(
+            env_failure_text(
+                &EnvFailure::Packages {
+                    detail: String::new()
+                },
+                "fr"
+            )
+            .contains(&say("fr", "deps.env.kept", &[]).expect("fr kept line"))
+        );
+    }
+
+    #[test]
+    fn a_fallback_of_the_engine_says_its_cause_and_the_engine_that_worked() {
+        let notice = EngineNotice {
+            family: None,
+            used: "siril".to_string(),
+            causes: vec![EngineCause::GraxpertNoLibrary],
+        };
+        let text = engine_notice_text(&notice, "fr");
+        assert!(
+            text.contains("onnxruntime") && text.contains("Siril"),
+            "{text}"
+        );
+        assert!(!text.contains('{'));
+        for (locale, _) in DICTIONARIES {
+            assert!(
+                !engine_notice_text(&notice, locale).contains('{'),
+                "{locale}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_failed_alignment_is_not_a_generic_failure_of_siril() {
+        let failure = StackFailure::Failed {
+            code: "registration_failed".to_string(),
+            message: String::new(),
+            logs: Some("/data/logs".to_string()),
+        };
+        let text = stack_failure_text(&failure, "en");
+        assert!(
+            text.contains("align") && text.contains("/data/logs"),
+            "{text}"
+        );
+        let missing = StackFailure::Failed {
+            code: "siril_missing".to_string(),
+            message: String::new(),
+            logs: None,
+        };
+        assert!(stack_failure_text(&missing, "en").contains("astro-sync tools"));
     }
 }

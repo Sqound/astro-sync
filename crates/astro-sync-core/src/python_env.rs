@@ -12,8 +12,12 @@
 //!   (`astro-sync-env.json`) names the `requirements.txt` of this Astro Sync
 //!   (its SHA-256): a newer Astro Sync with other pins says « outdated ». An
 //!   environment without its mark is an installation that did not finish
-//!   ("Resume the installation"). Nothing is run to say so: the full check
-//!   is [`verify_environment`] ("Check again").
+//!   ("Resume the installation") when [`INSTALLING`] is there; without it,
+//!   an environment an earlier Astro Sync made, or whose check failed: it is
+//!   found (its path, its Python), « outdated » with why ([`EnvRedo`]), never
+//!   « missing » -- installing checks and completes it, keeping what is
+//!   there. Nothing is run to say so: the full check is
+//!   [`verify_environment`] ("Check again").
 //! - **A Python in the range** ([`find_python`]): the registry's
 //!   `minVersion` of `python-env` (`>=3.12,<3.14`), the newest found among
 //!   `python3.N` and `python3` in the usual places (`PATH`, Homebrew,
@@ -45,6 +49,11 @@ pub const ENV_DIR: &str = "stacking-env";
 
 /// The mark written in the environment after a successful check.
 pub const MARKER: &str = "astro-sync-env.json";
+/// Written in the environment when an installation starts its packages,
+/// removed once the check wrote the mark: an environment without its mark
+/// but with this file is an installation that did not finish; without
+/// either, one an earlier Astro Sync made (or whose check failed).
+pub const INSTALLING: &str = "astro-sync-env.installing";
 
 /// The flags of every run of the stacking's scripts (see the module
 /// documentation). `-X utf8` is a command-line option, so `-E` does not
@@ -319,18 +328,38 @@ struct Marker {
     requirements_sha256: String,
 }
 
+/// Why an environment that is here is « outdated »: what installing will
+/// redo, said by the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EnvRedo {
+    /// It has no mark of a check by this Astro Sync (an earlier one made it,
+    /// or its check failed): installing checks it and completes its
+    /// packages, keeping those already there.
+    Unchecked,
+    /// Its mark names other pins (another version of Astro Sync):
+    /// installing updates its packages.
+    OtherPins,
+    /// Its Python is out of this Astro Sync's range: installing makes it
+    /// again with a Python in the range.
+    OtherPython,
+}
+
 /// The environment as "Dependencies" shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EnvStatus {
-    /// `present`, `missing` or `outdated` (other pins than this Astro
-    /// Sync's).
+    /// `present`, `missing` or `outdated` (an environment here that is not
+    /// this Astro Sync's as it stands: [`Self::redo`] says why).
     pub state: ToolState,
-    /// The environment's Python, when it was checked.
+    /// The environment's Python: the checked one, else the one its
+    /// `pyvenv.cfg` names.
     pub python_version: Option<String>,
     /// An installation that did not finish ("Resume the installation").
     pub interrupted: bool,
     pub path: Option<PathBuf>,
+    /// Why it is outdated.
+    pub redo: Option<EnvRedo>,
 }
 
 /// The version of the Python an environment was made with: `version` (or
@@ -354,15 +383,38 @@ fn read_marker(data_dir: &Path) -> Option<Marker> {
 pub fn environment_status(data_dir: &Path, resources: Option<&StackingResources>) -> EnvStatus {
     let dir = env_dir(data_dir);
     let python = env_python(data_dir);
-    let marker = read_marker(data_dir);
     let mut status = EnvStatus {
         state: ToolState::Missing,
         python_version: None,
         interrupted: dir.exists(),
         path: None,
+        redo: None,
     };
-    let (true, Some(marker)) = (python.is_file(), marker) else {
+    if !python.is_file() {
         return status;
+    }
+    let Some(marker) = read_marker(data_dir) else {
+        if dir.join(INSTALLING).exists() {
+            return status;
+        }
+        // Found, never checked by this Astro Sync: an earlier one made it
+        // (0.1.0 wrote no mark when its check failed), or « Check again »
+        // found a problem. Said as it is, with its path and its Python.
+        let version = made_with(data_dir);
+        let out_of_range = version
+            .as_deref()
+            .is_some_and(|version| !python_range().contains(version));
+        return EnvStatus {
+            state: ToolState::Outdated,
+            python_version: version,
+            interrupted: false,
+            path: Some(dir),
+            redo: Some(if out_of_range {
+                EnvRedo::OtherPython
+            } else {
+                EnvRedo::Unchecked
+            }),
+        };
     };
     status.interrupted = false;
     status.path = Some(dir);
@@ -371,10 +423,12 @@ pub fn environment_status(data_dir: &Path, resources: Option<&StackingResources>
     // A Python the pins no longer support (the range of a newer Astro Sync)
     // makes the environment outdated even with the same pins.
     let out_of_range = !python_range().contains(&marker.python_version);
-    status.state = match current {
-        Some(current) if current != marker.requirements_sha256 => ToolState::Outdated,
-        _ if out_of_range => ToolState::Outdated,
-        _ => ToolState::Present,
+    (status.state, status.redo) = match current {
+        _ if out_of_range => (ToolState::Outdated, Some(EnvRedo::OtherPython)),
+        Some(current) if current != marker.requirements_sha256 => {
+            (ToolState::Outdated, Some(EnvRedo::OtherPins))
+        }
+        _ => (ToolState::Present, None),
     };
     status
 }
@@ -530,6 +584,7 @@ pub fn verify_environment(
         detail: e.to_string(),
         problems: Vec::new(),
     })?;
+    let _ = fs::remove_file(env_dir(data_dir).join(INSTALLING));
     Ok(check)
 }
 
@@ -659,8 +714,10 @@ pub fn install_environment(
     } else {
         report(EnvStep::Environment, 2, 0);
     }
-    // A mark of an older installation is not the truth any more.
+    // A mark of an older installation is not the truth any more; until the
+    // check writes the new one, this is an installation under way.
     let _ = fs::remove_file(env_dir(&context.data_dir).join(MARKER));
+    let _ = fs::write(env_dir(&context.data_dir).join(INSTALLING), b"");
 
     report(EnvStep::Packages, 3, 0);
     let mut command = Command::new(&python);
@@ -705,3 +762,8 @@ pub fn install_environment(
 
 #[cfg(all(test, unix))]
 mod tests;
+
+/// Detection only, on every system (the layout of Windows included): no
+/// Python is run.
+#[cfg(test)]
+mod found_tests;

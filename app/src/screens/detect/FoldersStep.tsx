@@ -49,6 +49,7 @@ export function FoldersStep() {
             total={scan.total}
             walked={scan.walked}
             folder={scan.folder}
+            phase={scan.phase}
           />
           {scan.total > 0 && scan.current && (
             <p className="as-detect-scan__current" title={scan.current}>

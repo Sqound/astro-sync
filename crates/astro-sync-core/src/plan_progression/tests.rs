@@ -460,8 +460,7 @@ fn the_last_milestone_gives_its_display_to_the_others() {
     let plan_display = PlanDisplay {
         black: [0.01, 0.031 / 3.0, 0.032 / 3.0],
         scale: 0.9 - 0.3,
-        sky: None,
-        final_with_stars: None,
+        curve: None,
     };
     for milestone in &seen[1..] {
         let given = milestone

@@ -14,16 +14,16 @@
     "zh-Hant": "精修渲染"
   },
   "description": {
-    "fr": "Le rendu naturel poussé plus loin, sans changer les couleurs : fond et bruit traités par GraXpert, hautes lumières adoucies, nébuleuse mieux détachée. Plus long à calculer.",
-    "en": "The natural render taken further, without changing the colours: background and noise handled by GraXpert, softened highlights, a nebula that stands out more. Takes longer to compute.",
-    "ja": "ナチュラルな仕上がりを、色を変えずにもう一歩進めます。背景とノイズは GraXpert で処理し、明るい部分をやわらげ、星雲をより引き立てます。計算には時間がかかります。",
-    "de": "Die natürliche Darstellung weitergeführt, ohne die Farben zu ändern: Hintergrund und Rauschen von GraXpert behandelt, weichere Lichter, ein Nebel, der sich besser abhebt. Dauert länger.",
-    "es": "El render natural llevado más lejos, sin cambiar los colores: fondo y ruido tratados por GraXpert, luces altas suavizadas, una nebulosa que destaca más. Tarda más en calcularse.",
-    "it": "La resa naturale spinta più in là, senza cambiare i colori: fondo e rumore trattati da GraXpert, luci alte addolcite, una nebulosa che risalta di più. Richiede più tempo.",
-    "pt-BR": "A renderização natural levada adiante, sem mudar as cores: fundo e ruído tratados pelo GraXpert, altas luzes suavizadas, uma nebulosa que se destaca mais. Leva mais tempo para calcular.",
-    "ru": "Естественный рендер, доведённый дальше без изменения цветов: фон и шум обрабатывает GraXpert, света смягчены, туманность выделяется сильнее. Считается дольше.",
-    "zh-Hans": "在不改变色彩的前提下，把自然渲染再推进一步：背景与噪点由 GraXpert 处理，高光更柔和，星云更突出。计算时间更长。",
-    "zh-Hant": "在不改變色彩的前提下，把自然渲染再推進一步：背景與雜訊由 GraXpert 處理，高光更柔和，星雲更突出。計算時間更長。"
+    "fr": "Un ciel noir et neutre, une nébuleuse plus forte, des étoiles brillantes blanches : fond et bruit traités par GraXpert ou Siril, couleurs réglées sur les étoiles du champ. Plus long à calculer.",
+    "en": "A black, neutral sky, a stronger nebula and white bright stars: background and noise handled by GraXpert or Siril, colours balanced on the field stars. Takes longer to compute.",
+    "ja": "黒くニュートラルな背景、より力強い星雲、白い明るい星。背景とノイズは GraXpert または Siril で処理し、色は写野の星に合わせて整えます。計算には時間がかかります。",
+    "de": "Ein schwarzer, neutraler Himmel, ein kräftigerer Nebel, weiße helle Sterne: Hintergrund und Rauschen von GraXpert oder Siril behandelt, Farben an den Feldsternen abgeglichen. Dauert länger.",
+    "es": "Un cielo negro y neutro, una nebulosa más intensa y estrellas brillantes blancas: fondo y ruido tratados por GraXpert o Siril, colores equilibrados con las estrellas del campo. Tarda más en calcularse.",
+    "it": "Un cielo nero e neutro, una nebulosa più intensa, stelle brillanti bianche: fondo e rumore trattati da GraXpert o Siril, colori bilanciati sulle stelle del campo. Richiede più tempo.",
+    "pt-BR": "Um céu negro e neutro, uma nebulosa mais forte e estrelas brilhantes brancas: fundo e ruído tratados pelo GraXpert ou pelo Siril, cores equilibradas pelas estrelas do campo. Leva mais tempo para calcular.",
+    "ru": "Чёрное нейтральное небо, более яркая туманность, белые яркие звёзды: фон и шум обрабатывает GraXpert или Siril, цвета выравниваются по звёздам поля. Считается дольше.",
+    "zh-Hans": "黑色而中性的天空、更突出的星云、白色的亮星：背景与噪点由 GraXpert 或 Siril 处理，色彩按视场恒星平衡。计算时间更长。",
+    "zh-Hant": "黑色而中性的天空、更突出的星雲、白色的亮星：背景與雜訊由 GraXpert 或 Siril 處理，色彩依視野恆星平衡。計算時間更長。"
   },
   "filter": "none",
   "author": "Astro Sync",
@@ -127,54 +127,54 @@
     },
     {
       "title": {
-        "fr": "Débruitage léger",
-        "en": "Light denoising",
-        "ja": "軽いノイズ除去",
-        "de": "Leichte Entrauschung",
-        "es": "Reducción de ruido ligera",
-        "it": "Riduzione del rumore leggera",
-        "pt-BR": "Redução de ruído leve",
-        "ru": "Лёгкое шумоподавление",
-        "zh-Hans": "轻度降噪",
-        "zh-Hant": "輕度降噪"
+        "fr": "Débruitage",
+        "en": "Denoising",
+        "ja": "ノイズ除去",
+        "de": "Entrauschung",
+        "es": "Reducción de ruido",
+        "it": "Riduzione del rumore",
+        "pt-BR": "Redução de ruído",
+        "ru": "Шумоподавление",
+        "zh-Hans": "降噪",
+        "zh-Hant": "降噪"
       },
       "text": {
-        "fr": "GraXpert retire une partie du bruit (force 0,3 sur 1) avant tout étirement, là où il se distingue le mieux du signal. Avec le moteur de Siril, c’est le débruitage de Siril (modulation 0,5) ; sans l’un ni l’autre, cette étape est sautée.",
-        "en": "GraXpert removes part of the noise (strength 0.3 out of 1) before any stretch, where it is easiest to tell from the signal. With Siril’s engine, Siril’s own denoising does it (modulation 0.5); with neither, this step is skipped.",
-        "ja": "ストレッチの前に、信号と見分けやすい段階で GraXpert がノイズの一部を取り除きます（強さ 1 のうち 0.3）。Siril のエンジンでは、Siril 自身のノイズ除去を使います（モジュレーション 0.5）。どちらもない場合、この処理は行いません。",
-        "de": "GraXpert entfernt einen Teil des Rauschens (Stärke 0,3 von 1) vor jeder Streckung, wo es sich am besten vom Signal unterscheidet. Mit dem Siril-Motor übernimmt das Entrauschen von Siril (Modulation 0,5); ohne beide entfällt dieser Schritt.",
-        "es": "GraXpert elimina parte del ruido (intensidad 0,3 sobre 1) antes de cualquier estirado, cuando mejor se distingue de la señal. Con el motor de Siril lo hace la reducción de ruido de Siril (modulación 0,5); sin ninguno de los dos, este paso se omite.",
-        "it": "GraXpert rimuove parte del rumore (intensità 0,3 su 1) prima di ogni stiramento, quando si distingue meglio dal segnale. Con il motore di Siril lo fa la riduzione del rumore di Siril (modulazione 0,5); senza nessuno dei due questo passaggio viene saltato.",
-        "pt-BR": "O GraXpert remove parte do ruído (força 0,3 de 1) antes de qualquer esticamento, quando ele se distingue melhor do sinal. Com o motor do Siril, a redução de ruído do Siril faz isso (modulação 0,5); sem nenhum dos dois, esta etapa é pulada.",
-        "ru": "GraXpert убирает часть шума (сила 0,3 из 1) до любого растяжения, когда его легче всего отличить от сигнала. С движком Siril это делает шумоподавление самого Siril (модуляция 0,5); без обоих шаг пропускается.",
-        "zh-Hans": "在任何拉伸之前，由 GraXpert 去除部分噪点（强度 0.3，满分 1），此时噪点最容易与信号区分。使用 Siril 引擎时，由 Siril 自带的降噪完成（调制 0.5）；两者都没有时跳过此步。",
-        "zh-Hant": "在任何拉伸之前，由 GraXpert 去除部分雜訊（強度 0.3，滿分 1），此時雜訊最容易與訊號區分。使用 Siril 引擎時，由 Siril 自帶的降噪完成（調變 0.5）；兩者都沒有時跳過此步。"
+        "fr": "GraXpert retire une partie du bruit (force 0,3 sur 1) avant tout étirement, là où il se distingue le mieux du signal. Avec le moteur de Siril, c’est le débruitage de Siril, à pleine dose ; sans l’un ni l’autre, cette étape est sautée. Après l’étirement, un lissage doux de la nébuleuse retire encore du grain ; là où le signal est fort, une partie du détail est rendue.",
+        "en": "GraXpert removes part of the noise (strength 0.3 out of 1) before any stretch, where it is easiest to tell from the signal. With Siril’s engine, Siril’s own denoising does it, at full strength; with neither, this step is skipped. After the stretch, a gentle smoothing of the nebula takes away more grain; where the signal is strong, part of the detail is given back.",
+        "ja": "ストレッチの前に、信号と見分けやすい段階で GraXpert がノイズの一部を取り除きます（強さ 1 のうち 0.3）。Siril のエンジンでは、Siril 自身のノイズ除去を最大の強さで使います。どちらもない場合、この処理は行いません。ストレッチの後、星雲をやさしく平滑化してさらに粒状感を減らします。信号の強い部分では、細部の一部を戻します。",
+        "de": "GraXpert entfernt einen Teil des Rauschens (Stärke 0,3 von 1) vor jeder Streckung, wo es sich am besten vom Signal unterscheidet. Mit dem Siril-Motor übernimmt das Entrauschen von Siril, in voller Stärke; ohne beide entfällt dieser Schritt. Nach der Streckung nimmt eine sanfte Glättung des Nebels weiteres Korn weg; wo das Signal stark ist, wird ein Teil der Details zurückgegeben.",
+        "es": "GraXpert elimina parte del ruido (intensidad 0,3 sobre 1) antes de cualquier estirado, cuando mejor se distingue de la señal. Con el motor de Siril lo hace la reducción de ruido de Siril, a plena intensidad; sin ninguno de los dos, este paso se omite. Tras el estirado, un suavizado ligero de la nebulosa quita más grano; donde la señal es fuerte, se devuelve parte del detalle.",
+        "it": "GraXpert rimuove parte del rumore (intensità 0,3 su 1) prima di ogni stiramento, dove si distingue meglio dal segnale. Con il motore di Siril se ne occupa la riduzione del rumore di Siril, a piena intensità; senza nessuno dei due, il passaggio viene saltato. Dopo lo stiramento, una leggera levigatura della nebulosa toglie altra grana; dove il segnale è forte, parte del dettaglio viene restituita.",
+        "pt-BR": "O GraXpert remove parte do ruído (intensidade 0,3 de 1) antes de qualquer esticamento, quando ele mais se distingue do sinal. Com o motor do Siril, é a redução de ruído do próprio Siril, em intensidade máxima; sem nenhum dos dois, esta etapa é pulada. Depois do esticamento, uma suavização leve da nebulosa tira mais granulação; onde o sinal é forte, parte do detalhe é devolvida.",
+        "ru": "GraXpert убирает часть шума (сила 0,3 из 1) до растяжения, когда его легче всего отличить от сигнала. С движком Siril это делает собственное шумоподавление Siril, в полную силу; без обоих этот шаг пропускается. После растяжения мягкое сглаживание туманности убирает ещё часть зерна; там, где сигнал сильный, часть деталей возвращается.",
+        "zh-Hans": "在任何拉伸之前，GraXpert 会在最容易与信号区分的阶段去除部分噪点（强度 0.3/1）。使用 Siril 引擎时，由 Siril 自带的降噪以全强度完成；两者都没有时跳过此步骤。拉伸之后，对星云做轻度平滑以进一步去除颗粒；信号强的区域会保留部分细节。",
+        "zh-Hant": "在任何拉伸之前，GraXpert 會在最容易與訊號區分的階段去除部分雜訊（強度 0.3/1）。使用 Siril 引擎時，由 Siril 自帶的降噪以全強度完成；兩者都沒有時略過此步驟。拉伸之後，對星雲做輕度平滑以進一步去除顆粒；訊號強的區域會保留部分細節。"
       }
     },
     {
       "title": {
-        "fr": "Ciel neutre et retrait du vert",
-        "en": "Neutral sky and green removal",
-        "ja": "背景の中立化と緑かぶりの除去",
-        "de": "Neutraler Himmel und Grünentfernung",
-        "es": "Cielo neutro y retirada del verde",
-        "it": "Cielo neutro e rimozione del verde",
-        "pt-BR": "Céu neutro e remoção do verde",
-        "ru": "Нейтральное небо и удаление зелёного",
-        "zh-Hans": "中性天空与去绿",
-        "zh-Hant": "中性天空與去綠"
+        "fr": "Couleurs et retrait du vert",
+        "en": "Colours and green removal",
+        "ja": "色と緑の除去",
+        "de": "Farben und Grünentfernung",
+        "es": "Colores y eliminación del verde",
+        "it": "Colori e rimozione del verde",
+        "pt-BR": "Cores e remoção do verde",
+        "ru": "Цвета и удаление зелёного",
+        "zh-Hans": "色彩与去绿",
+        "zh-Hant": "色彩與去綠"
       },
       "text": {
-        "fr": "Le fond est rendu gris neutre comme dans le rendu naturel, puis l’excès de vert au-dessus de la moyenne du rouge et du bleu est retiré de moitié (SCNR) : une dominante verte disparaît, les autres couleurs ne bougent pas. Avec un filtre bibande, le retrait du vert est sauté : le vert est de l’OIII, du signal.",
-        "en": "The background is made neutral grey as in the natural render, then half of the green above the mean of red and blue is taken back (SCNR): a green cast goes, the other colours do not move. With a dual-band filter the green removal is skipped: the green is OIII, signal.",
-        "ja": "ナチュラルな仕上がりと同じく背景をニュートラルなグレーにし、赤と青の平均を上回る緑の半分を取り除きます（SCNR）。緑かぶりは消え、ほかの色は変わりません。デュアルバンドフィルターの場合、緑の除去は行いません。緑は OIII、つまり信号だからです。",
-        "de": "Der Hintergrund wird wie in der natürlichen Darstellung neutralgrau, dann wird die Hälfte des Grüns über dem Mittel von Rot und Blau zurückgenommen (SCNR): Ein Grünstich verschwindet, die anderen Farben bleiben. Bei einem Dualband-Filter entfällt die Grünentfernung: Das Grün ist OIII, also Signal.",
-        "es": "El fondo queda gris neutro como en el render natural y luego se retira la mitad del verde que supera la media del rojo y el azul (SCNR): desaparece una dominante verde y los demás colores no cambian. Con un filtro de doble banda se omite la retirada del verde: el verde es OIII, es decir, señal.",
-        "it": "Il fondo diventa grigio neutro come nella resa naturale, poi metà del verde oltre la media di rosso e blu viene tolta (SCNR): una dominante verde sparisce, gli altri colori non cambiano. Con un filtro dual-band la rimozione del verde viene saltata: il verde è OIII, cioè segnale.",
-        "pt-BR": "O fundo fica cinza neutro como na renderização natural e, depois, metade do verde acima da média do vermelho e do azul é retirada (SCNR): uma dominante verde some e as outras cores não mudam. Com um filtro de banda dupla, a remoção do verde é pulada: o verde é OIII, ou seja, sinal.",
-        "ru": "Фон делается нейтрально-серым, как в естественном рендере, затем убирается половина зелёного сверх среднего красного и синего (SCNR): зелёный оттенок уходит, остальные цвета не меняются. С двухполосным фильтром удаление зелёного пропускается: зелёный — это OIII, то есть сигнал.",
-        "zh-Hans": "与自然渲染一样把背景调为中性灰，再去掉高于红、蓝平均值的绿色的一半（SCNR）：偏绿消失，其他颜色不变。使用双带通滤镜时跳过去绿：绿色就是 OIII，属于信号。",
-        "zh-Hant": "與自然渲染一樣把背景調為中性灰，再去掉高於紅、藍平均值的綠色的一半（SCNR）：偏綠消失，其他顏色不變。使用雙頻帶濾鏡時跳過去綠：綠色就是 OIII，屬於訊號。"
+        "fr": "La moyenne des étoiles du champ devient blanche et le fond gris neutre, puis la couleur de la nébuleuse est un peu renforcée. Si la capture est en large bande de façon certaine (filtre nommé dans les images ou indiqué pour la cible), le vert de la nébuleuse est retiré. Avec un filtre bibande, le vert est de l’OIII, du signal : il est gardé, comme la balance des couleurs de la capture. En cas de doute sur le filtre, le vert est gardé aussi.",
+        "en": "The mean of the field stars becomes white and the background a neutral grey, then the colour of the nebula is strengthened a little. When the capture is broadband for certain (the filter named in the images or set for the target), the green of the nebula is removed. With a dual-band filter the green is OIII, signal: it is kept, and so is the colour balance of the capture. When the filter is in doubt, the green is kept too.",
+        "ja": "写野の星の平均が白に、背景がニュートラルなグレーになるよう整え、星雲の色を少し強めます。広帯域での撮影だと確実に分かる場合（画像に記録されたフィルター名、または対象に設定したフィルター）、星雲の緑を取り除きます。デュアルバンドフィルターでは緑は OIII、つまり信号なので、撮影時のカラーバランスとともに残します。フィルターがはっきりしない場合も緑は残します。",
+        "de": "Der Mittelwert der Feldsterne wird weiß und der Hintergrund neutral grau, dann wird die Farbe des Nebels etwas verstärkt. Ist die Aufnahme sicher breitbandig (Filter in den Bildern genannt oder für das Ziel angegeben), wird das Grün des Nebels entfernt. Mit einem Dualband-Filter ist das Grün OIII, also Signal: Es bleibt, ebenso die Farbbalance der Aufnahme. Bei Zweifeln am Filter bleibt das Grün ebenfalls.",
+        "es": "La media de las estrellas del campo pasa a blanco y el fondo a un gris neutro; luego se refuerza un poco el color de la nebulosa. Si la captura es de banda ancha con certeza (filtro indicado en las imágenes o definido para el objetivo), se elimina el verde de la nebulosa. Con un filtro bibanda el verde es OIII, señal: se conserva, igual que el equilibrio de color de la captura. Si hay dudas sobre el filtro, el verde también se conserva.",
+        "it": "La media delle stelle del campo diventa bianca e il fondo grigio neutro, poi il colore della nebulosa viene rafforzato un poco. Se la ripresa è sicuramente a banda larga (filtro indicato nelle immagini o impostato per il soggetto), il verde della nebulosa viene rimosso. Con un filtro dual band il verde è OIII, segnale: viene mantenuto, come il bilanciamento dei colori della ripresa. In caso di dubbio sul filtro, il verde viene mantenuto.",
+        "pt-BR": "A média das estrelas do campo vira branco e o fundo um cinza neutro; depois a cor da nebulosa é um pouco reforçada. Quando a captura é de banda larga com certeza (filtro indicado nas imagens ou definido para o alvo), o verde da nebulosa é removido. Com um filtro dual band o verde é OIII, sinal: ele é mantido, assim como o equilíbrio de cores da captura. Na dúvida sobre o filtro, o verde também é mantido.",
+        "ru": "Среднее звёзд поля становится белым, а фон — нейтрально-серым, затем цвет туманности немного усиливается. Если съёмка точно широкополосная (фильтр указан в кадрах или задан для объекта), зелёный в туманности убирается. С двухполосным фильтром зелёный — это OIII, сигнал: он сохраняется вместе с цветовым балансом съёмки. Если фильтр не известен наверняка, зелёный тоже сохраняется.",
+        "zh-Hans": "将视场恒星的平均色调为白色、背景调为中性灰，再略微增强星云的色彩。若确定为宽带拍摄（图像中记录了滤镜，或为目标设置了滤镜），则去除星云中的绿色。使用双窄带滤镜时，绿色是 OIII 信号：予以保留，拍摄的色彩平衡也保持不变。滤镜不确定时，同样保留绿色。",
+        "zh-Hant": "將視野恆星的平均色調為白色、背景調為中性灰，再略微增強星雲的色彩。若確定為寬頻拍攝（影像中記錄了濾鏡，或為目標設定了濾鏡），則去除星雲中的綠色。使用雙窄頻濾鏡時，綠色是 OIII 訊號：予以保留，拍攝的色彩平衡也保持不變。濾鏡不確定時，同樣保留綠色。"
       }
     },
     {
@@ -205,28 +205,28 @@
     },
     {
       "title": {
-        "fr": "Étirement et hautes lumières",
-        "en": "Stretch and highlights",
-        "ja": "ストレッチと明部",
-        "de": "Streckung und Lichter",
-        "es": "Estirado y luces altas",
-        "it": "Stiramento e luci alte",
-        "pt-BR": "Esticamento e altas luzes",
-        "ru": "Растяжение и света",
-        "zh-Hans": "拉伸与高光",
-        "zh-Hant": "拉伸與高光"
+        "fr": "Étirement et étoiles brillantes",
+        "en": "Stretch and bright stars",
+        "ja": "ストレッチと明るい星",
+        "de": "Streckung und helle Sterne",
+        "es": "Estirado y estrellas brillantes",
+        "it": "Stiramento e stelle brillanti",
+        "pt-BR": "Esticamento e estrelas brilhantes",
+        "ru": "Растяжение и яркие звёзды",
+        "zh-Hans": "拉伸与亮星",
+        "zh-Hant": "拉伸與亮星"
       },
       "text": {
-        "fr": "L’étirement du rendu naturel, puis une compression douce au-dessus des tons clairs : les cœurs brillants gardent leur modelé au lieu de brûler.",
-        "en": "The natural render’s stretch, then a soft compression above the light tones: bright cores keep their shape instead of burning out.",
-        "ja": "ナチュラルな仕上がりと同じストレッチのあと、明るいトーンをやわらかく圧縮します。明るい中心部が白飛びせず、立体感が残ります。",
-        "de": "Die Streckung der natürlichen Darstellung, dann eine weiche Kompression oberhalb der hellen Töne: Helle Kerne behalten ihre Zeichnung, statt auszubrennen.",
-        "es": "El estirado del render natural y luego una compresión suave por encima de los tonos claros: los núcleos brillantes conservan su relieve en lugar de quemarse.",
-        "it": "Lo stiramento della resa naturale, poi una compressione morbida sopra i toni chiari: i nuclei luminosi conservano il loro modellato invece di bruciarsi.",
-        "pt-BR": "O esticamento da renderização natural e, depois, uma compressão suave acima dos tons claros: os núcleos brilhantes mantêm o relevo em vez de estourar.",
-        "ru": "Растяжение естественного рендера, затем мягкое сжатие выше светлых тонов: яркие ядра сохраняют объём и не выгорают.",
-        "zh-Hans": "先做自然渲染的拉伸，再对亮部以上做柔和压缩：明亮的核心保留层次，不会过曝。",
-        "zh-Hant": "先做自然渲染的拉伸，再對亮部以上做柔和壓縮：明亮的核心保留層次，不會過曝。"
+        "fr": "Une courbe met le fond à un niveau sombre (0,03) sans le boucher : le grain reste au-dessus du noir. Les tons moyens sont relevés, davantage sur un objet faible comme une galaxie. Le cœur des étoiles brillantes devient blanc et s’estompe d’un seul tenant, sans anneau coloré.",
+        "en": "A curve puts the background at a dark level (0.03) without crushing it: the grain stays above black. The midtones are lifted, more on a faint object such as a galaxy. The core of bright stars turns white and fades out in one piece, without a coloured ring.",
+        "ja": "カーブで背景を暗いレベル（0.03）にしますが、黒つぶれはさせません。粒状感は黒より上に残ります。中間調を持ち上げ、銀河のような淡い天体ではより強く持ち上げます。明るい星の中心は白くなり、色のついたリングなしにひとつながりでなめらかに消えていきます。",
+        "de": "Eine Kurve setzt den Hintergrund auf ein dunkles Niveau (0,03), ohne ihn abzusaufen: Das Korn bleibt über Schwarz. Die Mitteltöne werden angehoben, stärker bei einem schwachen Objekt wie einer Galaxie. Der Kern heller Sterne wird weiß und läuft in einem Stück aus, ohne farbigen Ring.",
+        "es": "Una curva lleva el fondo a un nivel oscuro (0,03) sin empastarlo: el grano queda por encima del negro. Se levantan los tonos medios, más en un objeto débil como una galaxia. El núcleo de las estrellas brillantes se vuelve blanco y se difumina de una sola pieza, sin anillo de color.",
+        "it": "Una curva porta il fondo a un livello scuro (0,03) senza chiuderlo: la grana resta sopra il nero. I mezzitoni vengono sollevati, di più su un oggetto debole come una galassia. Il nucleo delle stelle brillanti diventa bianco e sfuma tutto d’un pezzo, senza anello colorato.",
+        "pt-BR": "Uma curva leva o fundo a um nível escuro (0,03) sem empastá-lo: a granulação fica acima do preto. Os tons médios são elevados, mais em um objeto fraco como uma galáxia. O núcleo das estrelas brilhantes fica branco e se esvai de uma só vez, sem anel colorido.",
+        "ru": "Кривая опускает фон до тёмного уровня (0,03), не заваливая его: зерно остаётся выше чёрного. Средние тона поднимаются, сильнее у слабого объекта вроде галактики. Ядро ярких звёзд становится белым и плавно гаснет единым целым, без цветного кольца.",
+        "zh-Hans": "曲线把背景压到较暗的水平（0.03），但不会压死：颗粒仍在黑色之上。中间调被提亮，星系这类暗弱天体提亮更多。亮星的核心变为白色并一体地平滑淡出，不再有彩色光环。",
+        "zh-Hant": "曲線把背景壓到較暗的水準（0.03），但不會壓死：顆粒仍在黑色之上。中間調被提亮，星系這類暗弱天體提亮更多。亮星的核心變為白色並一體地平滑淡出，不再有彩色光環。"
       }
     },
     {
@@ -295,42 +295,16 @@
         "zh-Hant": "放回恆星"
       },
       "text": {
-        "fr": "Les étoiles sont remises par-dessus, atténuées (× 0,48) et légèrement désaturées, pour que la nébuleuse reste le sujet.",
-        "en": "The stars are put back on top, dimmed (× 0.48) and slightly desaturated, so the nebula stays the subject.",
-        "ja": "星を上に重ねて戻します。明るさを抑え（× 0.48）、彩度を少し下げて、星雲を主役のままにします。",
-        "de": "Die Sterne werden darübergelegt, abgeschwächt (× 0,48) und leicht entsättigt, damit der Nebel das Motiv bleibt.",
-        "es": "Las estrellas se superponen de nuevo, atenuadas (× 0,48) y algo menos saturadas, para que la nebulosa siga siendo el tema.",
-        "it": "Le stelle vengono rimesse sopra, attenuate (× 0,48) e leggermente desaturate, perché la nebulosa resti il soggetto.",
-        "pt-BR": "As estrelas são recolocadas por cima, atenuadas (× 0,48) e levemente dessaturadas, para que a nebulosa continue sendo o tema.",
-        "ru": "Звёзды накладываются обратно, приглушённые (× 0,48) и слегка обесцвеченные, чтобы главной оставалась туманность.",
-        "zh-Hans": "把恒星叠加回去，亮度降低（× 0.48）并略降饱和度，让星云仍是主体。",
-        "zh-Hant": "把恆星疊加回去，亮度降低（× 0.48）並略降飽和度，讓星雲仍是主體。"
-      }
-    },
-    {
-      "title": {
-        "fr": "Niveau du ciel conservé",
-        "en": "Sky level kept",
-        "ja": "空の明るさを維持",
-        "de": "Himmelshelligkeit bleibt",
-        "es": "Nivel del cielo conservado",
-        "it": "Livello del cielo conservato",
-        "pt-BR": "Nível do céu mantido",
-        "ru": "Уровень неба сохранён",
-        "zh-Hans": "保持天空亮度",
-        "zh-Hant": "保持天空亮度"
-      },
-      "text": {
-        "fr": "Le retrait du fond et le débruitage emportent un peu du niveau du ciel : il est remis à celui du rendu naturel avant l’étirement, puis ajusté de nouveau après le contraste local. Le rendu soigné n’est pas plus sombre que le naturel.",
-        "en": "Removing the background and the denoising take a little of the sky level with them: it is brought back to the natural render’s before the stretch, then adjusted again after the local contrast. The polished render is not darker than the natural one.",
-        "ja": "背景除去とノイズ除去で空の明るさが少し下がるため、ストレッチの前にナチュラルな仕上がりの明るさへ戻し、ローカルコントラストの後にもう一度合わせます。丁寧な仕上がりが、ナチュラルより暗くなることはありません。",
-        "de": "Hintergrundentfernung und Entrauschung nehmen etwas Himmelshelligkeit mit: Sie wird vor der Streckung auf die der natürlichen Darstellung zurückgesetzt und nach dem lokalen Kontrast nachgestellt. Die sorgfältige Darstellung ist nicht dunkler als die natürliche.",
-        "es": "La retirada del fondo y la reducción de ruido se llevan un poco del nivel del cielo: se devuelve al del render natural antes del estirado y se ajusta de nuevo tras el contraste local. El render cuidado no es más oscuro que el natural.",
-        "it": "La rimozione del fondo e la riduzione del rumore si portano via un po’ del livello del cielo: viene riportato a quello della resa naturale prima dello stiramento e riaggiustato dopo il contrasto locale. La resa curata non è più scura di quella naturale.",
-        "pt-BR": "A remoção do fundo e a redução de ruído levam um pouco do nível do céu: ele volta ao da renderização natural antes do esticamento e é reajustado depois do contraste local. A renderização caprichada não fica mais escura que a natural.",
-        "ru": "Удаление фона и шумоподавление уносят немного уровня неба: перед растяжением он возвращается к уровню естественного рендера, а после локального контраста подстраивается ещё раз. Тщательный рендер не темнее естественного.",
-        "zh-Hans": "去除背景和降噪会带走一点天空亮度：拉伸前把它调回自然渲染的水平，局部对比度之后再微调一次。精修渲染不会比自然渲染更暗。",
-        "zh-Hant": "去除背景與降噪會帶走一點天空亮度：拉伸前把它調回自然渲染的水準，局部對比度之後再微調一次。精修渲染不會比自然渲染更暗。"
+        "fr": "Les étoiles sont remises presque à pleine force (× 0,9), leur couleur atténuée (× 0,3) : les étoiles chaudes restent orangées sans dominer.",
+        "en": "The stars are put back nearly at full strength (× 0.9), their colour toned down (× 0.3): warm stars stay orange without taking over.",
+        "ja": "星はほぼ元の強さ（× 0.9）で戻し、色は控えめ（× 0.3）にします。低温の星はオレンジ色を保ちつつ、目立ちすぎません。",
+        "de": "Die Sterne werden fast in voller Stärke (× 0,9) zurückgesetzt, ihre Farbe gedämpft (× 0,3): Kühle Sterne bleiben orange, ohne zu dominieren.",
+        "es": "Las estrellas se devuelven casi con toda su intensidad (× 0,9) y su color atenuado (× 0,3): las estrellas frías siguen anaranjadas sin dominar.",
+        "it": "Le stelle vengono rimesse quasi a piena intensità (× 0,9), con il colore attenuato (× 0,3): le stelle fredde restano arancioni senza dominare.",
+        "pt-BR": "As estrelas voltam quase com toda a intensidade (× 0,9), com a cor atenuada (× 0,3): as estrelas frias continuam alaranjadas sem dominar.",
+        "ru": "Звёзды возвращаются почти в полную силу (× 0,9), их цвет приглушён (× 0,3): холодные звёзды остаются оранжевыми, но не перетягивают внимание.",
+        "zh-Hans": "恒星以接近全强度（× 0.9）放回，颜色减弱（× 0.3）：偏冷的恒星仍呈橙色，但不会喧宾夺主。",
+        "zh-Hant": "恆星以接近全強度（× 0.9）放回，顏色減弱（× 0.3）：偏冷的恆星仍呈橙色，但不會喧賓奪主。"
       }
     }
   ]

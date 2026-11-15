@@ -56,10 +56,13 @@ session (with its CSRF token). Nothing is written; the answer
 ```
 
 - `present`: the space already holds these bytes, as any image of any of
-  its captures (the main image or a variant); an upload would store
-  nothing (« déjà en ligne, identique »). Never refused for a limit.
+  its captures (the main image or a variant: `imageId`, `main`) or as a file
+  attached to one (`attachmentId`); an upload would store nothing (« déjà en
+  ligne, identique »), whatever it declares. Never refused for a limit.
 - `accepted`: the upload would be received — a new capture (`adds:
-capture`) or an image added to `captureId` (`adds: variant`).
+capture`), an image added to `captureId` (`adds: variant`, or
+  `adds: progression` with that role) or a file attached to it
+  (`adds: attachment`, with `role: "linear"`).
 - `refused`: the upload would be refused, with the code and the numbers the
   upload itself answers, in the same order: `entitlement_read_only`, then
   `capture_limit_reached` (a new capture past `capture.count_limit`) or
@@ -104,6 +107,80 @@ body (or the multipart metadata, or the pre-check body) carries
 A resumable upload keeps its `placement` from the create step until it
 completes.
 
+**Replacing a variant (`replacesSha256`)**: with `captureId`, the image sent
+may take the place of one **variant** of that capture, named by the SHA-256 of
+its bytes (the digest its producer sent). Astro Sync uses it when an image
+already online is set in « Régler l'image » and sent again: the image set's
+TIFF takes the place of the render's TIFF instead of sitting beside it.
+
+- Same rights, same read-only gate, same refusal order and limits as any image
+  added to the capture; the replacement adds no variant (it passes at
+  `capture.variant_limit`) and the quota is checked with the old bytes
+  released.
+- The old variant leaves **only when the new image is stored** (at the
+  finalize; an upload never finalized leaves it intact): its row, its
+  completed upload, its sky solution (unless an image of the same pixels takes
+  it over); its files are then deleted from the store, never left orphaned.
+- The new image is a variant, never the main image; it keeps the old one's
+  visibility when it comes from Astro Sync (`astro-sync`, `stacking`), else
+  arrives private. The answer (`uploadResponse`, `uploadFinalizeResponse`)
+  names the variant that left, `replacedImageId`; `replaced` stays `false`.
+- A digest the capture holds as no variant (deleted from the web since, a
+  progression image): the image is added as without the field. The main
+  image: `409` `main_image` (replace it with `placement: "replace"`).
+- Without `captureId`, with a `role`, or with `placement: "add"`: `400`
+  `invalid_placement` (`placement: "replace"` beside it says the same). Not a
+  digest, or the image's own `sha256`: `400` `invalid_request`.
+- Idempotent: sent again, the new bytes are found held (`deduplicated: true`)
+  and nothing more is replaced. A create sent again with or without the field
+  aims the upload in progress accordingly, the bytes received kept.
+- The pre-check answers `accepted` with `replacesImageId`, the variant it
+  would replace.
+- Absent or `null`: unchanged. A service that predates the field refuses it
+  (`400` `invalid_request`, « Unexpected metadata property »): a client sends
+  the image again without it, as a variant.
+
+**One capture per series of poses (`series`)**: an image stacked from one
+series of poses (`{ filter, exposureSeconds, gain, binning, frames,
+totalSeconds }`: the light frames of one night and one target taken with the
+same filter, exposure, gain and binning) may declare it. With a session, one
+target and no `captureId`, the service keeps **one capture per session, target
+and series** (`filter`, `exposureSeconds`, `gain`, `binning` are the key, the
+filter compared without case):
+
+- the capture of the same series takes the image (as above: `placement`,
+  `capture.variant_limit`, the main one when it comes from Astro Sync);
+- else a capture of that session and target without a series (sent before, or
+  by a phone) whose main image names no other series takes it and **takes the
+  series** (an image named after Astro Sync's family, `IRCUT_30s_g200_…`,
+  names its series);
+- else the image is a **new capture** of the same session and targets. It does
+  not count in `capture.count_limit`: the space counts **one capture per
+  session and target**, whatever the number of series (`storage.captureCount`).
+
+Absent or `null`: the main capture of the target (the owner's choice, else the
+longest series), which is the only one as long as nothing sent a series — the
+rule of before, for every client that sends none. A capture with `captureId`
+takes the series when it has none and its main image names no other. A series
+with a `role`: `400 invalid_request`. The capture says its `series`, the
+`generatedTitle` the service writes from it in each language
+(« M45 · 429 × 30 s · 3 h 34 », apart from the owner's title) and
+`targetMain`; `GET /v1/sessions/{id}/online` lists the main capture of each
+target first. The acquisition proposed with the image keeps the lines of its
+series only.
+
+A capture sent before, whose images mix series, is shared out by its owner:
+`POST /v1/manage/captures/{id}/separate` (« Séparer par série », never
+automatic; the capture keeps its main image's series, its titles, notes, tags
+and publication; the images of each other series go to the capture of that
+series, or to a new private draft; nothing is deleted) and
+`POST /v1/manage/captures/{id}/regroup` (« Regrouper », undoes it). Both are
+idempotent and answer `manage-captures.schema.json#/$defs/seriesSeparation`.
+`POST /v1/manage/captures/{id}/target-main` makes the capture the main one of
+its target in its session. The owner's phone has the same three gestures with its device
+token: `POST /v1/captures/{id}/separate`, `/regroup` and `/target-main` (either
+credential, the same answers and refusals).
+
 **A progression image of a capture**: `captureId` with `role: "progression"` (and, optionally,
 `progressionFrames`, the light frames the milestone stacks) adds a milestone
 of the night Astro Sync stacked to that capture as its **history**
@@ -118,6 +195,19 @@ the last. `role` without `captureId`, an unknown role, or `progressionFrames`
 without the role is `400 invalid_request`. The check answers `accepted` with
 `adds: "progression"`. A resumable upload keeps the role and the frames it
 declared at its create step until it completes.
+
+**The linear file of a capture**: `captureId` with `role: "linear"` attaches
+the linear render of Astro Sync (« Sans traitement », not stretched) to that
+capture as a **file to download**, never an image
+([`capture-attachment.schema.json`](capture-attachment.schema.json); `api/v1.md`,
+« Files attached to a capture »). It is counted against the storage and the
+per-file size only, never against `capture.variant_limit` (`0` still accepts
+it) nor `capture.count_limit`, and it never replaces anything. `role: "linear"`
+without `captureId`, with `progressionFrames`, the plan's fields or a
+proposal is `400 invalid_request` (with `placement`, `400 invalid_placement`).
+The check answers `accepted` with `adds: "attachment"`. A resumable upload
+keeps the role it declared at its create step until it completes; its
+finalize answers `attachment` instead of `variant`.
 
 **The image of a multi-night plan**: `role: "plan"` with `projectId` declares the image Astro Sync
 made by combining the integrations of several nights of a multi-night plan

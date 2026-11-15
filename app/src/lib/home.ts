@@ -80,9 +80,49 @@ export function displayPath(path: string, home: string | null): string {
   return path;
 }
 
+/** A path cut after each separator, each part kept whole: a long path drawn
+ * part by part (each part unbroken) goes to the line after a « / », never
+ * inside a folder's name (« Astro Sync »). The parts joined give the path
+ * back, so a copy of it is the path. */
+export function pathParts(path: string): string[] {
+  return path.match(/[^\\/]*(?:[\\/]+|$)/g)?.filter(Boolean) ?? [];
+}
+
 /** The home folder of a working folder under `…/Documents/…` (macOS,
  * Linux): what `displayPath` writes « ~ ». */
 export function homeOf(root: string): string | null {
   const match = /^(\/(?:Users|home)\/[^/]+)\//.exec(root);
   return match ? match[1] : null;
+}
+
+/** What the connection card of « Accueil » says. The token kept on this
+ * computer is not enough to say « Connecté »: a space deleted while the
+ * service slept still has its token here. So the card says « Vérification
+ * de la connexion… » until the service has answered once since the launch,
+ * « Connecté » when it did, and that it could not be asked when it did not
+ * answer. Signed out: the sign-in card. */
+export type ConnectionCard =
+  "checking" | "connected" | "unchecked" | "signedOut";
+
+export function connectionCard(input: {
+  paired: boolean;
+  /** The check of this launch: `null` while it runs (or before it). */
+  answered: boolean | null;
+}): ConnectionCard {
+  if (!input.paired) return "signedOut";
+  if (input.answered === null) return "checking";
+  return input.answered ? "connected" : "unchecked";
+}
+
+/** The service answered once since the launch: the home, mounted again (a
+ * click on « Accueil »), says « Connecté » at once instead of asking again.
+ * Kept by the window for its life, never on disk. */
+let answeredThisLaunch = false;
+
+export function serviceAnsweredThisLaunch(): boolean {
+  return answeredThisLaunch;
+}
+
+export function rememberServiceAnswered(answered: boolean): void {
+  if (answered) answeredThisLaunch = true;
 }

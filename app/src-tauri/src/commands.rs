@@ -41,7 +41,7 @@ use astro_sync_core::space::{
 };
 use astro_sync_core::standing::Standing;
 use astro_sync_core::upload_queue::{EnqueueOutcome, QueueEntry};
-use astro_sync_core::uploader::{HttpUploadTransport, UploadTarget, upload_entry};
+use astro_sync_core::uploader::{upload_entry, HttpUploadTransport, UploadTarget};
 
 use crate::dialogs;
 use crate::error::CommandError;
@@ -1243,6 +1243,57 @@ pub async fn space_refresh<R: Runtime>(app: AppHandle<R>) -> Result<SpaceStatus,
                 None => Ok(space::space_status(&files, true)?),
             },
         }
+    })
+    .await
+}
+
+/// What « Accueil » says of the connection once it has asked the service:
+/// the connection as it now stands, and whether the service answered.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpaceCheck {
+    pub status: SpaceStatus,
+    /// The service answered this computer's token (by its capabilities, or
+    /// by ending the sign-in). `false`: it could not be reached -- the token
+    /// kept on disk says nothing of whether the space still exists.
+    pub answered: bool,
+}
+
+/// « Accueil »'s check of the connection: asks the service for this token's
+/// capabilities, patiently and saying so (a service that is starting shows
+/// its banner), so that the home never says « Connecté » on the sole faith
+/// of the token kept here -- a space deleted while the service slept is
+/// learnt here, its sign-in ended and announced to the page.
+#[tauri::command]
+pub async fn space_check<R: Runtime>(app: AppHandle<R>) -> Result<SpaceCheck, CommandError> {
+    use astro_sync_core::gui_bridge::{GuiBridgeError, PortalGuiTransport};
+    run_blocking(move || {
+        let paths = paths::resolve(&app)?;
+        let files = paths.space_files();
+        let settings = gui_bridge::load_settings(&paths.settings)?;
+        let token = match &settings.portal_url {
+            Some(portal_url) => gui_bridge::load_device_token(&paths.device_token, portal_url)?,
+            None => None,
+        };
+        let (Some(portal_url), Some(token)) = (settings.portal_url.clone(), token) else {
+            // Nothing kept: nothing to ask, the home offers the sign-in.
+            return Ok(SpaceCheck {
+                status: space::space_status(&files, false)?,
+                answered: true,
+            });
+        };
+        let (waiting, hooks) = service_wait(&app);
+        let transport = HttpPortalGuiTransport::with_options(waiting.patient, hooks)?;
+        // (answered, still paired)
+        let (answered, paired) = match transport.fetch_capabilities(&portal_url, &token) {
+            Ok(_) | Err(GuiBridgeError::Refused { .. }) => (true, true),
+            Err(GuiBridgeError::SignInEnded(end)) => (true, !end_sign_in_now(&app, end)),
+            Err(_) => (false, true),
+        };
+        Ok(SpaceCheck {
+            status: space::space_status(&files, paired)?,
+            answered,
+        })
     })
     .await
 }

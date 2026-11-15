@@ -33,6 +33,7 @@ import {
   MENU_GROUPS,
   MENU_TOP,
   groupEntries,
+  importEntryLabelKey,
   menuEntryOf,
   type MenuEntry,
   type ScreenId,
@@ -201,7 +202,11 @@ function AppShell() {
                 : "as-tab__label"
             }
           >
-            {t(tab.labelKey)}
+            {t(
+              tab.id === "import"
+                ? importEntryLabelKey(presence.done)
+                : tab.labelKey,
+            )}
           </span>
           {tab.id === "queue" && pending > 0 && (
             <span

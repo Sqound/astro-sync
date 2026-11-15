@@ -219,6 +219,10 @@ pub struct Proposals {
     /// `analysis.logs` (the service drops it without).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_quality: Option<ImageQuality>,
+    /// The series of poses of the image sent (`uploadMetadata.series`): the
+    /// image's own, never proposed after the fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<crate::series::Series>,
 }
 
 // Every number is finite (read from a header, filtered below): the equality
@@ -241,8 +245,31 @@ impl Proposals {
             variant_generated_title: None,
             variant_generated_description: None,
             image_quality: None,
+            series: None,
             ..self.clone()
         }
+    }
+
+    /// The proposals of an image of `series`: the series is sent with it, and
+    /// the acquisition keeps the lines of that series only (the capture of a
+    /// series shows its own lines); unchanged without a series, and the
+    /// lines too when none is of the series.
+    #[must_use]
+    pub fn for_series(mut self, series: Option<&crate::series::Series>) -> Self {
+        let Some(series) = series else {
+            return self;
+        };
+        let own: Vec<AcquisitionLine> = self
+            .acquisition
+            .iter()
+            .filter(|line| series.holds_line(line))
+            .cloned()
+            .collect();
+        if !own.is_empty() {
+            self.acquisition = own;
+        }
+        self.series = Some(series.clone());
+        self
     }
 
     /// What concerns the image sent (its title, its description and its quality).
@@ -253,6 +280,7 @@ impl Proposals {
             variant_generated_title: self.variant_generated_title.clone(),
             variant_generated_description: self.variant_generated_description.clone(),
             image_quality: self.image_quality.clone(),
+            series: self.series.clone(),
             ..Self::default()
         }
     }
@@ -476,6 +504,9 @@ struct ProvenanceDevice {
 struct ProvenanceIntegration {
     #[serde(default)]
     family: Option<String>,
+    /// The exposure of the series in all, seconds (`integration.totalSeconds`).
+    #[serde(default, rename = "totalSeconds")]
+    total_seconds: Option<f64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -490,6 +521,9 @@ struct ProvenanceOutput {
     pipeline: String,
     #[serde(default)]
     file: String,
+    /// The digest of the file when it was written.
+    #[serde(default)]
+    sha256: String,
     /// The contrast of presentation the image carries; absent for
     /// a render and from a provenance written before.
     #[serde(default)]
@@ -526,12 +560,144 @@ fn provenance_of(image: &Path) -> Option<(Provenance, String)> {
     None
 }
 
+/// What a record of the stacker says of one image: the provenance of its
+/// run and the output that describes the image.
+struct Located {
+    provenance: Provenance,
+    /// A record says it (false: only the file's name does).
+    recorded: bool,
+    pipeline: String,
+    contrast: crate::stacking::Contrast,
+    retouch: crate::stacking::Retouch,
+}
+
+fn located_from(provenance: Provenance, at: usize) -> Located {
+    let output = &provenance.outputs[at];
+    Located {
+        recorded: true,
+        pipeline: output.pipeline.clone(),
+        contrast: output.contrast,
+        retouch: crate::stacking::Retouch {
+            colour: output.colour,
+            soft_stars: output.soft_stars,
+        },
+        provenance,
+    }
+}
+
+/// The records (`*_stacking.json`) of the folders a night's renders live in:
+/// the folder of `image`, then the `stacked/` folder of each target of the
+/// night folder.
+fn records_near(image: &Path, night_folder: &Path) -> Vec<Provenance> {
+    let mut folders: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(parent) = image.parent() {
+        folders.push(parent.to_path_buf());
+    }
+    if let Ok(entries) = std::fs::read_dir(night_folder) {
+        let mut targets: Vec<_> = entries.flatten().collect();
+        targets.sort_by_key(std::fs::DirEntry::file_name);
+        for target in targets {
+            let stacked = target.path().join("stacked");
+            if stacked.is_dir() && !folders.contains(&stacked) {
+                folders.push(stacked);
+            }
+        }
+    }
+    let mut records = Vec::new();
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(&folder) else {
+            continue;
+        };
+        let mut files: Vec<_> = entries.flatten().collect();
+        files.sort_by_key(std::fs::DirEntry::file_name);
+        for entry in files {
+            if !entry
+                .file_name()
+                .to_string_lossy()
+                .ends_with("_stacking.json")
+            {
+                continue;
+            }
+            if let Some(provenance) = std::fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|text| serde_json::from_str::<Provenance>(&text).ok())
+            {
+                records.push(provenance);
+            }
+        }
+    }
+    records
+}
+
+/// The record of `image`, found the way the service's reader needs it, whatever
+/// the device the render came from: by its name in the record beside it, else
+/// by its digest in any record of the night's targets (an image moved, copied
+/// or renamed keeps what made it), else -- a stacked image only -- by the render
+/// its file name says (`<stem>_<pipeline>[_strong][_colour-40][_stars-85]`,
+/// [`crate::image_texts::render_of_stem`]), which carries no provenance: the
+/// steps then name the render alone.
+fn locate(
+    image: &Path,
+    kind: ResultKind,
+    night_folder: &Path,
+    pipelines: Option<&PipelineList>,
+) -> Option<Located> {
+    // A final image is the person's own: only a digest a record holds says
+    // otherwise, never a name.
+    if kind == ResultKind::Stacked
+        && let Some((provenance, _)) = provenance_of(image)
+    {
+        let name = image.file_name()?.to_string_lossy().into_owned();
+        let at = provenance.outputs.iter().position(|o| o.file == name)?;
+        return Some(located_from(provenance, at));
+    }
+    if let Ok(digest) = crate::scanner::file_sha256(image) {
+        for provenance in records_near(image, night_folder) {
+            let found = provenance
+                .outputs
+                .iter()
+                .position(|o| !o.sha256.is_empty() && o.sha256.eq_ignore_ascii_case(&digest));
+            if let Some(at) = found {
+                return Some(located_from(provenance, at));
+            }
+        }
+    }
+    if kind != ResultKind::Stacked {
+        return None;
+    }
+    let stem = image.file_stem()?.to_string_lossy().into_owned();
+    let mut ids: Vec<String> = pipelines
+        .map(|list| list.pipelines.iter().map(|p| p.id.clone()).collect())
+        .unwrap_or_default();
+    ids.push(LINEAR_PIPELINE.to_string());
+    let record = crate::image_texts::render_of_stem(&stem, &ids)?;
+    Some(Located {
+        provenance: Provenance::default(),
+        recorded: false,
+        pipeline: record.pipeline,
+        contrast: record.contrast,
+        retouch: record.retouch,
+    })
+}
+
 /// The pipeline the stacker recorded for `image` (its `_stacking.json` lists
 /// it among its outputs): `raw`, `dualband-correction`, `linear`…; `None` for an
 /// image Astro Sync did not stack.
 #[must_use]
 pub fn recorded_pipeline(image: &Path) -> Option<String> {
     provenance_of(image).map(|(_, pipeline)| pipeline)
+}
+
+/// Whether `image` is the linear stack ("No processing"): what the stacking
+/// recorded for it (`linear`), else, for a file the record no longer lists,
+/// its name (`<name>_linear.tif`). The linear stack is a file attached to a
+/// capture, never an image of it.
+#[must_use]
+pub fn is_linear_render(image: &Path) -> bool {
+    match recorded_pipeline(image) {
+        Some(pipeline) => pipeline == crate::pipelines::LINEAR_PIPELINE,
+        None => crate::render_files::is_linear_name(image),
+    }
 }
 
 /// The place of the pipeline of `image` among the pipelines its stacking was
@@ -551,6 +717,26 @@ pub fn recorded_render_rank(image: &Path) -> Option<u32> {
         .iter()
         .position(|id| *id == pipeline)
         .and_then(|place| u32::try_from(place).ok())
+}
+
+/// The total exposure of the series of poses `image` was stacked from, in
+/// whole seconds, as its `_stacking.json` records it (`integration`); `None`
+/// when no record says it (a render of a device's image, an older stacking).
+#[must_use]
+pub fn recorded_series_seconds(image: &Path) -> Option<u64> {
+    let (provenance, _) = provenance_of(image)?;
+    let seconds = provenance.integration?.total_seconds?;
+    (seconds.is_finite() && seconds >= 0.0).then(|| seconds.round() as u64)
+}
+
+/// The series of poses `image` was stacked from, as its `_stacking.json`
+/// records it (`integration.family`, `integration.totalSeconds`); `None` when
+/// no record names it.
+#[must_use]
+pub fn recorded_series(image: &Path) -> Option<crate::series::Series> {
+    let (provenance, _) = provenance_of(image)?;
+    let integration = provenance.integration?;
+    crate::series::Series::from_label(integration.family.as_deref()?, integration.total_seconds)
 }
 
 /// Whether the renders of `image` started from the image a device stacked
@@ -577,6 +763,36 @@ pub fn recorded_contrast(image: &Path) -> crate::stacking::Contrast {
                 .map(|o| o.contrast)
         })
         .unwrap_or_default()
+}
+
+/// Whether `image` is the bare twin of a finished render: the stacker wrote
+/// it without a contrast, colours nor softened stars, and its record lists the
+/// same pipeline's image with one. With a finish chosen, only the finished
+/// image leaves; the bare one stays on this computer. `false` for an image
+/// Astro Sync did not stack, for a render the record gives no finished twin and
+/// for "No processing".
+#[must_use]
+pub fn recorded_bare_twin(image: &Path) -> bool {
+    let Some(name) = image.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+        return false;
+    };
+    let Some((provenance, pipeline)) = provenance_of(image) else {
+        return false;
+    };
+    if pipeline == crate::pipelines::LINEAR_PIPELINE {
+        return false;
+    }
+    let finished = |o: &ProvenanceOutput| {
+        !o.contrast.is_none() || !o.colour.is_none() || !o.soft_stars.is_none()
+    };
+    let Some(own) = provenance.outputs.iter().find(|o| o.file == name) else {
+        return false;
+    };
+    !finished(own)
+        && provenance
+            .outputs
+            .iter()
+            .any(|o| o.pipeline == pipeline && finished(o))
 }
 
 /// The colour intensity and the softened stars the stacker recorded for
@@ -974,22 +1190,65 @@ pub fn proposals_for_image(
     families: &[crate::analysis::fits::AcquisitionFamily],
     ctx: &ProposalContext<'_>,
 ) -> Proposals {
+    proposals_with(
+        image,
+        kind,
+        render,
+        families,
+        &ctx.detection.calibration,
+        &Sources {
+            night_folder: ctx.night_folder,
+            pipelines: ctx.pipelines,
+            image_quality: ctx.image_quality,
+        },
+    )
+}
+
+/// What [`proposals_with`] reads besides the image and the target's frames.
+struct Sources<'a> {
+    night_folder: &'a Path,
+    pipelines: Option<&'a PipelineList>,
+    image_quality: bool,
+}
+
+/// [`proposals_for_image`], the night's calibration given as its counts.
+fn proposals_with(
+    image: &Path,
+    kind: ResultKind,
+    render: Option<&str>,
+    families: &[crate::analysis::fits::AcquisitionFamily],
+    calibration: &CalibrationCounts,
+    ctx: &Sources<'_>,
+) -> Proposals {
     let mut proposals = Proposals {
         acquisition: acquisition_lines(families),
-        calibration: calibration_text(&ctx.detection.calibration),
+        calibration: calibration_text(calibration),
         sensor: sensor_of(families),
         ..Proposals::default()
     };
-    if kind == ResultKind::Stacked
-        && let Some((provenance, recorded)) = provenance_of(image)
+    if matches!(kind, ResultKind::Stacked | ResultKind::Final)
+        && let Some(found) = locate(image, kind, ctx.night_folder, ctx.pipelines)
     {
-        let pipeline = render.map_or(recorded, str::to_string);
-        proposals.processing = Some(processing_of(
-            &provenance,
-            &pipeline,
-            recorded_contrast(image),
-            recorded_retouch(image),
-        ));
+        let Located {
+            provenance,
+            recorded,
+            pipeline: recorded_pipeline,
+            contrast,
+            retouch,
+        } = found;
+        let pipeline = render.map_or(recorded_pipeline, str::to_string);
+        proposals.processing = Some(if recorded {
+            processing_of(&provenance, &pipeline, contrast, retouch)
+        } else {
+            // Only the file's name says the render: what made it is
+            // Astro Sync's, the steps are the render's.
+            let mut steps = vec![pipeline.clone()];
+            if !contrast.is_none() {
+                steps.push(format!("contrast {}", contrast.token()));
+            }
+            steps.extend(retouch_steps(retouch));
+            processing_proposal(&software_label(None, false), &steps)
+        });
         // The same steps are the image's own too: the capture shows the ones
         // of its main image, so they follow it when another image takes over.
         proposals.variant_processing = proposals.processing.clone();
@@ -1003,12 +1262,8 @@ pub fn proposals_for_image(
             proposals.image_quality =
                 ImageQuality::from_measure(measure, frames_pixel_scale(families, family));
         }
-        let (title, description) = generated_render_texts(
-            ctx.pipelines,
-            &pipeline,
-            recorded_contrast(image),
-            recorded_retouch(image),
-        );
+        let (title, description) =
+            generated_render_texts(ctx.pipelines, &pipeline, contrast, retouch);
         proposals.variant_generated_title = title;
         proposals.variant_generated_description = description;
     }
@@ -1027,6 +1282,88 @@ pub fn proposals_for_image(
     proposals
 }
 
+/// The proposals of a render ticked in « Images à envoyer » of « Détecter les
+/// sessions » (the import), which enqueues the renders itself instead of
+/// going through the night's « Récapitulatif »: the same proposals as
+/// [`attach_proposals`] gives a new capture (`capture`) or a variant of the
+/// capture the sending creates (its title, description and steps only).
+/// Without them the image left with no title (the portal named it « Variant
+/// N ») and the capture with no acquisition (no figures on its page).
+///
+/// The night and the target are the folders the render lies in
+/// (`<night>/<target>/stacked/<file>`): the target's frames give the
+/// acquisition and the sensor, the night's `calibration/` folders the
+/// calibration, the stacker's record (or the file's name) the rendering. A
+/// file elsewhere, a progression image and the linear file propose nothing.
+#[must_use]
+pub fn import_render_proposals(
+    image: &Path,
+    kind: ResultKind,
+    render: Option<&str>,
+    capture: bool,
+    pipelines: Option<&PipelineList>,
+    image_quality: bool,
+) -> Option<Proposals> {
+    if !matches!(kind, ResultKind::Stacked) {
+        return None;
+    }
+    let stacked = image.parent()?;
+    if stacked.file_name()? != crate::working_folder::STACKED_DIR {
+        return None;
+    }
+    let target = stacked.parent()?;
+    let night_folder = target.parent()?;
+    let families = progression_images::target_families(night_folder, target.file_name()?.to_str()?);
+    let all = proposals_with(
+        image,
+        kind,
+        render,
+        &families,
+        &calibration_in_folders(night_folder),
+        &Sources {
+            night_folder,
+            pipelines,
+            image_quality,
+        },
+    );
+    let proposals = if capture { all } else { all.image_part() };
+    (!proposals.is_empty()).then_some(proposals)
+}
+
+/// The frames of the night's `calibration/<darks|flats|dark-flats|biases>/`
+/// folders (sub-folders included, `bias/` for `biases/`), counted by the
+/// folder they are in: what « Détecter les sessions » put there.
+fn calibration_in_folders(night_folder: &Path) -> CalibrationCounts {
+    fn frames(folder: &Path) -> usize {
+        let Ok(entries) = std::fs::read_dir(folder) else {
+            return 0;
+        };
+        entries
+            .flatten()
+            .map(|entry| {
+                let path = entry.path();
+                match entry.file_type() {
+                    Ok(kind) if kind.is_dir() => frames(&path),
+                    Ok(_) => usize::from(
+                        path.extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(|e| crate::scanner::FileClass::classify(e).is_frame()),
+                    ),
+                    Err(_) => 0,
+                }
+            })
+            .sum()
+    }
+    let root = night_folder.join(crate::working_folder::CALIBRATION_DIR);
+    CalibrationCounts {
+        darks: frames(&root.join("darks")),
+        flats: frames(&root.join("flats")),
+        dark_flats: frames(&root.join("dark-flats")),
+        biases: frames(&root.join("biases"))
+            + frames(&root.join(crate::working_folder::BIAS_ALIAS)),
+    }
+}
+
 /// Puts the proposals on the plans that send an image or find it online, as
 /// the decision allows:
 ///
@@ -1042,8 +1379,14 @@ pub fn attach_proposals(plans: &mut [ImagePlan], online: &NightOnline, ctx: &Pro
     let mut families: BTreeMap<String, Vec<crate::analysis::fits::AcquisitionFamily>> =
         BTreeMap::new();
     for plan in plans.iter_mut() {
+        // A progression image and the linear file propose nothing: the first
+        // is the history of a capture, the second a file attached to it, which
+        // the service refuses any proposal for.
         if matches!(plan.decision, Decision::NotSent { .. })
-            || plan.image.kind == ResultKind::Progression
+            || matches!(
+                plan.image.kind,
+                ResultKind::Progression | ResultKind::Linear
+            )
         {
             continue;
         }
@@ -1070,7 +1413,9 @@ pub fn attach_proposals(plans: &mut [ImagePlan], online: &NightOnline, ctx: &Pro
         plan.from_device =
             plan.image.kind == ResultKind::Stacked && recorded_device_master(&plan.image.path);
         let proposals = match &plan.decision {
-            Decision::NewCapture => all,
+            // The image set that takes the place of the main image online
+            // proposes as the main image does.
+            Decision::NewCapture | Decision::Replace { .. } => all,
             Decision::Variant { .. } => all.without_processing(),
             Decision::VariantOfNew { .. } => all.image_part(),
             Decision::AlreadyOnline { image_id, .. } => {
@@ -1083,7 +1428,10 @@ pub fn attach_proposals(plans: &mut [ImagePlan], online: &NightOnline, ctx: &Pro
             // a capture, never one of its images to describe).
             Decision::NotSent { .. }
             | Decision::Progression { .. }
-            | Decision::ProgressionOfNew { .. } => continue,
+            | Decision::ProgressionOfNew { .. }
+            | Decision::File { .. }
+            | Decision::FileOfNew { .. }
+            | Decision::FileOnline { .. } => continue,
         };
         plan.metadata = (!proposals.is_empty()).then_some(proposals);
     }

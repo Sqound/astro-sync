@@ -2,6 +2,7 @@
 #[cfg(test)]
 mod build_info_tests;
 mod commands;
+mod commands_adjust;
 mod commands_detect;
 mod commands_incidents;
 mod commands_master;
@@ -71,6 +72,7 @@ pub fn run() {
             commands::space_request_code,
             commands::space_verify_code,
             commands::space_refresh,
+            commands::space_check,
             commands::space_rename,
             commands::space_detach,
             commands::capabilities,
@@ -192,6 +194,19 @@ pub fn run() {
             commands_detect::result_file_open,
             commands_detect::result_file_reveal,
             commands_detect::result_file_preview,
+            commands_adjust::image_adjust_open,
+            commands_adjust::image_adjust_layer,
+            commands_adjust::image_adjust_stars,
+            commands_adjust::image_adjust_smooth,
+            commands_adjust::image_adjust_save,
+            commands_adjust::image_adjust_state,
+            commands_adjust::image_adjust_revert,
+            commands_adjust::image_adjust_saved_list,
+            commands_adjust::image_adjust_saved_save,
+            commands_adjust::image_adjust_saved_rename,
+            commands_adjust::image_adjust_saved_remove,
+            commands_adjust::image_adjust_saved_export,
+            commands_adjust::image_adjust_saved_import,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

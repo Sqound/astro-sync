@@ -17,6 +17,7 @@ import type {
   SectionDependency,
   ToolRow,
   TrustState,
+  EnvRedo,
 } from "./bridge";
 import { displayPath, homeOf } from "./home.ts";
 import {
@@ -266,7 +267,7 @@ function environmentState(
   }
   if (tool.state === "outdated") {
     return {
-      lines: [t("deps.env.outdated")],
+      lines: [envRedoLine(t, tool.redo, tool.version, range)],
       badge: { tone: "warning", text: t("deps.badge.toRedo") },
       action: tool.installable ? "install" : null,
     };
@@ -279,6 +280,34 @@ function environmentState(
     badge: { tone: "warning", text: t("deps.badge.missing") },
     action: tool.installable ? "install" : null,
   };
+}
+
+/** What installing redoes in an environment that is here (found, never
+ * « missing »): checked and completed, its packages updated, or made again
+ * with a Python in the range. */
+export function envRedoLine(
+  t: Translate,
+  redo: EnvRedo | undefined,
+  version: string | null | undefined,
+  range: { first: string; last: string },
+): string {
+  switch (redo) {
+    case "unchecked":
+      return version
+        ? t("deps.env.redo.unchecked", { version })
+        : t("deps.env.redo.uncheckedPlain");
+    case "otherPins":
+      return version
+        ? t("deps.env.redo.otherPins", { version })
+        : t("deps.env.outdated");
+    case "otherPython":
+      return t("deps.env.redo.otherPython", {
+        version: version ?? "?",
+        ...range,
+      });
+    default:
+      return t("deps.env.outdated");
+  }
 }
 
 /** The range of Python the environment accepts (`>=3.12,<3.15`). */
@@ -661,6 +690,9 @@ function sectionLine(
         : t("deps.badge.presentPlain"),
     };
   } else if (dependency.state === "outdated") {
+    if (dependency.redo) {
+      lines.unshift(envRedoLine(t, dependency.redo, dependency.version, range));
+    }
     badge = {
       tone: "warning",
       text: dependency.version

@@ -151,23 +151,23 @@
       "downloads": {
         "macos-arm64": {
           "url": "https://downloads.sourceforge.net/project/astap-program/macOS%20installer/astap_command-line_version_macOS_M1.zip",
-          "sha256": "6a59b61c3b9fac987ab5b8241cbd4bffacc05816f58097f52ad1e6bd733cbc45",
-          "bytes": 1308120
+          "sha256": "db11b837920c7a92d604e588e907afb72cabf88999036a9ba3df3203668b91a5",
+          "bytes": 1327719
         },
         "macos-x64": {
           "url": "https://downloads.sourceforge.net/project/astap-program/macOS%20installer/astap_command-line_version_macOS_x86_64.zip",
-          "sha256": "3cc08ef3f823dd02bcbde2a0b8247db2f24607777e63adaea0a4fe578f6db343",
-          "bytes": 1424473
+          "sha256": "d7fb7e9a0e101aaa0b664b52a0c2e9eca2ceae62d36e7c1053f66562cca10f99",
+          "bytes": 1447675
         },
         "windows-x64": {
           "url": "https://downloads.sourceforge.net/project/astap-program/windows_installer/astap_command-line_version_win64.zip",
-          "sha256": "e9b94a44bd0f7b60e6e1beeb75951d955815445b965d04c4a61fc6f4c398a3ca",
-          "bytes": 322357
+          "sha256": "90aff31165ac4c75e2b7ff5f896e5fa3ffb16cae3496d879c81e1d9ae2133a1f",
+          "bytes": 335981
         },
         "linux-x64": {
           "url": "https://downloads.sourceforge.net/project/astap-program/linux_installer/astap_command-line_version_Linux_amd64.zip",
-          "sha256": "5e7dca28e0e52ad98d4186a01056189e403ba2729bfea9b30f12354436641fe7",
-          "bytes": 329328
+          "sha256": "3f19121d39d1855e6e01c1419658ec6a5e0610c554ca32dc6bf903f1146ba1b3",
+          "bytes": 350846
         }
       },
       "page": "https://www.hnsky.org/astap.htm",

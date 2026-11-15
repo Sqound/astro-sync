@@ -186,18 +186,94 @@ fn plan_holds(plan: &KnownPlan, target: &DetectedTarget) -> bool {
             .any(|d| holds_target(None, Some(d), target))
 }
 
-/// What a detected session meets: an existing session of that night (at the
-/// same place when both are known), else a plan of that night.
+/// The window of a known session: from its first slot's start to its last
+/// slot's end, in Unix seconds. None when no slot carries both times.
+fn window_of(session: &KnownSession) -> Option<(f64, f64)> {
+    session
+        .targets
+        .iter()
+        .filter_map(|slot| {
+            let start = slot
+                .start
+                .as_deref()
+                .and_then(parse_iso8601_utc_to_unix_seconds)?;
+            let end = slot
+                .end
+                .as_deref()
+                .and_then(parse_iso8601_utc_to_unix_seconds)?;
+            Some((start, end.max(start)))
+        })
+        .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+}
+
+/// Which of the sessions of a night a target's frames go to, and whether the
+/// person is to read that choice again. One candidate: it, as always. Several:
+/// the one whose window holds the frames (the largest overlap); frames
+/// between the windows or outside them go to the nearest and are to review,
+/// as are frames that straddle two windows or a night whose sessions carry no
+/// times. Never a third session, never a merge of files.
+fn choose_session<'a>(
+    candidates: &[&'a KnownSession],
+    target: &DetectedTarget,
+) -> (&'a KnownSession, bool) {
+    if candidates.len() == 1 {
+        return (candidates[0], false);
+    }
+    let span = parse_iso8601_utc_to_unix_seconds(&target.start)
+        .zip(parse_iso8601_utc_to_unix_seconds(&target.end));
+    let Some((start, end)) = span else {
+        return (candidates[0], true);
+    };
+    let windows: Vec<(&KnownSession, f64, f64)> = candidates
+        .iter()
+        .filter_map(|s| window_of(s).map(|(a, b)| (*s, a, b)))
+        .collect();
+    let overlap = |a: f64, b: f64| (end.min(b) - start.max(a)).max(0.0);
+    let best = windows
+        .iter()
+        .map(|(s, a, b)| (*s, overlap(*a, *b)))
+        .filter(|(_, o)| *o > 0.0)
+        .collect::<Vec<_>>();
+    if let Some((session, _)) = best.iter().copied().max_by(|x, y| x.1.total_cmp(&y.1)) {
+        return (session, best.len() > 1);
+    }
+    // Between two windows, or outside both: the nearest, to review.
+    let gap = |a: f64, b: f64| {
+        if end < a {
+            a - end
+        } else {
+            start - b
+        }
+    };
+    let nearest = windows
+        .iter()
+        .min_by(|x, y| gap(x.1, x.2).total_cmp(&gap(y.1, y.2)))
+        .map(|(s, _, _)| *s);
+    (nearest.unwrap_or(candidates[0]), true)
+}
+
+/// What a detected session meets: the existing sessions of that night (at the
+/// same place when both are known), else a plan of that night. With several
+/// sessions the frames are told apart target by target, by the clock.
 fn match_session(session: &mut DetectedSession, user: &UserData, place: Option<&str>) {
-    let existing = user.sessions.iter().find(|s| {
-        s.evening_date == session.evening_date
-            && (s.place_id.is_none() || place.is_none() || s.place_id.as_deref() == place)
-    });
-    if let Some(existing) = existing {
-        session.existing = SessionMatch::Existing {
-            session_id: existing.id.clone(),
-        };
+    let candidates: Vec<&KnownSession> = user
+        .sessions
+        .iter()
+        .filter(|s| {
+            s.evening_date == session.evening_date
+                && (s.place_id.is_none() || place.is_none() || s.place_id.as_deref() == place)
+        })
+        .collect();
+    if let Some(first) = candidates.first() {
+        let several = candidates.len() > 1;
+        let mut head: Option<&KnownSession> = None;
         for target in &mut session.targets {
+            let (existing, to_review) = choose_session(&candidates, target);
+            head.get_or_insert(existing);
+            if several {
+                target.session_id = Some(existing.id.clone());
+                target.to_review = to_review;
+            }
             let inside = existing.targets.iter().any(|slot| {
                 holds_target(
                     slot.target_id.as_deref(),
@@ -229,6 +305,9 @@ fn match_session(session: &mut DetectedSession, user: &UserData, place: Option<&
                 TargetMatch::AddToSession
             };
         }
+        session.existing = SessionMatch::Existing {
+            session_id: head.unwrap_or(first).id.clone(),
+        };
         return;
     }
     let plans: Vec<&KnownPlan> = user
@@ -251,8 +330,10 @@ fn match_session(session: &mut DetectedSession, user: &UserData, place: Option<&
         };
         return;
     }
+    // A plan closed (executed, partly done, abandoned, archived) frees the
+    // night: only a plan still in progress holds it.
     if !user.account.several_plans_per_night
-        && let Some(plan) = plans.first()
+        && let Some(plan) = plans.iter().find(|p| p.holds_night())
     {
         session.existing = SessionMatch::PlanExists {
             plan_id: plan.id.clone(),
@@ -654,7 +735,7 @@ fn account_notes(proposal: &mut Proposal) {
     if !account.advanced_planning && !account.several_plans_per_night {
         proposal.notes.push(ProposalNote {
             key: "account.free".to_string(),
-            text: "Without a subscription or Advanced Planning: one plan per night, and multi-night plans stay locked. See the offers on the web.".to_string(),
+            text: "Without a subscription or Advanced Planning: one plan at a time per night, and multi-night plans stay locked. See the offers on the web.".to_string(),
         });
     } else if !account.advanced_planning && !proposal.multi_night.is_empty() {
         proposal.notes.push(ProposalNote {

@@ -17,12 +17,13 @@ their ``entry`` field as ``renders:<function>``; only the functions listed in
   luminance treatment, then one global, continuous colour transform (green
   towards cyan, red towards red-violet, a slight blue-violet balance) that
   brings the colours of a dual-band capture back towards natural tones.
-- ``polished_deep`` (pipeline ``polished``): the natural render
-  pushed further without changing its colours, from its own linear
-  preparation (``prepare_polished``): GraXpert's background and light
-  denoising, a moderate SCNR, a soft shoulder on the highlights, a moderate
-  local contrast on the nebula layer.  Without GraXpert: the polynomial
-  background and no denoising.
+- ``polished_deep`` (pipeline ``polished``): a dark, neutral sky and a
+  stronger nebula, from its own linear preparation (``prepare_polished``,
+  then ``polished_layers``): the background and denoising of GraXpert or
+  Siril, the colour by the capture's band, a midtones transfer that puts the
+  sky at 0.03, white star cores without a ring, smoothing, a lift of the
+  midtones, a local contrast, the stars nearly at full strength.  Without
+  GraXpert: Siril; without either, the polynomial and no denoising.
 - ``hoo_deep`` (pipeline ``hoo``): for a dual-band capture, Hα to
   red and OIII to blue-green on the natural brightness, stars in their
   natural colours.
@@ -58,6 +59,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
@@ -65,7 +67,7 @@ import numpy as np
 import tifffile
 from astropy.io import fits
 from PIL import Image
-from scipy.ndimage import distance_transform_edt, gaussian_filter, maximum_filter
+from scipy.ndimage import distance_transform_edt, gaussian_filter, maximum_filter, median_filter
 from scipy.signal import fftconvolve
 from skimage.color import hsv2rgb, rgb2hsv
 
@@ -109,6 +111,35 @@ def terms(x: np.ndarray, y: np.ndarray, degree: int = 2) -> np.ndarray:
     return np.column_stack(columns)
 
 
+# The black point: the ``black_percentile`` of the frame, but never more than ``BLACK_FLOOR_SIGMAS`` noise widths
+# under the sky.  A short stack registered on a rotating field has thinly covered, noisier edges; its darkest
+# pixels lie there, so the percentile alone falls several noise widths under the sky and the sky shows grey (the
+# 36 frames of 10 s of a real night: 4.3 widths, a sky at 0.32 on the polished render; 0.25 with the floor).  A
+# stack whose percentile already sits within the floor keeps it to the last digit: twelve of the fourteen real
+# masters measured (the validated renders) do not move.
+BLACK_FLOOR_SIGMAS = 2.8  # the sky stays at most this many noise widths above the black point
+
+
+def _robust_sigma(values: np.ndarray) -> float:
+    """1.4826 times the median absolute deviation."""
+    return float(1.4826 * np.median(np.abs(values - np.median(values))))
+
+
+def black_point(image: np.ndarray, black_percentile: float) -> np.ndarray:
+    """The black point of an image, per channel: its ``black_percentile``, raised to the floor when it lies lower.
+
+    The floor is the median of the channel minus ``BLACK_FLOOR_SIGMAS`` times its robust noise width (read on one
+    pixel in sixteen, the empty pixels of the frame left out).
+    """
+    today = np.percentile(image, black_percentile, axis=(0, 1))
+    floor = []
+    for c in range(image.shape[2]):
+        channel = image[..., c][::4, ::4].ravel()
+        channel = channel[channel > 0] if np.any(channel > 0) else channel
+        floor.append(float(np.median(channel)) - BLACK_FLOOR_SIGMAS * _robust_sigma(channel))
+    return np.maximum(today, np.asarray(floor, dtype=today.dtype))
+
+
 def remove_gradient(
     data: np.ndarray,
     tile: int = 160,
@@ -116,11 +147,14 @@ def remove_gradient(
     black_percentile: float = 0.25,
     black: Sequence[float] | None = None,
     measured: dict[str, object] | None = None,
+    display: bool = False,
 ) -> np.ndarray:
     """Subtract a robust low-order background model without flattening stars.
 
     The black point is the ``black_percentile`` of the flattened image, per channel, unless ``black`` imposes
-    it (the value a render of the same plan measured); ``measured`` (when given) receives the one used, as
+    it (the value a render of the same plan measured); for the ``display`` of a render it is raised to the floor
+    of :func:`black_point` (the data steps -- the alignment and the combination of a plan -- keep the percentile
+    alone); ``measured`` (when given) receives the one used, as
     ``measured["black"]``: three floats, the level subtracted from the flattened image -- absolute, in the
     units of the data, so that it means the same level for the stack of one night and the stack of three.
     """
@@ -154,7 +188,8 @@ def remove_gradient(
         # The image flattened around the mean level of the model: its sky keeps the level of the data, whatever
         # offset the model had (the tiles' 16th percentile sits lower the noisier the image is).
         corrected[..., channel] = data[..., channel] - model + model.mean()
-    point = (np.percentile(corrected, black_percentile, axis=(0, 1)) if black is None
+    point = ((black_point(corrected, black_percentile) if display
+              else np.percentile(corrected, black_percentile, axis=(0, 1))) if black is None
              else np.asarray(black, dtype=corrected.dtype))
     if measured is not None:
         measured["black"] = [float(v) for v in point]
@@ -364,6 +399,7 @@ def calibrated_linear(
         black_percentile=black_percentile,
         black=black,
         measured=measured,
+        display=True,
     )
     if deconv_fwhm is not None:
         linear = deconvolve_linear(linear, deconv_fwhm)
@@ -376,6 +412,46 @@ def calibrated_linear(
 def stretch_scale(linear: np.ndarray) -> float:
     """Return the luminance scale used by the natural display stretch."""
     return float(np.percentile(lum(linear), 99.82) + 1e-12)
+
+
+# A master that a device (a smart telescope) already stretched is not linear: its sky stands at a tenth of the
+# range or more, where a linear stack has it at a few hundredths of the bright end (0.0145 on the synthetic
+# stack of the tests, 0.03 to 0.19 on the same stack stretched to a sky of 0.05 to 0.40).  The arcsinh display stretch, applied to it a
+# second time, lifts that sky to the middle of the range (0.55 to 0.79 on the display image): every render
+# came out with a grey background, whatever its tone.  Such a master is shown with a straight scale instead:
+# its own stretch is the display's, and the render's tone and S-curve work on a sky that is where the device
+# put it, with the gradient and the black point already removed.
+# The bound is deliberately high: a linear master that a nebula fills must never take this road (its renders
+# are the validated ones).  A device that stretches to the usual sky of 0.2 or more is recognised; one that
+# stretches less is not, and keeps today's renders.  Measured on synthetic stacks only: the real masters of a
+# smart telescope are to confirm it (the figure is in the render log, see ``sky_fraction``).
+STRETCHED_SKY_FRACTION = 0.10  # median / ``stretch_scale`` of the prepared luminance, from which it is a stretched master
+
+
+def sky_fraction(linear: np.ndarray) -> float:
+    """The median luminance of a prepared image over its ``stretch_scale``: what ``already_stretched`` reads."""
+    return float(np.median(lum(linear)) / stretch_scale(linear))
+
+
+def already_stretched(linear: np.ndarray) -> bool:
+    """Whether a prepared image (black point and gradient removed) was stretched before it reached us."""
+    return sky_fraction(linear) >= STRETCHED_SKY_FRACTION
+
+
+def note_stretched(linear: np.ndarray) -> None:
+    """Say in the render log which display a master gets, with the figure the choice reads."""
+    fraction = sky_fraction(linear)
+    if fraction >= STRETCHED_SKY_FRACTION:
+        print(f"already-stretched master (sky at {fraction:.3f} of the scale): straight display scale")
+    else:
+        print(f"linear master (sky at {fraction:.4f} of the scale): arcsinh display stretch")
+
+
+def display_curve(level: np.ndarray, scale: float, stretched: bool) -> np.ndarray:
+    """The display stretch of a luminance (0..1 out): arcsinh for a linear master, the straight scale for a stretched one."""
+    if stretched:
+        return np.clip(level / scale, 0, 1)
+    return np.clip(np.arcsinh(18.0 * level / scale) / np.arcsinh(18.0), 0, 1)
 
 
 def prepare_native(
@@ -398,6 +474,7 @@ def prepare_native(
     scale = display_scale if display_scale is not None else stretch_scale(linear)
     if measured is not None:
         measured["scale"] = float(scale)
+    note_stretched(linear)
     return native_from_linear(linear, scale)
 
 
@@ -405,7 +482,7 @@ def native_from_linear(linear: np.ndarray, display_scale: float | None = None) -
     """The natural display stretch of a prepared linear image (what ``prepare_native`` ends with)."""
     level = lum(linear)
     scale = display_scale if display_scale is not None else stretch_scale(linear)
-    stretched = np.clip(np.arcsinh(18.0 * level / scale) / np.arcsinh(18.0), 0, 1)
+    stretched = display_curve(level, scale, already_stretched(linear))
     rgb = linear * (stretched / np.maximum(level, 1e-8))[..., None]
     maximum = np.max(rgb, axis=2)
     rolled = np.where(maximum > 0.72, 0.72 + (maximum - 0.72) / (1 + 1.9 * (maximum - 0.72)), maximum)
@@ -588,22 +665,49 @@ def dualband_deep(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------
-# "Polished render" (pipeline ``polished``): the natural render pushed
-# further without changing its colours.  It needs its own linear preparation
-# (``prepare_polished``), named for its render in ``PREPARATIONS``:
+# "Polished render" (pipeline ``polished``).  It needs its own linear
+# preparation (``prepare_polished``), named for its render in ``PREPARATIONS``:
 #
-# (a) background by GraXpert's background extraction (AI model, pinned) instead
-#     of the polynomial; (b) GraXpert's denoising, a light step, on the linear
-#     image; (c) the natural pipeline's neutral sky, then a moderate SCNR
-#     (green above the mean of red and blue is taken back); (d) the masked
-#     deconvolution of the natural pipeline (measured PSF), unchanged; (e) the
-#     natural arcsinh stretch with a soft shoulder instead of the clip (bright
-#     cores never burn) then, in ``polished_deep``, the natural toe with a
-#     moderate local contrast on the nebula layer only; (f) the stars put back,
-#     held a little more than in the natural render.
+# (a) background by GraXpert's background extraction (AI model, pinned), or
+#     Siril's ``subsky -rbf``; (b) the denoising of the same engine, on the
+#     linear image (Siril's at full dose); (c) the natural pipeline's neutral
+#     sky; (d) the masked deconvolution of the natural pipeline (measured PSF);
+#     (e) a display image, for StarNet2 alone (``polished_stretch``).
 #
-# Without GraXpert the pipeline still runs: polynomial background, no
-# denoising, and it says so (``prepare_polished`` returns what it did).
+# Once StarNet2 has split it, ``polished_layers`` carries the split back to
+# linear light (a dark ring the deconvolution dug around a star is filled with
+# StarNet2's nebula) and makes the render's own two layers (RENDER-R5-01):
+#
+# (f) colour, by what is known of the capture's band (``CAPTURE_BANDS``):
+#     the field stars' mean made white and the sky neutral; on a broadband
+#     capture the green of the nebula is taken back (SCNR, full); a dual-band
+#     capture keeps its colours (its green is OIII) and so does a capture whose
+#     band is not known for certain;
+# (g) the cores the sensor clipped made neutral (``clipped_cores``): their
+#     colour is the clip levels', never the star's;
+# (h) a midtones transfer whose black point stands ``black_sigmas`` noise
+#     widths under the sky and that puts the sky at ``sky`` (no flat black: the
+#     grain stays above 0), the same curve for the nebula and for the stars;
+#     a channel the curve would push past 1 is brought towards white at the
+#     same luminance (``into_gamut``): a bright, coloured halo is never
+#     darkened under the white core it surrounds; around a clipped star the
+#     highlights fade to white;
+# (i) the midtones lifted (a power on the signal above the sky), more when the
+#     bright part of the signal is a faint object (a galaxy) than a bright
+#     nebula, then a non-local-means smoothing of the nebula, lighter where the
+#     signal is strong (its texture is kept), and the sky put back at its level;
+# (j) a local contrast, then the bright core of a nebula (M42) bent under the
+#     white at large scale, its fine structure and its colour kept;
+# (k) the colour of the signal strengthened, the sky left neutral;
+# (l) in ``polished_deep``: the stars put back nearly at full strength, their
+#     colour reduced.
+#
+# Each step reads its figure from ``PolishedSettings`` (``POLISHED``): the
+# render's settings are a value, not constants spread through the code.
+#
+# Without GraXpert the pipeline still runs: Siril, else the polynomial
+# background and no denoising, and it says so (``prepare_polished`` returns
+# what it did).
 
 # The GraXpert models are pinned: the same model gives the same image, and a
 # pinned model already downloaded needs no network (« latest » asks the
@@ -612,10 +716,7 @@ GRAXPERT_BACKGROUND_MODEL = "1.0.1"
 GRAXPERT_DENOISE_MODEL = "3.0.2"
 GRAXPERT_SMOOTHING = 0.5  # 0..1: a moderate smoothing of the background model
 GRAXPERT_DENOISE_STRENGTH = 0.3  # 0..1 (GraXpert's default is 0.5): the light step
-SCNR_AMOUNT = 0.5  # 0..1: half of the green excess is taken back
-SHOULDER_KNEE = 0.70  # display level above which the highlights are compressed
-POLISHED_LOCAL_CONTRAST = 0.22  # natural: 0.08
-POLISHED_STARS = 0.48  # natural: 0.52
+SHOULDER_KNEE = 0.70  # display level above which the highlights are compressed (StarNet2's display)
 # (d) The natural pipeline deconvolves only when ``--deconv-fwhm`` asks for it;
 # the polished one aims at the measured FWHM times this ratio by itself, and
 # leaves an undersampled field alone: below the floor ``deconvolve_linear``
@@ -636,7 +737,43 @@ DEFAULT_POLISHED_ENGINE = "graxpert-ai"
 SIRIL_RBF_SAMPLES = 10
 SIRIL_RBF_TOLERANCE = 0.5
 SIRIL_RBF_SMOOTHING = 1.0
-SIRIL_DENOISE_MODULATION = 0.5  # 0..1 (Siril's default is 1): the light step
+# 0..1 (Siril's default is 1).  Siril's ``-mod`` is a linear blend of the image and its full denoising; the
+# full dose costs nothing more and takes 16 to 27 % more noise away (RENDER-STUDY-01).
+SIRIL_DENOISE_MODULATION = 1.0
+
+# What is known of the band of a capture (``capture_band`` of the stacking script): only a capture known to be
+# broadband loses the green of its nebula; a dual-band one keeps it (OIII), and so does one whose band is not
+# known for certain.
+CAPTURE_BANDS = ("broadband", "dual-band", "unknown")
+
+
+@dataclass(frozen=True)
+class PolishedSettings:
+    """The figures of the polished render, step by step (RENDER-STUDY-01's R5, corrected in RENDER-R5-01)."""
+
+    sky: float = 0.03  # (h) the displayed sky level
+    black_sigmas: float = 2.8  # (h) the black point, in noise widths of the sky under it
+    shoulder: float = 0.80  # (h) the display level above which the highlights are compressed
+    lift: float = 0.85  # (i) the power on the signal above the sky (1: none, lower: the midtones lifted)
+    lift_strongest: float = 0.65  # (i) the strongest power a faint image may get
+    lift_target: float = 0.45  # (i) the level the bright part of the signal (99.5th percentile, smoothed) is lifted to, at most
+    lift_area: float = 0.15  # (i) ... only when its upper half covers less of the frame than this (an object, not a glow)
+    nebula_knee: float = 0.6  # (j) the large-scale level of the nebula above which its highlights are compressed
+    nebula_ceiling: float = 0.78  # (j) ... towards this level
+    white_from: float = 0.75  # (h) displayed luminance from which the colours of a clipped star fade towards white
+    white_to: float = 0.97  # (h) ... and are gone
+    smoothing: float = 0.8  # (j) the non-local means' strength, in noise widths of the sky (0: none)
+    smoothing_kept: float = 0.5  # (j) the share of the texture given back where the signal is strong
+    local_contrast: float = 0.35  # (j) the local contrast of the nebula (24 px)
+    saturation: float = 1.3  # (k) the factor on the chroma of the signal
+    green: float = 1.0  # (f) the SCNR on the nebula of a broadband capture
+    stars: float = 0.9  # (l) the strength the stars are put back with
+    star_colour: float = 0.3  # (l) the factor on the chroma of the stars
+    core_from: float = 0.90  # (g) a pixel belongs to a clipped core from this share of its channel's clip level
+    core_to: float = 0.97  # (g) ... and wholly at this share
+
+
+POLISHED = PolishedSettings()
 
 
 def polished_deconv_target(linear: np.ndarray, measured: float | None = None) -> float | None:
@@ -672,14 +809,33 @@ def run_graxpert(
     GraXpert 3.1 made it optional: 3.0 needs it.
     """
     output = output.resolve()
-    subprocess.run(
+    run = subprocess.run(
         [str(graxpert), "-cli", "-cmd", command, *options, "-output", str(output), str(source)],
-        check=True, stdout=log, stderr=subprocess.STDOUT if log is not None else None,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
+    if log is not None:
+        log.write(run.stdout)
+        log.flush()
+    if run.returncode != 0:
+        raise RuntimeError(graxpert_failure(run.returncode, run.stdout.decode("utf-8", "replace")))
     written = output.with_name(output.name + ".fits")
     if not written.is_file():
         raise RuntimeError(f"GraXpert wrote no {written.name}")
     return written
+
+
+def graxpert_failure(code: int, said: str) -> str:
+    """Why GraXpert failed, in words the person can act on.
+
+    A GraXpert installed with ``pip`` or ``uv`` without ``onnxruntime`` answers its version (the detection finds
+    it) and then fails at its first command: that is said as such (a real night fell back on Siril so, with only
+    an exit status in its record).  Otherwise the last error line GraXpert wrote, else its exit status.
+    """
+    if "onnxruntime" in said or "ONNX Runtime" in said:
+        return ("GraXpert is installed without its AI library (onnxruntime): install it from its page, or add "
+                "onnxruntime to the environment GraXpert was installed in")
+    errors = [line.strip() for line in said.splitlines() if "ERROR" in line or "Error" in line]
+    return f"GraXpert stopped with status {code}" + (f": {errors[-1][-200:]}" if errors else "")
 
 
 def graxpert_linear(
@@ -746,7 +902,7 @@ def neutral_sky(linear: np.ndarray) -> np.ndarray:
     return linear * gain[None, None, :]
 
 
-def scnr_green(rgb: np.ndarray, amount: float = SCNR_AMOUNT) -> np.ndarray:
+def scnr_green(rgb: np.ndarray, amount: float) -> np.ndarray:
     """SCNR, average neutral protection: green above the mean of red and blue is taken back by ``amount``.
 
     A pixel whose green does not exceed that mean (grey, red, blue, violet) is
@@ -773,46 +929,6 @@ def soft_shoulder(x: np.ndarray, knee: float = SHOULDER_KNEE) -> np.ndarray:
     return np.where(x > knee, above, x).astype(np.float32)
 
 
-def sky_display_level(linear: np.ndarray) -> float:
-    """The sky level of a linear image as the display stretch shows it: the median of the stretched luminance.
-
-    The sky is most of a frame, so this median is the level of the sky on the
-    screen; the stretch is the natural arcsinh one (``stretch_scale``).
-    """
-    level = lum(linear)
-    scale = stretch_scale(linear)
-    return float(np.median(np.arcsinh(18.0 * level / scale) / np.arcsinh(18.0)))
-
-
-def match_sky_level(linear: np.ndarray, reference: float, scale: float | None = None) -> tuple[np.ndarray, float]:
-    """The image with its displayed sky level brought back to ``reference`` (``sky_display_level``); ``(image, shift)``.
-
-    One offset, in linear light, for the three channels, so the neutral sky
-    stays neutral.  The background steps (GraXpert's or Siril's subtraction,
-    the denoising, the SCNR) each take a little of the sky level with them;
-    the natural render keeps it, and the polished one is to look as deep as the
-    natural one, not darker.  The stretch is increasing, so the median of the
-    displayed luminance is the stretch of the median: the offset is exact.  ``scale``: the stretch scale of the
-    display (default: the image's own, ``stretch_scale``).
-    """
-    scale = stretch_scale(linear) if scale is None else scale
-    wanted = scale * float(np.sinh(reference * np.arcsinh(18.0))) / 18.0
-    shift = wanted - float(np.median(lum(linear)))
-    return np.clip(linear + np.float32(shift), 0, None), shift
-
-
-def natural_sky_levels(raw: np.ndarray, gradient_degree: int, black_percentile: float) -> tuple[float, float]:
-    """``(displayed, final)``: the sky level the natural render keeps, before and after its tone.
-
-    The median luminance of the natural display image (polynomial background,
-    neutral sky, natural stretch) and of the same image once the natural toe
-    (``deep_nebula_tone``) has been applied: the second is what a person sees.
-    """
-    linear = neutral_sky(remove_gradient(raw, degree=gradient_degree, black_percentile=black_percentile))
-    display = native_from_linear(linear)
-    return sky_display_level(linear), float(np.median(lum(deep_nebula_tone(display))))
-
-
 def prepare_polished(
     source: Path,
     graxpert: Path | None = None,
@@ -824,30 +940,26 @@ def prepare_polished(
     deconv_fwhm: float | None = None,
     engine: str = DEFAULT_POLISHED_ENGINE,
     siril: Path | None = None,
-    dualband: bool = False,
     imposed: dict[str, object] | None = None,
     measured: dict[str, object] | None = None,
-) -> tuple[np.ndarray, dict[str, object]]:
-    """Linear steps (a)-(d) and the stretch of (e); ``(display image, what was done)``.
+) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    """Linear steps (a)-(d) and the display of (e); ``(linear image, display image, what was done)``.
 
-    The display -- the black point, the stretch scale and the sky level the image is matched to -- is
-    measured on the master unless ``imposed`` gives it (``{"black": [r, g, b], "scale": s, "sky": {...}}``, what a
-    render of the same plan recorded: a milestone of the progression is shown at the level of the image of the
-    plan); ``measured`` (when given) receives the one used.  The sky match then aims at the imposed level, never at
-    the master's own (which falls with its noise).
+    The black point and the stretch scale of the display are measured on the master unless ``imposed`` gives
+    them (``{"black": [r, g, b], "scale": s, ...}``, what a render of the same plan recorded: a milestone of the
+    progression is shown at the level of the image of the plan); ``measured`` (when given) receives the ones used.
 
     ``engine`` picks the background and the denoising (``POLISHED_ENGINES``).
     ``graxpert-ai`` falls back on Siril when GraXpert is not given or fails,
     and any engine falls back on the polynomial (no denoising) when nothing
-    else can run.  ``dualband``: the capture went through a dual-band filter,
-    whose green is OIII, signal: the SCNR is skipped.
+    else can run.
 
     ``what was done``: ``{"engine": "graxpert-ai" | "siril" | "polynomial",
     "background": "graxpert" | "siril" | "polynomial", "denoise": "graxpert" |
-    "siril" | None, "scnr": amount | None, "deconvolutionFwhm": target in px |
-    None, ...}`` -- the provenance says it, as it says whether StarNet2
-    separated the stars.  ``engineRequested`` and ``fallbackReason`` appear
-    when the engine used is not the one asked for.
+    "siril" | None, "deconvolutionFwhm": target in px | None, ...}`` -- the
+    provenance says it, as it says whether StarNet2 separated the stars.
+    ``engineRequested`` and ``fallbackReason`` appear when the engine used is
+    not the one asked for.
     """
     if engine not in POLISHED_ENGINES:
         raise ValueError(f"unknown polished engine '{engine}': {', '.join(POLISHED_ENGINES)}")
@@ -888,22 +1000,16 @@ def prepare_polished(
                 print(f"Siril failed ({error}): polynomial background, no denoising")
     if cleaned is not None:
         cleaned_raw = read_linear_rgb(cleaned)
-        black = (np.percentile(cleaned_raw, black_percentile, axis=(0, 1)) if imposed.get("black") is None
+        black = (black_point(cleaned_raw, black_percentile) if imposed.get("black") is None
                  else np.asarray(imposed["black"], dtype=cleaned_raw.dtype))
         if measured is not None:
             measured["black"] = [float(v) for v in black]
         linear = np.clip(cleaned_raw - black, 0, None)
-        # The sky level the natural render would have kept (its polynomial, its neutral sky).
-        sky = imposed.get("sky")
-        reference = (sky["displayed"], sky["final"]) if sky else natural_sky_levels(raw, gradient_degree, black_percentile)
-        if measured is not None:
-            measured["sky"] = {"displayed": float(reference[0]), "final": float(reference[1])}
         tool = "graxpert" if used == "graxpert-ai" else "siril"
         done.update({"background": tool, "denoise": tool})
     else:
         linear = remove_gradient(raw, degree=gradient_degree, black_percentile=black_percentile,
-                                 black=imposed.get("black"), measured=measured)
-        reference = None
+                                 black=imposed.get("black"), measured=measured, display=True)
         done.update({"background": "polynomial", "denoise": None})
     done["engine"] = used
     if master_fwhm is not None and np.isfinite(master_fwhm):
@@ -911,38 +1017,27 @@ def prepare_polished(
     if used != engine:
         done["engineRequested"] = engine
         done["fallbackReason"] = "; ".join(reasons)
-    return polished_display(linear, deconv_fwhm, done, None if dualband else SCNR_AMOUNT, reference, master_fwhm,
-                            imposed.get("scale"), measured), done
+    linear, display = polished_display(linear, deconv_fwhm, done, master_fwhm, imposed.get("scale"), measured)
+    return linear, display, done
 
 
 def polished_display(
     linear: np.ndarray,
     deconv_fwhm: float | None = None,
     done: dict[str, object] | None = None,
-    scnr: float | None = SCNR_AMOUNT,
-    sky_reference: tuple[float, float] | None = None,
     master_fwhm: float | None = None,
     scale: float | None = None,
     measured: dict[str, object] | None = None,
-) -> np.ndarray:
-    """Steps (c), (d) and the stretch of (e) on a linear image whose background is already removed.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Steps (c), (d) and the display of (e) on a linear image whose background is already removed.
 
-    ``scnr``: the amount of the SCNR, ``None`` to skip it (a dual-band
-    capture: the green of the OIII is signal).  ``sky_reference``: the
-    ``(displayed, final)`` sky level of the natural render (``natural_sky_levels``)
-    that the image is to keep: its sky is brought to the first before the
-    stretch, then nudged until the second is met after the tone
-    (``polished_nebula_tone``; its toe follows the noise of the darkest pixels,
-    which the denoising has lowered).  ``scale``: the stretch scale to use instead of the image's own
-    (``stretch_scale``); ``measured`` (when given) receives the one used.  ``master_fwhm``: the stars' FWHM on the master,
-    before any denoising, that the deconvolution target is read from.  ``done`` (when given) receives the SCNR,
-    the deconvolution target and the sky shift.
+    ``(linear image, display image)``: the first is what ``polished_layers`` renders, the second what StarNet2
+    reads.  ``scale``: the stretch scale to use instead of the image's own (``stretch_scale``); ``measured``
+    (when given) receives the one used.  ``master_fwhm``: the stars' FWHM on the master, before any denoising,
+    that the deconvolution target is read from.  ``done`` (when given) receives the deconvolution target.
     """
     done = {} if done is None else done
     linear = neutral_sky(linear)
-    if scnr is not None:
-        linear = scnr_green(linear, scnr)
-    done["scnr"] = scnr
     target = deconv_fwhm if deconv_fwhm is not None else polished_deconv_target(linear, master_fwhm)
     if target is not None:
         try:
@@ -950,34 +1045,33 @@ def polished_display(
         except RuntimeError as error:  # too few isolated stars for a PSF: the image goes on undeconvolved
             print(f"deconvolution skipped: {error}")
     done["deconvolutionFwhm"] = None if target is None else round(float(target), 2)
-    # The shift is small against the scale: one scale for the whole search.
     scale = stretch_scale(linear) if scale is None else scale
     if measured is not None:
         measured["scale"] = float(scale)
-    if sky_reference is None:
-        return polished_stretch(linear, scale)
-    displayed, final = sky_reference
-    image, shift = polished_stretch(linear, scale), 0.0
-    for _ in range(SKY_MATCH_ROUNDS):
-        matched, shift = match_sky_level(linear, displayed, scale)
-        image = polished_stretch(matched, scale)
-        reached = float(np.median(lum(polished_nebula_tone(image))))
-        done["skyLevelShift"] = round(shift, 6)
-        if abs(reached / final - 1.0) < SKY_MATCH_TOLERANCE:
-            break
-        displayed *= final / max(reached, 1e-6)
-    return image
+    return linear.astype(np.float32), polished_stretch(linear, scale)
 
 
-SKY_MATCH_ROUNDS = 4
-SKY_MATCH_TOLERANCE = 0.004  # the polished sky is within 0.4 % of the natural one before the render's own gap
+def polished_stretch_level(level: np.ndarray, scale: float, stretched: bool) -> np.ndarray:
+    """The luminance curve of ``polished_stretch``: the natural stretch, then the soft shoulder."""
+    return soft_shoulder(display_curve(level, scale, stretched))
+
+
+def polished_stretch_inverse(shown: np.ndarray, scale: float, stretched: bool) -> np.ndarray:
+    """The linear luminance ``polished_stretch_level`` shows at ``shown`` (its inverse, below 1)."""
+    shown = np.clip(np.asarray(shown, dtype=np.float64), 0, 0.9999)
+    room = 1.0 - SHOULDER_KNEE
+    x = np.where(shown > SHOULDER_KNEE, SHOULDER_KNEE - room * np.log(1 - (shown - SHOULDER_KNEE) / room), shown)
+    x = np.clip(x, 0, 1)
+    if stretched:
+        return x * scale
+    return np.sinh(x * np.arcsinh(18.0)) * scale / 18.0
 
 
 def polished_stretch(linear: np.ndarray, scale: float | None = None) -> np.ndarray:
-    """The natural arcsinh stretch with a soft shoulder before the natural roll; the display image of (e)."""
+    """The natural arcsinh stretch with a soft shoulder before the natural roll: the display StarNet2 reads in (e)."""
     level = lum(linear)
     scale = stretch_scale(linear) if scale is None else scale
-    stretched = soft_shoulder(np.arcsinh(18.0 * level / scale) / np.arcsinh(18.0))
+    stretched = polished_stretch_level(level, scale, already_stretched(linear))
     rgb = linear * (stretched / np.maximum(level, 1e-8))[..., None]
     maximum = np.max(rgb, axis=2)
     over = np.maximum(maximum - 0.72, 0)  # the natural roll, without dividing by zero below it
@@ -988,76 +1082,338 @@ def polished_stretch(linear: np.ndarray, scale: float | None = None) -> np.ndarr
     return hsv2rgb(hsv)
 
 
-def polished_nebula_tone(nebula: np.ndarray) -> np.ndarray:
-    """The natural toe, a soft shoulder instead of the clip, and a moderate local contrast.
+def linear_split(linear: np.ndarray, display: np.ndarray, starless: np.ndarray,
+                 scale: float) -> tuple[np.ndarray, np.ndarray]:
+    """StarNet2's split of ``display`` carried back to linear light: ``(nebula, stars)``.
 
-    The local contrast (the nebula against its surroundings at 24 px) is kept
-    out of the sky -- its noise is not lifted -- and out of the brightest
-    parts, which the shoulder has just compressed.
+    The share of each pixel's displayed luminance StarNet2 left in the starless image is taken back through the
+    inverse of the display curve: the linear nebula is the linear luminance that shows at that share.  Where the
+    deconvolution dug a dark ring around a star (``linear`` under what StarNet2 sees as the nebula there), the
+    nebula keeps StarNet2's level -- the ring is not carried into the render -- and the star layer is what
+    stands above it.
     """
-    nebula = np.clip(np.asarray(nebula, dtype=np.float32), 0, 1)
+    level = lum(linear)
+    stretched = already_stretched(linear)
+    shown_starless = lum(starless)
+    shown = polished_stretch_level(level, scale, stretched)
+    ratio = shown_starless / np.maximum(lum(display), 1e-6)
+    # Under the display (a pixel StarNet2 lowered): the share of the pixel's own display.  Above it (a dark ring the
+    # display shows, StarNet2 filled): StarNet2's own level, up to 2.5 times the pixel.
+    wanted = np.where(ratio <= 1, shown * np.clip(ratio, 0, 1), shown_starless)
+    nebula_level = polished_stretch_inverse(wanted, scale, stretched)
+    share = np.clip(nebula_level / np.maximum(level, 1e-12), 0, 2.5).astype(np.float32)
+    nebula = (linear * share[..., None]).astype(np.float32)
+    return nebula, np.clip(linear - nebula, 0, None).astype(np.float32)
+
+
+def tiles_sky(level: np.ndarray, tile: int = 64) -> float:
+    """The sky level of an image: the tenth percentile of the medians of its ``tile`` px tiles (empty tiles out)."""
+    height, width = level.shape
+    medians = np.asarray([np.median(level[y:y + tile, x:x + tile])
+                          for y in range(0, max(height - tile, 1), tile) for x in range(0, max(width - tile, 1), tile)])
+    medians = medians[medians > 0] if np.any(medians > 0) else medians
+    return float(np.percentile(medians, 10))
+
+
+def star_white_gains(stars: np.ndarray, linear: np.ndarray) -> np.ndarray | None:
+    """Per-channel gains that make the mean of the field stars white; None when there are no stars to read.
+
+    The stars are the brightest tenth of the star layer, the clipped ones left out (their colour is the clip
+    levels').  The gains are bounded: a field of only red giants does not turn the sky blue.
+    """
+    level = lum(stars)
+    lit = level > 0
+    if lit.sum() < 100:
+        return None
+    top = np.max(linear, axis=-1)
+    chosen = (level > np.percentile(level[lit], 90)) & (top < 0.9 * float(top.max()))
+    if chosen.sum() < 50:
+        return None
+    total = stars[chosen].astype(np.float64).sum(axis=0)
+    if np.any(total <= 0):
+        return None
+    return np.clip(total.mean() / total, 0.7, 1.4).astype(np.float32)
+
+
+def clipped_cores(linear: np.ndarray, settings: PolishedSettings = POLISHED) -> np.ndarray:
+    """0..1: how much each pixel belongs to a core the sensor clipped (``core_from``..``core_to`` of the clip level).
+
+    The clip level of a channel is its highest value once single pixels are taken out (a 3 x 3 median): the
+    plateau of a clipped core survives it, a hot pixel does not.  The weight is widened by one pixel and
+    smoothed, so the edge of the plateau, where a channel has just left its clip level, is in it too.
+    """
+    weight = np.zeros(linear.shape[:2], np.float32)
+    for channel in range(linear.shape[2]):
+        plane = linear[..., channel]
+        level = float(median_filter(plane, size=3).max())
+        if level <= 0:
+            continue
+        share = (plane / level - settings.core_from) / max(settings.core_to - settings.core_from, 1e-6)
+        weight = np.maximum(weight, np.clip(share, 0, 1).astype(np.float32))
+    return np.clip(gaussian_filter(maximum_filter(weight, size=3), 1.0), 0, 1).astype(np.float32)
+
+
+def neutral_cores(rgb: np.ndarray, weight: np.ndarray) -> np.ndarray:
+    """Each pixel brought towards the grey of its own luminance by ``weight``."""
+    level = lum(rgb)[..., None]
+    return (rgb + weight[..., None] * (level - rgb)).astype(np.float32)
+
+
+def near_stars(cores: np.ndarray, reach: int = 6) -> np.ndarray:
+    """0..1: the clipped cores and ``reach`` px around them, smoothed.  The highlights fade to white there only: a
+    clipped core is a star's, and its colour is the clip levels'; the bright core of a nebula (M42) is not one, and
+    keeps its colour and its texture."""
+    yy, xx = np.mgrid[-reach:reach + 1, -reach:reach + 1]
+    disc = (yy * yy + xx * xx) <= reach * reach
+    return np.clip(gaussian_filter(maximum_filter(cores, footprint=disc), reach / 3), 0, 1).astype(np.float32)
+
+
+def into_gamut(rgb: np.ndarray, level: np.ndarray) -> np.ndarray:
+    """A pixel whose channels pass 1 brought towards white at the same luminance ``level`` (never darkened).
+
+    A luminance stretch keeps each pixel's colour ratios; a strongly coloured, bright pixel then has a channel
+    above 1.  Dividing it by that channel would darken it -- the coloured halo of a bright star would turn into
+    a dark ring around its white core --; it is desaturated instead, just enough to fit.
+    """
+    level = np.clip(np.asarray(level, dtype=np.float32), 0, 1)[..., None]
+    top = np.max(rgb, axis=-1, keepdims=True)
+    room = np.where(top > 1.0, (1.0 - level) / np.maximum(top - level, 1e-6), 1.0)
+    out = level + np.clip(room, 0, 1) * (rgb - level)
+    return np.clip(out, 0, 1).astype(np.float32)
+
+
+def midtones_transfer(x: np.ndarray, midtones: float) -> np.ndarray:
+    """The midtones transfer function: 0 and 1 stay, ``midtones`` goes to 0.5."""
+    x = np.clip(x, 0, 1)
+    return (midtones - 1) * x / ((2 * midtones - 1) * x - midtones)
+
+
+def polished_curve(nebula: np.ndarray, whole: np.ndarray, settings: PolishedSettings = POLISHED) -> dict[str, float]:
+    """(h) The curve of the render, read on the image: ``{"black", "top", "midtones"}``.
+
+    ``black``: the sky of the nebula layer less ``black_sigmas`` noise widths; ``top``: the luminance (above
+    ``black``) shown at the top, the 99.99th percentile of the whole image; ``midtones``: the transfer that puts
+    the sky at ``settings.sky``.
+    """
     level = lum(nebula)
-    shadow = 0.35 * np.percentile(level, 0.1)
-    x = np.clip((level - shadow) / (1 - shadow + 1e-12), 0, 1)
-    target = soft_shoulder(1.08 * np.power(x, 0.71), 0.78)
-    local = target - gaussian_filter(target, sigma=24)
-    sky = np.percentile(target, 25)
-    signal = np.clip((target - sky) / max(np.percentile(target, 75) - sky, 1e-6), 0, 1)
-    highlights = np.clip(1 - target / 0.85, 0, 1)
-    target = np.clip(target + POLISHED_LOCAL_CONTRAST * local * signal * highlights, 0, 1)
-    nebula = nebula * (target / np.maximum(level, 1e-6))[..., None]
-    # Never push a channel past 1: the pixel is scaled back, colour kept.
-    return np.clip(nebula / np.maximum(nebula.max(axis=-1, keepdims=True), 1.0), 0, 1)
+    sky = tiles_sky(level)
+    black = sky - settings.black_sigmas * _background_noise(level)
+    top = max(float(np.percentile(lum(whole), 99.99)) - black, 1e-9)
+    x0 = float(np.clip((sky - black) / top, 1e-6, 0.999))
+    target = settings.sky
+    midtones = x0 * (target - 1) / (2 * target * x0 - target - x0)
+    return {"black": float(black), "top": float(top), "midtones": float(np.clip(midtones, 1e-6, 0.999))}
 
 
-def polished_deep(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
-    """Polished render: the polished nebula tone, then the stars put back, contained."""
-    nebula = polished_nebula_tone(nebula)
-    return np.clip(1 - (1 - nebula) * (1 - controlled_stars(stars, POLISHED_STARS)), 0, 1)
+def curve_display(linear: np.ndarray, curve: dict[str, float], settings: PolishedSettings = POLISHED,
+                  near_stars: np.ndarray | None = None) -> np.ndarray:
+    """(h) A linear layer through the render's curve: luminance curved, colours kept, brought into gamut towards white.
+
+    ``near_stars`` (0..1, default 1 everywhere): where the highlights fade towards white -- around the stars, never
+    on the bright core of a nebula, which keeps its colour and its texture."""
+    lifted = np.clip(linear - np.float32(curve["black"]), 0, None)
+    level = lum(lifted)
+    shown = soft_shoulder(midtones_transfer(level / curve["top"], curve["midtones"]), settings.shoulder)
+    rgb = into_gamut(lifted * (shown / np.maximum(level, 1e-12))[..., None], shown)
+    # The highlights fade towards white: the core of a bright star is white whatever the clip levels of the
+    # channels left around it, and its halo keeps its colour where it is not near white.
+    x = np.clip((shown - settings.white_from) / max(settings.white_to - settings.white_from, 1e-6), 0, 1)
+    keep = 1 - x * x * (3 - 2 * x) * (1.0 if near_stars is None else near_stars)
+    return np.clip(shown[..., None] + keep[..., None] * (rgb - shown[..., None]), 0, 1).astype(np.float32)
 
 
-def match_final_sky_level(
-    nebula: np.ndarray,
-    stars: np.ndarray,
-    target: float,
-    rounds: int = SKY_MATCH_ROUNDS,
-    tolerance: float = SKY_MATCH_TOLERANCE,
-) -> tuple[np.ndarray, float]:
-    """The nebula layer lifted or lowered, in display light, until the polished render's sky level is ``target``; ``(layer, shift)``.
+def with_level(rgb: np.ndarray, level: np.ndarray, wanted: np.ndarray) -> np.ndarray:
+    """``rgb`` (whose luminance is ``level``) scaled to the luminance ``wanted``, brought into gamut."""
+    scaled = rgb * (wanted / np.maximum(level, 1e-6))[..., None]
+    return into_gamut(scaled, wanted)
 
-    ``target`` is the median luminance of the natural render of the same
-    master (``natural_final_level``), stars included.  It is the level a
-    person compares: once StarNet2 has taken the stars out, the polished
-    image (denoised, its stars thinner) keeps a little more or less of their
-    halos in the sky than the natural one, which the linear match
-    (``match_sky_level``) cannot see.  A secant search on the shift, one
-    offset for the three channels so the neutral sky stays neutral.
+
+def strong_signal(level: np.ndarray, sky: float, smoothing: float, low: float, high: float) -> np.ndarray:
+    """0..1: where the luminance smoothed at ``smoothing`` px stands ``low`` (0) to ``high`` (1) noise widths of the
+    smoothed sky above the sky, with a smooth step."""
+    smooth = gaussian_filter(level, smoothing)
+    noise = _background_noise(smooth) + 1e-6
+    x = np.clip(((smooth - sky) / noise - low) / max(high - low, 1e-6), 0, 1)
+    return (x * x * (3 - 2 * x)).astype(np.float32)
+
+
+def lift_power(nebula: np.ndarray, sky: float, settings: PolishedSettings = POLISHED) -> float:
+    """(i) The power of the lift: ``lift``, or lower (down to ``lift_strongest``) when the bright part of the
+    signal would stay under ``lift_target`` -- a faint galaxy on a black sky is lifted, a bright nebula is not.
+
+    A glow that covers the frame (a vignetting the background step left, its upper half over ``lift_area`` of
+    the frame) is not an object: it is not lifted.
     """
-    nebula = np.asarray(nebula, dtype=np.float32)
-
-    def level(shift: float) -> float:
-        lifted = np.clip(nebula + np.float32(shift), 0, 1)
-        return float(np.median(lum(polished_deep(lifted, stars))))
-
-    shift, reached = 0.0, level(0.0)
-    previous: tuple[float, float] | None = None
-    for _ in range(rounds):
-        if abs(reached / target - 1.0) < tolerance:
-            break
-        if previous is None:
-            step = 0.5 * (target - reached)  # the toe's slope at the sky is about 2: half is a safe first step
-        else:
-            slope = (reached - previous[1]) / (shift - previous[0])
-            step = (target - reached) / slope if slope > 1e-3 else 0.5 * (target - reached)
-        previous = (shift, reached)
-        shift += step
-        reached = level(shift)
-    return np.clip(nebula + np.float32(shift), 0, 1), shift
+    smooth = gaussian_filter(lum(nebula), 4.0)
+    bright = float(np.percentile(smooth, 99.5))
+    above = (bright - sky) / (1 - sky)
+    wanted = (settings.lift_target - sky) / (1 - sky)
+    if above <= 1e-4 or above >= wanted:
+        return settings.lift
+    if float(np.mean(smooth > sky + 0.5 * (bright - sky))) > settings.lift_area:
+        return settings.lift
+    return float(np.clip(np.log(wanted) / np.log(above), settings.lift_strongest, settings.lift))
 
 
-def natural_final_level(nebula: np.ndarray, stars: np.ndarray) -> float:
-    """The sky level of the natural render of a master: the median luminance of ``natural_deep``."""
-    return float(np.median(lum(natural_deep(nebula, stars))))
+def lift_midtones(nebula: np.ndarray, sky: float, power: float) -> np.ndarray:
+    """(i) A power on the signal above the sky; the sky (at or under ``sky``) and the white do not move."""
+    level = lum(nebula)
+    above = np.clip((level - sky) / (1 - sky), 0, 1)
+    wanted = np.where(level > sky, sky + (1 - sky) * np.power(above, power), level)
+    return with_level(nebula, level, wanted)
+
+
+def smooth_nebula(nebula: np.ndarray, sky: float, settings: PolishedSettings = POLISHED) -> np.ndarray:
+    """(j) Non-local means on the nebula, ``smoothing`` noise widths of the sky; texture given back where the signal is strong.
+
+    The strength is read on the sky's grain (the darkest tiles), not on the nebula.  Where the signal stands far
+    out of the noise (30 to 120 noise widths, smoothed) ``smoothing_kept`` of the texture comes back: a bright
+    nebula keeps its fine structure instead of turning waxy.
+    """
+    if settings.smoothing <= 0:
+        return nebula
+    from skimage.restoration import denoise_nl_means
+
+    level = lum(nebula)
+    detail = level - gaussian_filter(level, 2.0)
+    noise = float(_background_noise(detail))
+    if noise <= 0:
+        return nebula
+    smoothed = denoise_nl_means(nebula, h=settings.smoothing * noise, sigma=noise, fast_mode=True,
+                                patch_size=5, patch_distance=6, channel_axis=-1).astype(np.float32)
+    kept = settings.smoothing_kept * strong_signal(level, sky, 3.0, 30.0, 120.0)
+    return np.clip(smoothed + kept[..., None] * (nebula - smoothed), 0, 1).astype(np.float32)
+
+
+def compress_highlights(nebula: np.ndarray, knee: float, ceiling: float, spared: np.ndarray | None = None,
+                        scale: float = 12.0) -> np.ndarray:
+    """(j) The bright core of a nebula brought down without flattening it: its large-scale level (smoothed at
+    ``scale`` px) bends from ``knee`` towards ``ceiling`` (same slope at the knee), its fine structure is kept on
+    top of it.  Below the knee nothing moves.  ``spared`` (0..1): the clipped stars StarNet2 left in the nebula,
+    which keep their level and so stand out, white, above the lowered core around them."""
+    level = lum(nebula)
+    base = gaussian_filter(level, scale)
+    if float(base.max()) <= knee:
+        return nebula
+    room = max(ceiling - knee, 1e-3)
+    bent = np.where(base > knee, knee + room * (1 - np.exp(-(base - knee) / room)), base)
+    lowered = np.minimum(bent - base, 0)
+    if spared is not None:
+        lowered = lowered * (1 - spared)
+    wanted = np.clip(level + lowered, 0, 1)
+    return with_level(nebula, level, wanted)
+
+
+def sky_back_to(nebula: np.ndarray, sky: float) -> np.ndarray:
+    """The sky (``tiles_sky``) brought back to ``sky`` by a straight scale under it and above it, joined there: no
+    level is clipped, so no flat black."""
+    level = lum(nebula)
+    now = tiles_sky(level)
+    if now <= sky or now >= 1:
+        return nebula
+    wanted = np.where(level <= now, level * (sky / now), sky + (level - now) * (1 - sky) / (1 - now))
+    return with_level(nebula, level, wanted)
+
+
+def local_contrast(nebula: np.ndarray, sky: float, amount: float) -> np.ndarray:
+    """(j) The nebula against its surroundings at 24 px, kept out of the sky and of the brightest parts."""
+    if amount <= 0:
+        return nebula
+    level = lum(nebula)
+    local = level - gaussian_filter(level, 24)
+    signal = np.clip((level - sky) / max(float(np.percentile(level, 75)) - sky, 1e-6), 0, 1)
+    wanted = np.clip(level + amount * local * signal * np.clip(1 - level / 0.85, 0, 1), 0, 1)
+    return with_level(nebula, level, wanted)
+
+
+def chroma(rgb: np.ndarray, factor: float, weight: np.ndarray | None = None) -> np.ndarray:
+    """The colours multiplied by ``factor`` (by ``weight``, 0..1, per pixel), the luminance kept, in gamut."""
+    level = lum(rgb)
+    gain = factor if weight is None else 1 + (factor - 1) * weight[..., None]
+    out = np.clip(level[..., None] + (rgb - level[..., None]) * gain, 0, None)
+    return into_gamut(out, level)
+
+
+def signal_weight(rgb: np.ndarray) -> np.ndarray:
+    """0 in the sky, 1 six noise widths above it (luminance smoothed at 2 px): where (k) strengthens the colours."""
+    smooth = gaussian_filter(lum(rgb), 2)
+    sky = float(np.percentile(smooth, 10))
+    noise = float(_background_noise(lum(rgb))) + 1e-4
+    return np.clip((smooth - sky) / (6 * noise), 0, 1).astype(np.float32)
+
+
+def polished_layers(
+    linear: np.ndarray,
+    display: np.ndarray,
+    starless: np.ndarray,
+    scale: float,
+    band: str = "unknown",
+    settings: PolishedSettings = POLISHED,
+    imposed: dict[str, object] | None = None,
+    measured: dict[str, object] | None = None,
+    done: dict[str, object] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Steps (f) to (k): the nebula and star layers of the polished render (display, 0..1), from the linear image.
+
+    ``display`` and ``starless``: StarNet2's input and its starless output (the same image when the stars were
+    not separated); ``scale``: the stretch scale of ``display``.  ``band``: one of ``CAPTURE_BANDS``.
+    ``imposed`` (``{"curve": {...}}``, what a render of the same plan recorded) gives the curve and the star
+    gains instead of reading them on the image; ``measured`` receives the ones used; ``done`` what was done
+    (``band``, ``green``, ``starGains``).
+    """
+    if band not in CAPTURE_BANDS:
+        raise ValueError(f"unknown capture band '{band}': {', '.join(CAPTURE_BANDS)}")
+    done = {} if done is None else done
+    imposed_curve = (imposed or {}).get("curve") or {}
+    nebula, stars = linear_split(linear, display, starless, scale)
+    # (f) the colour
+    gains = None
+    if band != "dual-band":
+        offsets = np.array([tiles_sky(nebula[..., c]) for c in range(3)], np.float32)
+        mean = float(offsets.mean())
+        nebula = np.clip(nebula - offsets + mean, 0, None)
+        gains = (np.asarray(imposed_curve["gains"], np.float32) if imposed_curve.get("gains") is not None
+                 else star_white_gains(stars, linear))
+        if gains is not None:
+            nebula = np.clip((nebula - mean) * gains + mean, 0, None)
+            stars = stars * gains
+    green = settings.green if band == "broadband" else None
+    if green:
+        nebula = scnr_green(nebula, green)
+    done.update({"band": band, "green": green, "starGains": None if gains is None else [round(float(g), 4) for g in gains]})
+    # (g) the clipped cores, neutral
+    cores = clipped_cores(linear, settings)
+    if float(cores.max()) > 0:
+        nebula, stars = neutral_cores(nebula, cores), neutral_cores(stars, cores)
+    # (h) the curve
+    curve = ({key: float(imposed_curve[key]) for key in ("black", "top", "midtones")} if imposed_curve.get("black") is not None
+             else polished_curve(nebula, nebula + stars, settings))
+    near = near_stars(cores)
+    nebula_shown = curve_display(nebula, curve, settings, near)
+    stars_shown = np.clip(curve_display(nebula + stars, curve, settings, near) - nebula_shown, 0, 1)
+    # (i) - (k) the nebula
+    power = (float(imposed_curve["lift"]) if imposed_curve.get("lift") is not None
+             else lift_power(nebula_shown, settings.sky, settings))
+    curve["lift"] = power
+    done["curve"] = {key: round(value, 6) for key, value in curve.items()}
+    if measured is not None:
+        measured["curve"] = {**curve, "gains": None if gains is None else [float(g) for g in gains]}
+    nebula_shown = lift_midtones(nebula_shown, settings.sky, power)
+    nebula_shown = smooth_nebula(nebula_shown, settings.sky, settings)
+    # The lift bends the grain above the sky more than the grain under it: once smoothed, the sky stands a little
+    # higher; it is brought back to its level.
+    nebula_shown = sky_back_to(nebula_shown, settings.sky)
+    nebula_shown = local_contrast(nebula_shown, settings.sky, settings.local_contrast)
+    nebula_shown = compress_highlights(nebula_shown, settings.nebula_knee, settings.nebula_ceiling, cores)
+    if settings.saturation != 1.0:
+        nebula_shown = chroma(nebula_shown, settings.saturation, signal_weight(nebula_shown))
+    return nebula_shown, stars_shown.astype(np.float32)
+
+
+def polished_deep(nebula: np.ndarray, stars: np.ndarray, settings: PolishedSettings = POLISHED) -> np.ndarray:
+    """(l) Polished render: the stars put back on the nebula (screen), their colour reduced."""
+    stars = chroma(np.clip(stars, 0, 1), settings.star_colour)
+    return np.clip(1 - (1 - np.clip(nebula, 0, 1)) * (1 - settings.stars * stars), 0, 1).astype(np.float32)
 
 
 # --------------------------------------------------------------------------

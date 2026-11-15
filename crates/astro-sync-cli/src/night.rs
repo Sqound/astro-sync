@@ -62,7 +62,7 @@ pub(crate) fn fail(message: impl Into<String>) -> Box<dyn Error> {
 pub(crate) fn token_of(path: &Path) -> Result<String, Box<dyn Error>> {
     let token = std::fs::read_to_string(path).map_err(|e| {
         fail(format!(
-            "could not read the token ({}): {e}",
+            "could not read the token ({}): {e}. Sign in first: `astro-sync sign-in --token <file>`",
             path.display()
         ))
     })?;
@@ -411,9 +411,13 @@ fn not_sent_sentence(
         NotSent::OneRenderOnly => "wizard.summary.setAsideOneRender",
         NotSent::OtherFinalImage => "wizard.treatments.final.otherFinal",
         NotSent::NoCaptureForProgression => "wizard.summary.setAsideNoCapture",
+        NotSent::NoCaptureForFile => "wizard.summary.setAsideNoCaptureFile",
+        // An image set in « Régler l'image » whose render is online as a
+        // variant: a device replaces only a main image, so it stays here.
+        NotSent::AdjustedVariantOnline => "wizard.summary.setAsideAdjustedVariant",
         NotSent::TooLargeForSpace => {
-            let size = words::size_text(lang, plan.image.size);
-            let max = words::size_text(lang, storage.max_file_bytes);
+            let size = words::space_size_text(lang, plan.image.size);
+            let max = words::space_size_text(lang, storage.max_file_bytes);
             return words::say(
                 lang,
                 "wizard.summary.setAsideTooLarge",
@@ -429,7 +433,7 @@ fn not_sent_sentence(
 /// numbers.
 fn finding_sentence(finding: &precheck::QuotaFinding, lang: &str) -> String {
     use precheck::QuotaFinding;
-    let size = |bytes: u64| words::size_text(lang, bytes);
+    let size = |bytes: u64| words::space_size_text(lang, bytes);
     let sentence = match finding {
         QuotaFinding::StorageQuota {
             to_send_bytes,
@@ -511,14 +515,34 @@ fn print_precheck(check: &NightPrecheck, lang: &str) {
         let decision = match &plan.decision {
             precheck::Decision::AlreadyOnline { .. } => "already online, identical".to_string(),
             precheck::Decision::NewCapture => "new capture".to_string(),
+            // The TIFF of an image set, in place of the render's TIFF online
+            // (`replacesSha256`).
+            precheck::Decision::Variant {
+                replaces_sha256: Some(old),
+                ..
+            } => format!(
+                "variant of the capture, replaces the variant {} online",
+                old.get(..12).unwrap_or(old)
+            ),
             precheck::Decision::Variant { .. } | precheck::Decision::VariantOfNew { .. } => {
                 "variant of the capture".to_string()
+            }
+            // An image set in « Régler l'image » that takes the place of its
+            // render, the main image online (`placement: "replace"`).
+            precheck::Decision::Replace { image_id, .. } => {
+                format!("adjusted image, replaces the main image {image_id} of the capture online")
             }
             precheck::Decision::Progression { .. }
             | precheck::Decision::ProgressionOfNew { .. } => match plan.image.frame_count {
                 Some(frames) => format!("progression of the capture ({frames} frame(s))"),
                 None => "progression of the capture".to_string(),
             },
+            precheck::Decision::File { .. } | precheck::Decision::FileOfNew { .. } => {
+                "file attached to the capture".to_string()
+            }
+            precheck::Decision::FileOnline { .. } => {
+                "file already attached to the capture, identical".to_string()
+            }
             precheck::Decision::NotSent { reason } => {
                 not_sent_sentence(plan, *reason, &check.storage, lang)
             }
@@ -528,7 +552,13 @@ fn print_precheck(check: &NightPrecheck, lang: &str) {
             println!("  proposals: {}", describe_proposals(proposals));
         }
     }
-    let size = |bytes: u64| words::size_text(lang, bytes);
+    for file in &check.linear_kept_here {
+        println!(
+            "{}: stays on this computer unless the TIFF are joined (--with-tiff)",
+            file.path.display()
+        );
+    }
+    let size = |bytes: u64| words::space_size_text(lang, bytes);
     // A server that keeps no quota (a private server) has no space left to
     // count: the contract's unlimited value is never printed as a size.
     let line = if check.storage.quota_bytes >= UNLIMITED_BYTES {
@@ -573,10 +603,12 @@ fn print_precheck(check: &NightPrecheck, lang: &str) {
             println!("{line}");
         }
     }
-    let already_online = check
-        .plans
-        .iter()
-        .any(|plan| matches!(plan.decision, precheck::Decision::AlreadyOnline { .. }));
+    let already_online = check.plans.iter().any(|plan| {
+        matches!(
+            plan.decision,
+            precheck::Decision::AlreadyOnline { .. } | precheck::Decision::FileOnline { .. }
+        )
+    });
     if check.quota.allowed && check.quota.to_send_files == 0 && !already_online {
         // Nothing leaves, and the person is told why and what to do (a
         // night without a final image, in a space that cannot stack).
@@ -640,18 +672,21 @@ pub fn check(args: &CheckArgs) -> Outcome {
     if let Some(main) = &args.main {
         precheck::prefer_main_render(&mut candidates, main);
     }
-    let mut check = night_steps::precheck_night(
+    let mut check = night_steps::precheck_night_keeping(
         &transport,
         &args.service.portal,
         &token,
         &online,
         &candidates,
+        &|_| args.keep_tiff,
     )?;
     // What the box « Joindre aussi les TIFF » of the window says.
     check.full_resolution = night_steps::full_resolution_of(
         &night_steps::precheck_candidates(&local, Vec::new(), &[], true),
         args.with_tiff,
     );
+    check.linear_kept_here =
+        night_steps::linear_files_kept_here(&local, Vec::new(), &[], args.with_tiff);
     propose(
         &mut check,
         &online,
@@ -779,6 +814,7 @@ type Sent = (NightPrecheck, usize, usize, Vec<uploader::OnlineProposal>);
 /// Precheck, enqueue when allowed, drive the queue: the sending of
 /// `candidates` for `session_id`, with the proposals of capture metadata
 /// (the images already online get theirs after the fact).
+#[allow(clippy::too_many_arguments)]
 fn send_images(
     service: (&str, &str),
     session_id: &str,
@@ -787,11 +823,19 @@ fn send_images(
     proposing: &Proposing<'_>,
     dry_run: bool,
     quiet: bool,
+    keep_tiff: bool,
 ) -> Result<Sent, Box<dyn Error>> {
     let (portal, token) = service;
     let transport = crate::words::portal_transport()?;
     let online = transport.night_online(portal, token, session_id)?;
-    let mut check = night_steps::precheck_night(&transport, portal, token, &online, candidates)?;
+    let mut check = night_steps::precheck_night_keeping(
+        &transport,
+        portal,
+        token,
+        &online,
+        candidates,
+        &|_| keep_tiff,
+    )?;
     propose(
         &mut check,
         &online,
@@ -911,6 +955,7 @@ pub fn send_night(args: &SendNightArgs) -> Outcome {
         },
         args.dry_run,
         args.json,
+        args.keep_tiff,
     )?;
     let mut answer = SendNightAnswer {
         dry_run: args.dry_run,
@@ -1483,16 +1528,29 @@ pub fn tools(args: &ToolsArgs) -> Outcome {
         return print(args.json, &ids, || {
             if ids.is_empty() {
                 println!(
-                    "Nothing to download: no missing required tool has a download for this system."
+                    "{}",
+                    words::say(words::requested_language(), "cli.tools.nothing", &[]).unwrap_or_else(
+                        || "Nothing to download: no missing required tool has a download for this system."
+                            .to_string()
+                    )
                 );
             }
+            let locale = words::requested_language();
             for id in &ids {
-                println!("would be downloaded and installed: {id}");
+                let name = tool_name(&rows, id, locale);
+                println!(
+                    "{}",
+                    words::say(locale, "cli.tools.wouldInstall", &[("name", &name)])
+                        .unwrap_or_else(|| format!("would be downloaded and installed: {name}"))
+                );
             }
         });
     }
     let fetcher = HttpToolFetcher::new().map_err(fail)?;
     let mut results = BTreeMap::new();
+    // Why each failure, in the person's language (the JSON keeps the code).
+    let mut reasons: BTreeMap<String, String> = BTreeMap::new();
+    let locale = words::requested_language();
     for row in wanted {
         let result = tools::download_and_install(
             &args.data,
@@ -1502,6 +1560,12 @@ pub fn tools(args: &ToolsArgs) -> Outcome {
             None,
             &mut |_| {},
         );
+        if let Err(failure) = &result {
+            reasons.insert(
+                row.id.clone(),
+                words::download_failure_text(failure, locale),
+            );
+        }
         results.insert(
             row.id.clone(),
             result.map(|_| ()).map_err(|f| format!("{f:?}")),
@@ -1514,16 +1578,30 @@ pub fn tools(args: &ToolsArgs) -> Outcome {
             EnvTimeouts::default(),
             &CancelFlag::new(),
             &mut |progress| {
-                eprintln!(
-                    "[{}/{}] {:?} {}/{}",
-                    progress.index,
-                    progress.total,
-                    progress.step,
-                    progress.packages_done,
-                    progress.packages_total
-                );
+                let key = match progress.step {
+                    python_env::EnvStep::Python => "deps.env.step.python",
+                    python_env::EnvStep::Environment => "deps.env.step.environment",
+                    python_env::EnvStep::Packages => "deps.env.step.packages",
+                    python_env::EnvStep::Check => "deps.env.step.check",
+                };
+                let text = words::say(
+                    locale,
+                    key,
+                    &[
+                        ("done", &progress.packages_done.to_string()),
+                        ("total", &progress.packages_total.to_string()),
+                    ],
+                )
+                .unwrap_or_else(|| format!("{:?}", progress.step));
+                eprintln!("[{}/{}] {text}", progress.index, progress.total);
             },
         );
+        if let Err(failure) = &result {
+            reasons.insert(
+                "python-env".to_string(),
+                words::env_failure_text(failure, locale),
+            );
+        }
         results.insert(
             "python-env".to_string(),
             result.map(|_| ()).map_err(|f| format!("{f:?}")),
@@ -1531,16 +1609,30 @@ pub fn tools(args: &ToolsArgs) -> Outcome {
     }
     print(args.json, &results, || {
         for (id, result) in &results {
-            println!(
-                "{id}: {}",
-                if result.is_ok() {
-                    "downloaded and installed"
-                } else {
-                    "failed"
-                }
-            );
+            let name = tool_name(&rows, id, locale);
+            let line = if result.is_ok() {
+                words::say(locale, "cli.tools.done", &[("name", &name)])
+                    .unwrap_or_else(|| format!("{name}: downloaded and installed."))
+            } else {
+                let reason = reasons.get(id).cloned().unwrap_or_default();
+                words::say(
+                    locale,
+                    "cli.tools.failed",
+                    &[("name", &name), ("reason", &reason)],
+                )
+                .unwrap_or_else(|| format!("{name}: failed. {reason}"))
+            };
+            println!("{line}");
         }
     })
+}
+
+/// A row's name in the person's language (`python-env` and the rows the
+/// registry names alike).
+fn tool_name(rows: &[tools::ToolRow], id: &str, locale: &str) -> String {
+    rows.iter()
+        .find(|row| row.id == id)
+        .map_or_else(|| id.to_string(), |row| tools::localized(&row.name, locale))
 }
 
 /* ----------------------------- list-pipelines ----------------------------- */
@@ -2149,6 +2241,14 @@ pub fn stack(args: &StackArgs) -> Outcome {
             words::requested_language(),
         ))
     })?;
+    // A render made by another engine than the one asked for is said, with
+    // its cause, on the standard error (the standard output stays a result).
+    for notice in &outcome.engine_notices {
+        eprintln!(
+            "{}",
+            words::engine_notice_text(notice, words::requested_language())
+        );
+    }
     let candidates = stacking::stacked_candidates(&outcome, &args.target_id);
     print(
         args.json,
@@ -2269,5 +2369,34 @@ mod tests {
         assert!(missing.to_string().contains("not among the pipelines"));
         let linear = main_first(asked, Some("linear")).unwrap_err();
         assert!(linear.to_string().contains("never the main image"));
+    }
+
+    #[test]
+    fn an_adjusted_image_whose_render_is_a_variant_online_says_why_it_stays() {
+        let plan: astro_sync_core::precheck::ImagePlan =
+            serde_json::from_value(serde_json::json!({
+                "image": {
+                    "targetId": "m31", "path": "/n/M31/stacked/M31_natural.png",
+                    "sha256": "a".repeat(64), "size": 35, "kind": "stacked"
+                },
+                "decision": "not_sent", "reason": "adjusted_variant_online"
+            }))
+            .unwrap();
+        let storage: astro_sync_core::precheck::SpaceStorage = serde_json::from_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../astro-sync-core/tests/fixtures/online/space_storage.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let reason = astro_sync_core::precheck::NotSent::AdjustedVariantOnline;
+        let en = super::not_sent_sentence(&plan, reason, &storage, "en");
+        assert!(
+            en.starts_with("M31_natural.png · adjusted, but this render is online as a variant"),
+            "{en}"
+        );
+        let fr = super::not_sent_sentence(&plan, reason, &storage, "fr");
+        assert!(fr.contains("ne remplace que l’image principale"), "{fr}");
     }
 }

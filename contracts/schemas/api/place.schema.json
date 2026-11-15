@@ -26,7 +26,7 @@
       "enum": ["private", "viewpoint", "campsite", "park", "picnic"]
     },
     "horizonMask": {
-      "description": "36 points, one every 10° of azimuth from 0 to 350, in that order; altitudes in degrees. A point may carry `surveyedAt`, the instant its 10° sector was last surveyed (in augmented reality, or moved by hand in an editor); a point without it is « à relever ».",
+      "description": "36 points, one every 10° of azimuth from 0 to 350, in that order; altitudes in degrees. A point may carry `surveyedAt`, the instant its 10° sector was last surveyed (in augmented reality, or moved by hand in an editor), `surveyMethod` (how) and `surveyQuality` (how far the line is to be trusted); a point without `surveyedAt` is « à relever ». A point without the two newer fields is read as `manual`, and `sure` when surveyed, `to-survey` when not (`horizon-mask.js` surveyProvenance, and the phone's port of it).",
       "type": "object",
       "required": ["enabled", "points"],
       "properties": {
@@ -46,11 +46,43 @@
                 "multipleOf": 10
               },
               "altitude": { "type": "number", "minimum": 0, "maximum": 90 },
-              "surveyedAt": { "$ref": "#/$defs/timestamp" }
+              "surveyedAt": { "$ref": "#/$defs/timestamp" },
+              "surveyMethod": { "$ref": "#/$defs/surveyMethod" },
+              "surveyQuality": { "$ref": "#/$defs/surveyQuality" }
             },
             "additionalProperties": false
           }
         }
+      },
+      "additionalProperties": false
+    },
+    "surveyMethod": {
+      "description": "How a 10° sector was surveyed (HORIZON-PROVENANCE-01): `manual` (tapped or dragged in the editor, or the recorder in augmented reality), `auto-hand` (panorama, the phone held or on a tripod), `auto-mount` (panorama driven by the mount), `auto-telescope` (the smart telescope's camera), `still-image` (a long exposure of the phone, the line detected then corrected by touch on the frozen picture; HORIZON-STILL-01). Absent: read as `manual`.",
+      "enum": [
+        "manual",
+        "auto-hand",
+        "auto-mount",
+        "auto-telescope",
+        "still-image"
+      ]
+    },
+    "surveyQuality": {
+      "description": "How far a 10° sector's line is to be trusted: `sure`, `uncertain` (drawn hatched, never a number of degrees), `to-survey` (« à relever »). Absent: read as `sure` for a sector with `surveyedAt`, `to-survey` for one without.",
+      "enum": ["sure", "uncertain", "to-survey"]
+    },
+    "azimuthSource": {
+      "description": "Where the azimuth of a panorama came from: the phone's `compass`, the `sun-moon`, the `stars`, or the `mount`.",
+      "enum": ["compass", "sun-moon", "stars", "mount"]
+    },
+    "lastSurvey": {
+      "description": "Summary of the latest survey of a post (HORIZON-PROVENANCE-01): the instant `at`, the `method`, the number of `panels` shot (0 by hand) and the `azimuthSource` (absent by hand). What the screens say: « Relevé à la main le 12 nov. », « Relevé automatique le 12 nov. · 12 panneaux · 34/36 secteurs sûrs ». Absent on a post stored before the field: derived from its points.",
+      "type": "object",
+      "required": ["at", "method", "panels"],
+      "properties": {
+        "at": { "$ref": "#/$defs/timestamp" },
+        "method": { "$ref": "#/$defs/surveyMethod" },
+        "panels": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "azimuthSource": { "$ref": "#/$defs/azimuthSource" }
       },
       "additionalProperties": false
     },
@@ -60,7 +92,7 @@
       "pattern": "^[A-Za-z0-9._:-]{1,160}$"
     },
     "placeHorizon": {
-      "description": "One observing post of the place (« Balcon », « Jardin »): its stable `id`, its `name` (kept as typed; « Horizon » for the one a place stored before the field is read with, shown translated by the screens) and its `mask`, whose points carry their own `surveyedAt`.",
+      "description": "One observing post of the place (« Balcon », « Jardin »): its stable `id`, its `name` (kept as typed; « Horizon » for the one a place stored before the field is read with, shown translated by the screens) its `mask`, whose points carry their own `surveyedAt`, `surveyMethod` and `surveyQuality`, and optionally `lastSurvey`.",
       "type": "object",
       "required": ["id", "name", "mask"],
       "properties": {
@@ -71,7 +103,8 @@
           "maxLength": 100,
           "pattern": "\\S"
         },
-        "mask": { "$ref": "#/$defs/horizonMask" }
+        "mask": { "$ref": "#/$defs/horizonMask" },
+        "lastSurvey": { "$ref": "#/$defs/lastSurvey" }
       },
       "additionalProperties": false
     },

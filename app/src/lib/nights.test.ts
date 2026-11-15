@@ -3,7 +3,12 @@ import test from "node:test";
 
 import {
   createFormReady,
+  createFormReason,
+  createPlaces,
+  createPlacesNote,
+  todayOnThisComputer,
   detectionInput,
+  hoursLine,
   eveningDateAtLongitude,
   longitudeOf,
   isOffline,
@@ -59,10 +64,9 @@ test("a night just open (Jeu. 8 oct.): « en cours », the folder created empty,
       online("night-8", [IC]),
       resume("not_started", "cibles"),
     ),
-    timeZone: TZ,
   });
   assert.equal(row.day, "Jeu. 8 oct.");
-  assert.equal(row.hours, "21:10 – en cours");
+  assert.equal(row.hours, "19:10 UTC – en cours");
   assert.equal(row.open, true);
   assert.equal(row.placeAndTargets, "Col des Étoiles · IC 1396");
   assert.equal(row.local, "Dossier créé, vide");
@@ -101,10 +105,9 @@ test("a night to complete (Mer. 7 oct.): its folder, the phone's image, and what
         { key: "analysis" },
       ]),
     ),
-    timeZone: TZ,
   });
   assert.equal(row.day, "Mer. 7 oct.");
-  assert.equal(row.hours, "21:05 – 04:40");
+  assert.equal(row.hours, "19:05 → 02:40 UTC");
   assert.equal(row.placeAndTargets, "Col des Étoiles · NGC 7000, IC 1396, M31");
   assert.equal(row.local, "3 cibles · 250 poses · 2 images finales");
   assert.equal(row.online, "1 image (M31, depuis le téléphone)");
@@ -148,9 +151,8 @@ test("logs added after the sending, a complete night, a night with no folder her
     session: byId("night-5"),
     detail: detail("night-5", [M31]),
     view: added,
-    timeZone: TZ,
   });
-  assert.equal(five.hours, "20:50 – 03:15");
+  assert.equal(five.hours, "18:50 → 01:15 UTC");
   assert.equal(five.local, "1 cible · 2 journaux ajoutés");
   assert.equal(five.online, "1 image avec annotations");
   assert.equal(
@@ -178,7 +180,6 @@ test("logs added after the sending, a complete night, a night with no folder her
   const three = nightRow(fr, "fr", {
     session: byId("night-3"),
     view: complete,
-    timeZone: TZ,
   });
   assert.equal(three.local, "1 cible · 180 poses");
   assert.equal(three.online, "1 image · annotations · analyse");
@@ -199,18 +200,16 @@ test("logs added after the sending, a complete night, a night with no folder her
   const two = nightRow(fr, "fr", {
     session: byId("night-2"),
     view: away,
-    timeZone: TZ,
   });
   assert.equal(two.local, "Pas de dossier sur cet ordinateur");
   assert.equal(two.online, "2 images · annotations");
-  assert.equal(two.hours, "20:45 – 01:30");
+  assert.equal(two.hours, "18:45 → 23:30 UTC");
 });
 
 test("a row not read yet keeps its date and place; the empty and offline sentences read as expected", () => {
   const row = nightRow(fr, "fr", {
     session: byId("night-7"),
     detail: detail("night-7", []),
-    timeZone: TZ,
   });
   assert.equal(row.placeAndTargets, "Col des Étoiles");
   assert.equal(row.local, null);
@@ -355,7 +354,7 @@ test("a night without a plan says so above its date; a night of a plan that carr
   assert.equal(bare.eyebrow, "Nuit sans plan");
   assert.equal(bare.title, "Nuit du 8 oct.");
   // Open: the start only, in UTC; one target is « 1 cible ».
-  assert.equal(bare.line, "Col des Étoiles · 19:10 UTC · 1 cible");
+  assert.equal(bare.line, "Col des Étoiles · 19:10 UTC – en cours · 1 cible");
   const named = nightHeader(fr, "fr", {
     session: { ...eight, planId: "plan-2" },
     detail: detail("night-8", [IC]),
@@ -363,7 +362,7 @@ test("a night without a plan says so above its date; a night of a plan that carr
   });
   assert.equal(named.eyebrow, null);
   // Nothing online yet: no count, and no empty separator.
-  assert.equal(named.line, "Col des Étoiles · 19:10 UTC");
+  assert.equal(named.line, "Col des Étoiles · 19:10 UTC – en cours");
   // English and Japanese say the same thing without a word-for-word copy.
   const en = nightHeader(createTranslator("en"), "en", {
     session: { ...eight, planId: null },
@@ -371,14 +370,16 @@ test("a night without a plan says so above its date; a night of a plan that carr
     online: online("night-8", [IC, NGC]),
   });
   assert.equal(en.eyebrow, "Night without a plan");
-  assert.equal(en.line, "Col des Étoiles · 19:10 UTC · 2 targets");
+  assert.equal(
+    en.line,
+    "Col des Étoiles · 19:10 UTC – in progress · 2 targets",
+  );
 });
 
 test("each night says it is being read until its read is back, then shows what was read", () => {
   const waiting = nightRow(fr, "fr", {
     session: byId("night-7"),
     reading: true,
-    timeZone: TZ,
   });
   assert.equal(waiting.reading, true);
   // Its date stays readable meanwhile.
@@ -387,7 +388,6 @@ test("each night says it is being read until its read is back, then shows what w
   const read = nightRow(fr, "fr", {
     session: byId("night-7"),
     detail: detail("night-7", []),
-    timeZone: TZ,
   });
   assert.equal(read.reading, false, "a row read is no longer waiting");
 });
@@ -445,7 +445,6 @@ test("the row of a held session carries the message, no state of its own, and th
     session,
     detail: detail("night-7", [NGC]),
     view: view7,
-    timeZone: TZ,
   });
   assert.equal(held.held, "to_debrief");
   assert.equal(
@@ -455,13 +454,12 @@ test("the row of a held session carries the message, no state of its own, and th
   assert.equal(held.state, null);
   assert.equal(held.missing, null);
   // While its detail is being read the row already says it.
-  const reading = nightRow(fr, "fr", { session, reading: true, timeZone: TZ });
+  const reading = nightRow(fr, "fr", { session, reading: true });
   assert.equal(reading.held, "to_debrief");
   const done = nightRow(fr, "fr", {
     session: { ...session, outcome: "executed" },
     detail: detail("night-7", [NGC]),
     view: view7,
-    timeZone: TZ,
   });
   assert.equal(done.held, null);
   assert.equal(done.heldMessage, null);
@@ -474,4 +472,82 @@ test("the message of a held session is said in every shipped language", () => {
     assert.notEqual(text, "nights.held.debrief", locale);
     assert.ok(text.length > 20, locale);
   }
+});
+
+test("the hours of a night name their zone, one rule for the list and the header (the smoke's « 23:30 – 23:35 » beside « 21:30 → 21:35 UTC »)", () => {
+  const seven = byId("night-7");
+  const row = nightRow(fr, "fr", { session: seven });
+  const header = nightHeader(fr, "fr", {
+    session: seven,
+    detail: null,
+    online: null,
+  });
+  assert.equal(row.hours, "19:05 → 02:40 UTC");
+  assert.ok(header.line.includes(row.hours), header.line);
+  // Whatever the computer's zone: the row never depends on it.
+  for (const locale of SUPPORTED_LOCALES) {
+    const translate = createTranslator(locale);
+    assert.match(
+      hoursLine(translate, seven, locale),
+      /UTC/,
+      `${locale}: the closed night names UTC`,
+    );
+    assert.match(
+      hoursLine(
+        translate,
+        { ...seven, status: "open", finishedAt: null },
+        locale,
+      ),
+      /UTC/,
+      `${locale}: the open night names UTC`,
+    );
+  }
+});
+
+test("« Créer une session » reads the space's places itself: a wait while they come, a sentence and a way when there are none, the default place proposed (the smoke's empty « Place » after signing in)", () => {
+  // Before any read: the list's nights only.
+  assert.deepEqual(createPlaces([], null), { names: [], proposed: "" });
+  assert.equal(
+    createPlacesNote("loading", 0),
+    "nights.createForm.placesLoading",
+  );
+  // The saved places, the default first proposed; the nights' places after.
+  const saved = {
+    places: [
+      { id: "p1", name: "Maison" },
+      { id: "p2", name: "Saint-Véran F5" },
+    ],
+    defaultPlaceId: "p2",
+  };
+  assert.deepEqual(createPlaces(["Col des Étoiles", "Maison"], saved), {
+    names: ["Maison", "Saint-Véran F5", "Col des Étoiles"],
+    proposed: "Saint-Véran F5",
+  });
+  assert.equal(createPlacesNote("ready", 3), null);
+  // None saved and no night: the sentence that says how to add one.
+  assert.equal(
+    createPlacesNote("ready", createPlaces([], { places: [] }).names.length),
+    "nights.createForm.placesEmpty",
+  );
+  assert.equal(createPlacesNote("failed", 0), "nights.createForm.placesFailed");
+  assert.match(fr("nights.createForm.placesEmpty"), /Ajoutez-en un/);
+  // The disabled button says why.
+  const form = {
+    date: "2026-11-06",
+    place: " ",
+    start: "",
+    end: "",
+    title: "",
+  };
+  assert.equal(createFormReady(form), false);
+  assert.equal(createFormReason(form), "nights.createForm.placeRequired");
+  assert.equal(createFormReason({ ...form, place: "Maison" }), null);
+});
+
+test("the creation window opens at today on this computer's calendar, its proposed name from that date", () => {
+  const now = new Date(2026, 10, 7, 1, 30);
+  assert.equal(todayOnThisComputer(now), "2026-11-07");
+  // The name proposed is built from the date of the form, never a fixed one.
+  const fr = createTranslator("fr");
+  assert.equal(fr("wizard.title", { day: "6 nov." }), "Nuit du 6 nov.");
 });

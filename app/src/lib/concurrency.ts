@@ -74,3 +74,28 @@ export function mapWithLimit<T, R>(
     items.map((item, index) => limiter.run(() => fn(item, index), index)),
   );
 }
+
+/**
+ * The latest of a series of reads wins: each read takes a ticket when it
+ * starts, and only the ticket of the last one started may write its answer.
+ * An older read that comes back later (« Vérifier à nouveau » pressed while
+ * the opening read still runs) is dropped instead of overwriting a newer
+ * answer with what was on disk before.
+ */
+export interface LatestOnly {
+  /** A read starts: its ticket. */
+  begin(): number;
+  /** Whether the read of `ticket` is still the last one started. */
+  isLatest(ticket: number): boolean;
+}
+
+export function latestOnly(): LatestOnly {
+  let last = 0;
+  return {
+    begin: () => {
+      last += 1;
+      return last;
+    },
+    isLatest: (ticket) => ticket === last,
+  };
+}

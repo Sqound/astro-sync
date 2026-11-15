@@ -9,6 +9,13 @@
 //!   variant (the stacked image takes the place); several renders of the
 //!   stacking are each a variant when variants are allowed, and one only
 //!   otherwise (the person chooses it).
+//! - The **linear file** ("No processing", [`ResultKind::Linear`]) is not an
+//!   image: it is a file attached to the capture (`role: "linear"`), sent
+//!   after the image that creates the capture (or to the capture online),
+//!   counted against the storage and the per-file size only, never against
+//!   `capture.variant_limit` nor `capture.count_limit`. It never creates a
+//!   capture: a target with nothing to attach it to keeps it on the computer.
+//!   Bytes the space holds as a file are "already online" ([`Decision::FileOnline`]).
 //! A **progression image** is the history of its
 //!   target's capture -- the one this sending creates, or the one online --
 //!   with the role `progression`: never a capture of its own, never a
@@ -88,11 +95,12 @@ pub enum UploadCheck {
     /// The space already holds these bytes: nothing would be stored.
     Present {
         capture_id: String,
-        image_id: String,
-        main: bool,
+        #[serde(flatten)]
+        held: HeldAs,
         storage: CheckStorage,
     },
-    /// The upload would be received, as a new capture or a variant.
+    /// The upload would be received, as a new capture, a variant or a file
+    /// attached to a capture.
     Accepted { adds: String, storage: CheckStorage },
     /// The upload would be refused, with the code the upload would answer.
     Refused {
@@ -100,6 +108,16 @@ pub enum UploadCheck {
         message: String,
         storage: CheckStorage,
     },
+}
+
+/// How a space already holds bytes: as an image of a capture (`imageId`, and
+/// `main` when it is its main image), or as a file attached to it
+/// (`attachmentId`, a shape with **neither `imageId` nor `main`**).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged, rename_all_fields = "camelCase")]
+pub enum HeldAs {
+    Image { image_id: String, main: bool },
+    File { attachment_id: String },
 }
 
 /// The two routes, behind a trait so tests never touch the network.
@@ -178,6 +196,18 @@ pub struct ImageCandidate {
     /// resolution: it leaves only when the person joins the TIFF.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub twin_sha256: Option<String>,
+    /// The total exposure of the series of poses (one filter, exposure, gain
+    /// and binning) a render was stacked from, in whole seconds, when the
+    /// stacking recorded it: the main image of a target comes from its
+    /// longest series. `None`: not known (the order of before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series_seconds: Option<u64>,
+    /// The series of poses (filter, exposure, gain, binning) a render was
+    /// stacked from, when known: sent with the image, the service keeps one
+    /// capture per session, target and series ([`crate::series`]). `None`:
+    /// not known (one capture per target, the rule of before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<crate::series::Series>,
 }
 
 impl ImageCandidate {
@@ -187,11 +217,24 @@ impl ImageCandidate {
     pub fn is_full_resolution_twin(&self) -> bool {
         self.twin_sha256.is_some() && crate::render_files::is_tiff(&self.path)
     }
+
+    /// A TIFF the person chooses to send: the twin of a PNG, or the linear
+    /// file (a file attached to the capture). Sent only when the TIFF are
+    /// joined to the sending.
+    #[must_use]
+    pub fn is_optional_tiff(&self) -> bool {
+        self.is_full_resolution_twin() || self.kind == ResultKind::Linear
+    }
 }
 
 /// The role a progression image is sent with (`uploadMetadata.role`, the
 /// service's `capture_variants.role`).
 pub const PROGRESSION_ROLE: &str = "progression";
+
+/// The role the linear file is sent with: a file attached to a capture, never
+/// an image (`capture-attachment.schema.json`). The upload that declares it
+/// carries the capture, and no placement, plan field, frame count or proposal.
+pub const LINEAR_ROLE: &str = "linear";
 
 /// Why an image will not be sent (said before the sending).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,6 +258,15 @@ pub enum NotSent {
     /// (`storage.max_file_bytes`): it cannot leave, and the person's final
     /// image of the target is sent instead, never nothing.
     TooLargeForSpace,
+    /// The linear file of a target that has no capture, online or in this
+    /// sending: it would have nothing to be attached to (a file never creates
+    /// a capture).
+    NoCaptureForFile,
+    /// An image set in « Régler l'image » whose render is online as a
+    /// **variant** of a capture: a device replaces only a capture's main
+    /// image (`placement: "replace"`), so the image set would be a second
+    /// copy beside it. It stays on this computer; the summary says so.
+    AdjustedVariantOnline,
 }
 
 /// What an image becomes.
@@ -232,9 +284,23 @@ pub enum Decision {
     },
     /// A new capture of its target.
     NewCapture,
-    /// A variant of the capture online.
+    /// A variant of the capture online. `replaces_sha256`: the variant of
+    /// that capture it takes the place of (the TIFF of an image set in «
+    /// Régler l'image », in place of the render's TIFF online;
+    /// [`crate::image_adjust::place_replacements`]); absent, it is added. The
+    /// window keeps the old one by clearing it ([`keep_beside`]).
     Variant {
         capture_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replaces_sha256: Option<String>,
+    },
+    /// An image set in « Régler l'image » that takes the place of the main
+    /// image `image_id` of the capture online (its render, sent before):
+    /// `placement: "replace"`, no new capture, no variant
+    /// ([`crate::image_adjust::place_replacements`]).
+    Replace {
+        capture_id: String,
+        image_id: String,
     },
     /// A variant of the capture the image `first_sha256` creates in the same
     /// sending (several renders on a target with nothing online).
@@ -253,6 +319,21 @@ pub enum Decision {
     ProgressionOfNew {
         first_sha256: String,
     },
+    /// The linear file, attached to the capture online (`role: "linear"`).
+    File {
+        capture_id: String,
+    },
+    /// The linear file, attached to the capture the image `first_sha256`
+    /// creates in the same sending.
+    FileOfNew {
+        first_sha256: String,
+    },
+    /// The space already holds these bytes as a file attached to
+    /// `capture_id` (`attachmentId`): not sent again.
+    FileOnline {
+        capture_id: String,
+        attachment_id: String,
+    },
 }
 
 impl Decision {
@@ -263,10 +344,19 @@ impl Decision {
             self,
             Decision::NewCapture
                 | Decision::Variant { .. }
+                | Decision::Replace { .. }
                 | Decision::VariantOfNew { .. }
                 | Decision::Progression { .. }
                 | Decision::ProgressionOfNew { .. }
+                | Decision::File { .. }
+                | Decision::FileOfNew { .. }
         )
+    }
+
+    /// Whether the image leaves as a file attached to a capture.
+    #[must_use]
+    pub fn is_file(&self) -> bool {
+        matches!(self, Decision::File { .. } | Decision::FileOfNew { .. })
     }
 
     /// Whether the image leaves as a progression image.
@@ -298,15 +388,20 @@ pub struct ImagePlan {
 }
 
 /// The sort key of a stacked image: the main image of the capture sorts first.
+/// The longest series of poses goes first.
 /// A render with a curve is never first; among the others the stacking's own
 /// order decides (the first asked is the main), the natural render being the
 /// main one when the order is not known. The TIFF of a render, when it is
 /// joined, comes right after its PNG: the PNG stays the capture's image.
-fn main_order(image: &ImageCandidate) -> (bool, u32, bool) {
+fn main_order(image: &ImageCandidate) -> (std::cmp::Reverse<u64>, bool, u32, bool) {
     let rank = image
         .render_rank
         .unwrap_or(u32::from(image.render.as_deref() != Some(DEFAULT_PIPELINE)));
     (
+        // The longest series of poses gives the main image (two series of a
+        // target: 3 h 34 of 30 s poses before 6 min of 10 s ones, whatever
+        // their file names); an image whose series is not known counts as 0.
+        std::cmp::Reverse(image.series_seconds.unwrap_or(0)),
         !image.contrast.is_none() || !image.retouch.is_none(),
         rank,
         image.is_full_resolution_twin(),
@@ -379,6 +474,13 @@ pub fn plan_images_within(
                 capture_id: capture.id.clone(),
                 image_id: online_image.id.clone(),
             });
+        } else if let Some((capture, attachment)) = online.attachment_with(&image.sha256) {
+            // Bytes the space holds as a file are online whatever this
+            // sending declares them to be.
+            plans[i] = Some(Decision::FileOnline {
+                capture_id: capture.id.clone(),
+                attachment_id: attachment.id.clone(),
+            });
         }
     }
 
@@ -393,7 +495,10 @@ pub fn plan_images_within(
             .filter(|&i| {
                 plans[i].is_none()
                     && candidates[i].target_id == target
-                    && candidates[i].kind != ResultKind::Progression
+                    && !matches!(
+                        candidates[i].kind,
+                        ResultKind::Progression | ResultKind::Linear
+                    )
             })
             .collect();
         let mut stacked: Vec<usize> = Vec::new();
@@ -422,10 +527,15 @@ pub fn plan_images_within(
             .copied()
             .filter(|&i| candidates[i].kind == ResultKind::Final)
             .collect();
-        let mut going: Vec<usize> = Vec::new();
+        // One capture per series of poses (filter, exposure, gain, binning):
+        // the stacked images of a target are grouped by their series, the
+        // longest first (`main_order`); images whose series is not known form
+        // one group (one capture per target, the rule of before). A target
+        // without a stacking sends its first final image.
+        let mut groups: Vec<(Option<String>, Vec<usize>)> = Vec::new();
         if stacked.is_empty() {
             if let Some((&first, rest)) = finals.split_first() {
-                going.push(first);
+                groups.push((None, vec![first]));
                 for &other in rest {
                     plans[other] = Some(Decision::NotSent {
                         reason: NotSent::OtherFinalImage,
@@ -438,7 +548,20 @@ pub fn plan_images_within(
                     reason: NotSent::ReplacedByStacking,
                 });
             }
-            for (n, &s) in stacked.iter().enumerate() {
+            for &s in &stacked {
+                let key = candidates[s]
+                    .series
+                    .as_ref()
+                    .map(crate::series::Series::key);
+                match groups.iter_mut().find(|(k, _)| *k == key) {
+                    Some((_, members)) => members.push(s),
+                    None => groups.push((key, vec![s])),
+                }
+            }
+        }
+        for (_, members) in groups {
+            let mut going: Vec<usize> = Vec::new();
+            for (n, &s) in members.iter().enumerate() {
                 if n == 0 || variants_allowed {
                     going.push(s);
                 } else {
@@ -447,25 +570,27 @@ pub fn plan_images_within(
                     });
                 }
             }
-        }
-        let capture = online.capture_of(target);
-        let mut first_new: Option<String> = None;
-        for i in going {
-            plans[i] = Some(match (capture, &first_new) {
-                (Some(capture), _) if variants_allowed => Decision::Variant {
-                    capture_id: capture.id.clone(),
-                },
-                (Some(_), _) => Decision::NotSent {
-                    reason: NotSent::VariantsNotAllowed,
-                },
-                (None, None) => {
-                    first_new = Some(candidates[i].sha256.clone());
-                    Decision::NewCapture
-                }
-                (None, Some(first)) => Decision::VariantOfNew {
-                    first_sha256: first.clone(),
-                },
-            });
+            let series = candidates[members[0]].series.as_ref();
+            let capture = online.capture_for(target, series);
+            let mut first_new: Option<String> = None;
+            for i in going {
+                plans[i] = Some(match (capture, &first_new) {
+                    (Some(capture), _) if variants_allowed => Decision::Variant {
+                        capture_id: capture.id.clone(),
+                        replaces_sha256: None,
+                    },
+                    (Some(_), _) => Decision::NotSent {
+                        reason: NotSent::VariantsNotAllowed,
+                    },
+                    (None, None) => {
+                        first_new = Some(candidates[i].sha256.clone());
+                        Decision::NewCapture
+                    }
+                    (None, Some(first)) => Decision::VariantOfNew {
+                        first_sha256: first.clone(),
+                    },
+                });
+            }
         }
     }
 
@@ -479,6 +604,22 @@ pub fn plan_images_within(
             {
                 plans[i] = Some(capture.clone().unwrap_or(Decision::NotSent {
                     reason: NotSent::NoCaptureForProgression,
+                }));
+            }
+        }
+    }
+
+    // The linear files, once each target's capture is known: they are
+    // attached to it, after its image.
+    for &target in &targets {
+        let capture = file_capture(online, candidates, &plans, target);
+        for i in 0..candidates.len() {
+            if plans[i].is_none()
+                && candidates[i].target_id == target
+                && candidates[i].kind == ResultKind::Linear
+            {
+                plans[i] = Some(capture.clone().unwrap_or(Decision::NotSent {
+                    reason: NotSent::NoCaptureForFile,
                 }));
             }
         }
@@ -519,9 +660,11 @@ fn progression_capture(
         });
     }
     let named = of_target().find_map(|i| match &plans[i] {
-        Some(Decision::AlreadyOnline { capture_id, .. } | Decision::Variant { capture_id }) => {
-            Some(capture_id.clone())
-        }
+        Some(
+            Decision::AlreadyOnline { capture_id, .. }
+            | Decision::Variant { capture_id, .. }
+            | Decision::Replace { capture_id, .. },
+        ) => Some(capture_id.clone()),
         _ => None,
     });
     named
@@ -529,9 +672,64 @@ fn progression_capture(
         .map(|capture_id| Decision::Progression { capture_id })
 }
 
-/// After the service's answer: a progression image waiting for the capture
-/// an image of this sending would create, when the service said that image
-/// is already online, is the history of that capture online.
+/// The capture a linear file of `target` is attached to: the one an image of
+/// this sending creates, else the one an image of the target already online,
+/// or a variant, names, else the target's capture online. None: nothing to
+/// attach it to.
+fn file_capture(
+    online: &NightOnline,
+    candidates: &[ImageCandidate],
+    plans: &[Option<Decision>],
+    target: &str,
+) -> Option<Decision> {
+    let of_target = || {
+        (0..candidates.len()).filter(move |&i| {
+            candidates[i].target_id == target
+                && !matches!(
+                    candidates[i].kind,
+                    ResultKind::Progression | ResultKind::Linear
+                )
+        })
+    };
+    // The linear file of a series goes to the capture of that series.
+    let file_series = candidates
+        .iter()
+        .find(|c| c.target_id == target && c.kind == ResultKind::Linear)
+        .and_then(|c| c.series.as_ref())
+        .map(crate::series::Series::key);
+    let same_series = |i: usize| {
+        file_series.is_none()
+            || candidates[i]
+                .series
+                .as_ref()
+                .map(crate::series::Series::key)
+                == file_series
+    };
+    if let Some(i) = of_target()
+        .filter(|&i| same_series(i))
+        .find(|&i| plans[i] == Some(Decision::NewCapture))
+        .or_else(|| of_target().find(|&i| plans[i] == Some(Decision::NewCapture)))
+    {
+        return Some(Decision::FileOfNew {
+            first_sha256: candidates[i].sha256.clone(),
+        });
+    }
+    let named = of_target().find_map(|i| match &plans[i] {
+        Some(
+            Decision::AlreadyOnline { capture_id, .. }
+            | Decision::Variant { capture_id, .. }
+            | Decision::Replace { capture_id, .. },
+        ) => Some(capture_id.clone()),
+        _ => None,
+    });
+    named
+        .or_else(|| online.capture_of(target).map(|c| c.id.clone()))
+        .map(|capture_id| Decision::File { capture_id })
+}
+
+/// After the service's answer: a progression image or a linear file waiting
+/// for the capture an image of this sending would create, when the service
+/// said that image is already online, belongs to that capture online.
 pub fn rebind_progressions(plans: &mut [ImagePlan]) {
     let online: BTreeMap<String, String> = plans
         .iter()
@@ -543,12 +741,22 @@ pub fn rebind_progressions(plans: &mut [ImagePlan]) {
         })
         .collect();
     for plan in plans.iter_mut() {
-        if let Decision::ProgressionOfNew { first_sha256 } = &plan.decision
-            && let Some(capture_id) = online.get(first_sha256)
-        {
-            plan.decision = Decision::Progression {
-                capture_id: capture_id.clone(),
-            };
+        match &plan.decision {
+            Decision::ProgressionOfNew { first_sha256 } => {
+                if let Some(capture_id) = online.get(first_sha256) {
+                    plan.decision = Decision::Progression {
+                        capture_id: capture_id.clone(),
+                    };
+                }
+            }
+            Decision::FileOfNew { first_sha256 } => {
+                if let Some(capture_id) = online.get(first_sha256) {
+                    plan.decision = Decision::File {
+                        capture_id: capture_id.clone(),
+                    };
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -621,7 +829,7 @@ pub struct QuotaCheck {
     /// The bytes of the images that would leave.
     pub to_send_bytes: u64,
     /// The part of `to_send_bytes` that is the TIFF of renders also sent as
-    /// PNG: what the sending weighs less without them (« Sans les TIFF :
+    /// PNG and the linear files: what the sending weighs less without them (« Sans les TIFF :
     /// 479 Mo, cela tient »).
     #[serde(default)]
     pub full_resolution_bytes: u64,
@@ -641,7 +849,7 @@ pub fn check_quotas(
     let to_send_bytes: u64 = sending.iter().map(|p| p.image.size).sum();
     let full_resolution_bytes: u64 = sending
         .iter()
-        .filter(|p| p.image.is_full_resolution_twin())
+        .filter(|p| p.image.is_optional_tiff())
         .map(|p| p.image.size)
         .sum();
     let mut findings = Vec::new();
@@ -667,7 +875,12 @@ pub fn check_quotas(
     let mut adding: BTreeMap<(String, Option<String>), u64> = BTreeMap::new();
     for plan in &sending {
         match &plan.decision {
-            Decision::Variant { capture_id } => {
+            // A variant that takes the place of another adds none.
+            Decision::Variant {
+                replaces_sha256: Some(_),
+                ..
+            } => {}
+            Decision::Variant { capture_id, .. } => {
                 *adding
                     .entry((plan.image.target_id.clone(), Some(capture_id.clone())))
                     .or_insert(0) += 1;
@@ -743,13 +956,16 @@ pub fn metadata_of(plan: &ImagePlan, session_id: &str) -> UploadMetadata {
         byte_size: plan.image.size,
         content_type: None,
         capture_id: match &plan.decision {
-            Decision::Variant { capture_id } | Decision::Progression { capture_id } => {
-                Some(capture_id.clone())
-            }
+            Decision::Variant { capture_id, .. }
+            | Decision::Replace { capture_id, .. }
+            | Decision::Progression { capture_id }
+            | Decision::File { capture_id } => Some(capture_id.clone()),
             _ => None,
         },
+        placement: placement_of(&plan.decision),
+        replaces_sha256: replaces_of(&plan.decision),
         source: Some(source_of(plan.image.kind).to_string()),
-        role: (plan.image.kind == ResultKind::Progression).then(|| PROGRESSION_ROLE.to_string()),
+        role: role_of(plan.image.kind),
         progression_frames: plan
             .image
             .frame_count
@@ -759,13 +975,87 @@ pub fn metadata_of(plan: &ImagePlan, session_id: &str) -> UploadMetadata {
         totals_by_filter: None,
         plan_render: None,
         metadata_source: None,
-        proposals: crate::metadata::Proposals::default(),
+        // The series decides the capture and whether a new one counts.
+        proposals: crate::metadata::Proposals {
+            series: plan
+                .image
+                .series
+                .clone()
+                .filter(|_| matches!(plan.image.kind, ResultKind::Stacked | ResultKind::Final)),
+            ..crate::metadata::Proposals::default()
+        },
+    }
+}
+
+/// The proposals an image leaves with: its series of poses with them (an
+/// image, never a progression image nor a file attached, which carry no
+/// series), and the acquisition lines of that series only.
+fn series_proposals(plan: &ImagePlan) -> Option<crate::metadata::Proposals> {
+    let series = plan
+        .image
+        .series
+        .as_ref()
+        .filter(|_| matches!(plan.image.kind, ResultKind::Stacked | ResultKind::Final));
+    match (plan.metadata.clone(), series) {
+        (metadata, None) => metadata,
+        (metadata, Some(series)) => Some(metadata.unwrap_or_default().for_series(Some(series))),
+    }
+}
+
+/// `placement: "replace"` for an image set that takes the place of its
+/// render online; the service's own rule otherwise.
+fn placement_of(decision: &Decision) -> Option<String> {
+    matches!(decision, Decision::Replace { .. })
+        .then(|| crate::image_adjust::PLACEMENT_REPLACE.to_string())
+}
+
+/// `replacesSha256` for a variant that takes the place of another.
+fn replaces_of(decision: &Decision) -> Option<String> {
+    match decision {
+        Decision::Variant {
+            replaces_sha256, ..
+        } => replaces_sha256.clone(),
+        _ => None,
+    }
+}
+
+/// « Garder l'ancien TIFF »: every variant that would take the place of
+/// another (`replaces_sha256`) is added beside it instead. The window calls it
+/// when the person keeps the TIFF online; the default is to replace.
+pub fn keep_beside(plans: &mut [ImagePlan]) {
+    for plan in plans.iter_mut() {
+        if let Decision::Variant {
+            replaces_sha256, ..
+        } = &mut plan.decision
+        {
+            *replaces_sha256 = None;
+        }
+    }
+}
+
+/// [`keep_beside`] for the plans `keep` picks (the window sends the SHA-256
+/// of the TIFF the person keeps online: « Conserver le TIFF existant »); the
+/// others still replace.
+pub fn keep_beside_where(plans: &mut [ImagePlan], keep: &dyn Fn(&ImagePlan) -> bool) {
+    for plan in plans.iter_mut().filter(|plan| keep(plan)) {
+        keep_beside(std::slice::from_mut(plan));
+    }
+}
+
+/// The role an upload of this kind declares: `progression` for a progression
+/// image, `linear` for the linear file; none for an image.
+#[must_use]
+pub fn role_of(kind: ResultKind) -> Option<String> {
+    match kind {
+        ResultKind::Progression => Some(PROGRESSION_ROLE.to_string()),
+        ResultKind::Linear => Some(LINEAR_ROLE.to_string()),
+        _ => None,
     }
 }
 
 fn source_of(kind: ResultKind) -> &'static str {
     match kind {
-        ResultKind::Stacked | ResultKind::Plan => "stacking",
+        ResultKind::Stacked | ResultKind::Plan | ResultKind::Linear => "stacking",
         ResultKind::Final | ResultKind::Progression => "astro-sync",
     }
 }
@@ -786,19 +1076,40 @@ pub fn check_with_service<T: PrecheckTransport>(
     for plan in plans.iter_mut() {
         if !matches!(
             plan.decision,
-            Decision::NewCapture | Decision::Variant { .. } | Decision::Progression { .. }
+            Decision::NewCapture
+                | Decision::Variant { .. }
+                | Decision::Replace { .. }
+                | Decision::Progression { .. }
+                | Decision::File { .. }
         ) {
             continue;
         }
-        match transport.check_upload(portal_url, token, &metadata_of(plan, session_id))? {
+        let metadata = metadata_of(plan, session_id);
+        let answer = match transport.check_upload(portal_url, token, &metadata) {
+            // A service that does not know `replacesSha256`: the image is
+            // added beside the variant, as before the field.
+            Err(GuiBridgeError::Refused { code, message })
+                if metadata.replaces_sha256.is_some()
+                    && crate::uploader::refuses_unknown_replacement(&code, &message) =>
+            {
+                keep_beside(std::slice::from_mut(plan));
+                transport.check_upload(portal_url, token, &metadata_of(plan, session_id))?
+            }
+            other => other?,
+        };
+        match answer {
             UploadCheck::Present {
-                capture_id,
-                image_id,
-                ..
+                capture_id, held, ..
             } => {
-                plan.decision = Decision::AlreadyOnline {
-                    capture_id,
-                    image_id,
+                plan.decision = match held {
+                    HeldAs::Image { image_id, .. } => Decision::AlreadyOnline {
+                        capture_id,
+                        image_id,
+                    },
+                    HeldAs::File { attachment_id } => Decision::FileOnline {
+                        capture_id,
+                        attachment_id,
+                    },
                 };
             }
             UploadCheck::Accepted { .. } => {}
@@ -826,15 +1137,19 @@ pub fn enqueue_checked(
     if !check.allowed {
         return Ok(Err(check.findings.clone()));
     }
-    let (history, mut images): (Vec<&ImagePlan>, Vec<&ImagePlan>) = plans
-        .iter()
-        .filter(|plan| plan.decision.sends())
+    let sending: Vec<&ImagePlan> = plans.iter().filter(|plan| plan.decision.sends()).collect();
+    let (files, sending): (Vec<&ImagePlan>, Vec<&ImagePlan>) = sending
+        .into_iter()
+        .partition(|plan| plan.decision.is_file());
+    let (history, mut images): (Vec<&ImagePlan>, Vec<&ImagePlan>) = sending
+        .into_iter()
         .partition(|plan| plan.decision.is_progression());
     // The capture goes before the renders that are its variants, wherever the
     // natural render stands in the list of files.
     images.sort_by_key(|plan| matches!(plan.decision, Decision::VariantOfNew { .. }));
     let files: Vec<ResultFile> = images
         .into_iter()
+        .chain(files)
         .chain(history)
         .map(|plan| ResultFile {
             path: plan.image.path.clone(),
@@ -845,23 +1160,27 @@ pub fn enqueue_checked(
                 session_id: Some(session_id.to_string()),
                 target_ids: vec![plan.image.target_id.clone()],
                 variant_of: match &plan.decision {
-                    Decision::Variant { capture_id } | Decision::Progression { capture_id } => {
-                        Some(capture_id.clone())
-                    }
+                    Decision::Variant { capture_id, .. }
+                    | Decision::Replace { capture_id, .. }
+                    | Decision::Progression { capture_id }
+                    | Decision::File { capture_id } => Some(capture_id.clone()),
                     Decision::VariantOfNew { first_sha256 }
-                    | Decision::ProgressionOfNew { first_sha256 } => Some(format!(
+                    | Decision::ProgressionOfNew { first_sha256 }
+                    | Decision::FileOfNew { first_sha256 } => Some(format!(
                         "{}{first_sha256}",
                         crate::uploader::VARIANT_OF_SHA256
                     )),
                     _ => None,
                 },
                 source: Some(source_of(plan.image.kind).to_string()),
-                metadata: plan.metadata.clone(),
+                metadata: series_proposals(plan),
                 frame_count: plan
                     .image
                     .frame_count
                     .filter(|_| plan.image.kind == ResultKind::Progression),
                 plan: None,
+                placement: placement_of(&plan.decision),
+                replaces_sha256: replaces_of(&plan.decision),
             },
         })
         .collect();

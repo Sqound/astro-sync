@@ -2,8 +2,44 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://astroportal.invalid/schemas/api/session-online.schema.json",
   "title": "Astro Portal API v1 what is online for a night",
-  "description": "GET /v1/sessions/{id}/online: what is already in the space for one night, read by Astro Sync's resume and its « Nuits » list before anything is sent, and later by the phone. Per target of the night (the night's targets first, in their order — its own or its plan's —, then the targets only a capture names, then the captures with no target under `targetId: null`): its captures, each with its source, stage, visibility, its main image and every image (the main one first, then the variants), each image with its SHA-256 (an identical image is never sent again) and whether a sky solution exists for it (the solution belongs to each image, sky-solution.schema.json). And for the night, the analysis in place (one per night, the next sending replaces it). By a device token of the space or the owner's web session; never gated by a capability; another space's night is 404 `session_not_found`, a caller without credentials 401.",
+  "description": "GET /v1/sessions/{id}/online: what is already in the space for one night, read by Astro Sync's resume and its « Nuits » list before anything is sent, and later by the phone. Per target of the night (the night's targets first, in their order — its own or its plan's —, then the targets only a capture names, then the captures with no target under `targetId: null`): its captures, each with its source, stage, visibility, its main image and every image (the main one first, then the variants), each image with its SHA-256 (an identical image is never sent again), and the files attached to the capture (`attachments`, the linear file) with theirs and whether a sky solution exists for it (the solution belongs to each image, sky-solution.schema.json). And for the night, the analysis in place (one per night, the next sending replaces it). By a device token of the space or the owner's web session; never gated by a capability; another space's night is 404 `session_not_found`, a caller without credentials 401.",
   "$defs": {
+    "attachment": {
+      "description": "One file attached to a capture: its role (`linear`), digest, size, the name it was sent with and its date.",
+      "type": "object",
+      "required": [
+        "id",
+        "role",
+        "sha256",
+        "byteSize",
+        "originalName",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": ["linear"]
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "originalName": {
+          "type": "string"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "additionalProperties": false
+    },
     "uuid": {
       "type": "string",
       "format": "uuid"
@@ -87,6 +123,16 @@
         "images"
       ],
       "properties": {
+        "series": { "$ref": "capture.schema.json#/$defs/series" },
+        "generatedTitle": {
+          "type": ["object", "null"],
+          "description": "The title the service generates for a capture of a series, by language (« M45 · 429 × 30 s · 3 h 34 »): the target's name, the frames, one frame's exposure and the total. Kept apart from the owner's title, which takes its place when written.",
+          "additionalProperties": { "type": "string", "maxLength": 200 }
+        },
+        "targetMain": {
+          "type": "boolean",
+          "description": "Present on every capture of a target that has a capture of a series: whether it is the main capture of the target. The main capture of a target is always listed first, so a reader that takes the first capture (Astro Sync 1.0.3 and before) adds its images to it."
+        },
         "id": {
           "$ref": "#/$defs/uuid"
         },
@@ -132,6 +178,13 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/image"
+          }
+        },
+        "attachments": {
+          "description": "The files attached to the capture (capture-attachment.schema.json: the linear file of « Sans traitement »), never among `images` nor counted in `imageCount`; each with its SHA-256, so that an identical file is never sent again. Absent on an answer written before the files existed; a reader assumes `[]`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attachment"
           }
         }
       },

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { BulkCreateOutcome, Proposal, SpaceStorage } from "./bridge.ts";
 import {
+  DUALBAND_WORDS,
+  bandOfFilter,
   bandOfFilters,
   folderToOpen,
   imageRoom,
@@ -128,4 +131,48 @@ test("the folder « Ouvrir le dossier de travail » opens is the target's, else 
   assert.equal(folderToOpen(folders, "ngc-7000", "/w"), "/w");
   assert.equal(folderToOpen({}, null, "/w"), "/w");
   assert.equal(folderToOpen({}, null, null), null);
+});
+
+test("the band of a filter is the core's decision: the import's step and the night's say the same (the smoke's OIII « Dual-band » then « Broadband »)", () => {
+  const core = readFileSync(
+    new URL(
+      "../../../crates/astro-sync-core/src/plan_image.rs",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const list = /pub const DUALBAND_WORDS: \[&str; \d+\] = \[([^\]]*)\]/.exec(
+    core,
+  );
+  assert.ok(list, "the core's DUALBAND_WORDS");
+  const words = [...list[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual([...DUALBAND_WORDS], words);
+  // The names of the core's own test, and a mono sensor's single lines.
+  for (const name of [
+    "L-eXtreme",
+    "L-Ultimate",
+    "ALP-T",
+    "NBZ",
+    "Dual band",
+    "Bibande",
+    "Ha/OIII",
+    "L-eNhance",
+  ])
+    assert.equal(bandOfFilter(name), "dualband", name);
+  for (const name of [
+    "UV/IR-cut",
+    "RGB",
+    "L-Pro",
+    "Lum",
+    "Ha",
+    "OIII",
+    "SII",
+    "Hα",
+  ])
+    assert.equal(bandOfFilter(name), "broadband", name);
+  // The fixture of the smoke: one OIII target.
+  assert.equal(bandOfFilters(["OIII"]), "broadband");
+  // The bands a person answers in the review are written as these names.
+  assert.equal(bandOfFilter("Dual-band"), "dualband");
+  assert.equal(bandOfFilter("Broadband"), "broadband");
 });

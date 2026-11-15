@@ -267,11 +267,13 @@ fn without_processing_alone_leaves_the_linear_tiff_only() {
         night.join("M31/stacked/M31_2026-10-07_linear.tif")
     );
     assert!(outcome.other_files.is_empty(), "no PNG");
-    // It leaves like a render: a stacked result whose `render` is `linear`.
+    // It is not a render of the gallery: a file attached to the capture,
+    // `render` `linear`, that leaves only with the TIFF.
     let candidates = stacked_candidates(&outcome, "t-m31");
     assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].kind, ResultKind::Stacked);
+    assert_eq!(candidates[0].kind, ResultKind::Linear);
     assert_eq!(candidates[0].render.as_deref(), Some("linear"));
+    assert!(candidates[0].is_optional_tiff());
 
     // A second stacking never replaces the first one's linear file.
     let again = plan_stack(&night, "M31", "2026-10-07", &[PipelineChoice::linear()]);
@@ -477,9 +479,10 @@ fn the_finish_goes_to_the_script_and_comes_back_on_the_images() {
         StackEvent::Output { colour: Colour::Enhanced, soft_stars: SoftStars::Light, file, .. } if *file == twin
     )));
     let candidates = stacked_candidates(&outcome, "t-m31");
+    // The finished image leaves; the bare twin stays on this computer.
     assert_eq!(
         candidates.iter().map(|c| c.retouch).collect::<Vec<_>>(),
-        [Retouch::default(), retouch]
+        [retouch]
     );
     assert_eq!(Retouch::default().suffix(), "");
     assert_eq!(retouch.suffix(), "_colour-20_stars-50");
@@ -625,9 +628,10 @@ fn the_contrast_of_presentation_goes_to_the_script_and_comes_back_on_the_images(
         StackEvent::Output { contrast: Contrast::Presentation, file, .. } if *file == curved
     )));
     let candidates = stacked_candidates(&outcome, "t-m31");
+    // The image with the curve leaves; the plain twin stays on this computer.
     assert_eq!(
         candidates.iter().map(|c| c.contrast).collect::<Vec<_>>(),
-        [Contrast::None, Contrast::Presentation]
+        [Contrast::Presentation]
     );
 }
 
@@ -2778,5 +2782,40 @@ fn the_frame_of_a_target_is_read_from_its_last_stackings() {
     assert_eq!(
         serde_json::to_value(&found).unwrap()["measure"]["notches"][0]["shareOfFrame"],
         serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn a_fallback_of_the_polished_engine_is_read_with_its_causes() {
+    let dir = TempDir::new("stacking-engine-notice");
+    let record = dir.path().join("M31_stacking.json");
+    fs::write(
+        &record,
+        r#"{"recipe":{"render":{"polished":{"engine":"siril","engineRequested":"graxpert-ai",
+        "fallbackReason":"GraXpert failed: GraXpert is installed without its AI library (onnxruntime): install it"}}}}"#,
+    )
+    .unwrap();
+    let plain = dir.path().join("M42_stacking.json");
+    fs::write(
+        &plain,
+        r#"{"recipe":{"render":{"polished":{"engine":"graxpert-ai"}}}}"#,
+    )
+    .unwrap();
+    let notices = engine_notices(&[record, plain, dir.path().join("a.png")], Some("Ha"));
+    assert_eq!(
+        notices,
+        vec![EngineNotice {
+            family: Some("Ha".to_string()),
+            used: "siril".to_string(),
+            causes: vec![EngineCause::GraxpertNoLibrary],
+        }]
+    );
+    assert_eq!(
+        engine_causes("GraXpert not given; Siril failed: boom"),
+        vec![EngineCause::GraxpertMissing, EngineCause::SirilFailed]
+    );
+    assert_eq!(
+        engine_causes("GraXpert failed: GraXpert stopped with status 1"),
+        vec![EngineCause::GraxpertFailed]
     );
 }

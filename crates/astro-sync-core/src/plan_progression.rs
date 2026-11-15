@@ -290,6 +290,8 @@ pub fn plan_progression_results(
                 metadata: None,
                 frame_count: Some(step.frames),
                 plan: None,
+                placement: None,
+                replaces_sha256: None,
             },
         })
         .collect()

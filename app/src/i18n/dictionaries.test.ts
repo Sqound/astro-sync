@@ -398,3 +398,13 @@ test("what the command line says in each language (tables, states, waits) is in 
     }
   }
 });
+
+test("the menu's section titles read as titles in every language, never a single character", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const say = createTranslator(locale);
+    for (const key of ["nav.section.nights", "nav.section.app"]) {
+      const title = say(key);
+      assert.ok([...title].length >= 2, `${locale} ${key}: « ${title} »`);
+    }
+  }
+});

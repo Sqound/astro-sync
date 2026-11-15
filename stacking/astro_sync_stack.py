@@ -22,7 +22,8 @@ The recipe (see README.md):
    turns progressively (alt-azimuth mount: the common area of such a night is
    empty).  The transform is applied with Lanczos4, and the frames
    are stacked with a winsorised 3-sigma rejection, additive-with-scale
-   normalisation and wFWHM weighting into a 32-bit linear master.  A frame
+   normalisation and wFWHM weighting into a 32-bit linear master; ``frame_weights.py`` says how many frames
+   add more noise than they take away (dawn, Moon, cloud).  A frame
    Siril cannot match is left out and named in the provenance.  When the field
    turns, ``night_framing.py`` measures the frames on offer from the transforms
    (five notches, from the area every light covers to the whole field) and
@@ -32,10 +33,11 @@ The recipe (see README.md):
 4. ``renders.py`` renders each chosen pipeline (``--pipeline <id>``, repeatable,
    default ``raw``): ``raw`` (the sensor's colours), ``dualband-correction``
    (the colours of a dual-band capture brought back towards natural tones),
-   ``polished`` (the natural render pushed further, its background and
+   ``polished`` (a dark, neutral sky and a stronger nebula, its background and
    denoising by GraXpert when it is found: ``--graxpert``, or by Siril alone with
-   ``--polished-engine siril``, which is also the fallback; the SCNR is skipped
-   on a dual-band capture, see ``--capture-filter``) and ``hoo`` (the HOO palette
+   ``--polished-engine siril``, which is also the fallback; the green of the
+   nebula is taken back only on a capture known to be broadband, see
+   ``--capture-filter`` and ``capture_band``) and ``hoo`` (the HOO palette
    of a dual-band capture), each as a 16-bit TIFF plus an 8-bit PNG.  The pipelines are described by
    ``pipelines/<id>/pipeline.json`` (format: ``pipelines/SCHEMA.md``), read from
    the shipped folder and from every ``--pipelines-dir``.  A pipeline may bring
@@ -116,6 +118,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import device_master
+import frame_weights
 import night_framing
 import overscan
 import pipeline_defs
@@ -178,6 +181,8 @@ class Reporter:
             print(f"[{fields['index']}/{fields['total']}] {fields['step']}", flush=True)
         elif event == "error":
             print(f"error ({fields['code']}): {fields['message']}", file=sys.stderr, flush=True)
+        elif event == "weighting":
+            print(frame_weights.sentence(fields), flush=True)
         elif event == "registration":
             rotation = fields["fieldRotationDegrees"]
             print(f"registration: {fields['registered']} of {fields['frames']} frames aligned, "
@@ -676,6 +681,8 @@ def siril_scripts(plan: Plan, framing: str = registration_framing.COMMON_AREA,
     close("alignment")
     lines += [
         "cd process",
+        # Weighted by the stars (wFWHM): re-stacking fourteen real nights, no other weighting of Siril was
+        # better on all of them (``frame_weights.py``, which says what each frame brings).
         f"stack r_{prefix} rej w 3 3 -norm=addscale -weight=wfwhm"
         + (" -rgb_equal" if plan.colour else "")
         + (" -output_norm" if output_norm else "")
@@ -817,8 +824,8 @@ def write_output(report: Reporter, pipeline: str, path: Path, contrast: str = "n
 
 def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: Path | None,
                     graxpert: Path | None, render_log, notes: dict[str, object],
-                    siril: Path | None = None, dualband: bool = False,
-                    natural_layers=None, imposed: dict[str, object] | None = None,
+                    siril: Path | None = None, band: str = "unknown",
+                    imposed: dict[str, object] | None = None,
                     measured: dict[str, object] | None = None):
     """The nebula and star layers of one preparation (``renders.PREPARATIONS``): ``native`` or ``polished``.
 
@@ -827,42 +834,30 @@ def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: 
     GraXpert is missing or fails, Siril does it; when nothing can run, the render
     is made with the polynomial background and no denoising -- and ``notes`` says
     which engine did the work and why, rather than losing the whole stacking.
-    ``dualband``: the SCNR is skipped (the green of the OIII is signal).
-
-    Once StarNet2 has split the stars, the polished sky is brought to the level
-    of the natural render of the same master: ``natural_layers``, the
-    natural nebula and star layers when they were made anyway, or made here
-    for the level alone.
+    Once StarNet2 has split the stars, ``renders.polished_layers`` makes the
+    render's own layers; ``band`` (``capture_band``) decides its colour: only a
+    capture known to be broadband loses the green of its nebula.
 
     The preparation shows the master with a display -- a black point per channel and a stretch scale, and for
-    the polished one the sky levels its matches aim at (``sky``: ``displayed`` and ``final``, ``finalWithStars``)
-    -- that it measures, unless ``imposed`` (``{"black": [r, g, b], "scale": s, ...}``) gives it; ``measured``
-    (when given) receives the one used.
+    the polished one the curve of its render (``curve``: ``black``, ``top``, ``midtones``, ``gains``) -- that it
+    measures, unless ``imposed`` (``{"black": [r, g, b], "scale": s, ...}``) gives it; ``measured`` (when given)
+    receives the one used.
     """
     import renders
 
     work = args.work / "render"
     if kind == "polished":
-        native, done = renders.prepare_polished(
+        imposed = imposed or {}
+        linear, native, done = renders.prepare_polished(
             master, graxpert, work, f"{args.name}_polished", render_log,
             args.gradient_degree, args.black_percentile, args.deconv_fwhm,
-            getattr(args, "polished_engine", renders.DEFAULT_POLISHED_ENGINE), siril, dualband,
+            getattr(args, "polished_engine", renders.DEFAULT_POLISHED_ENGINE), siril,
             imposed, measured,
         )
         notes["polished"] = done
         nebula, stars = renders.star_layer(native, work, f"{args.name}_polished", starnet, render_log)
-        if starnet is not None and stars.any():
-            # The level of the natural render's sky, stars included: the master's own, unless the display imposes it.
-            target = (imposed or {}).get("finalWithStars")
-            if target is None:
-                if natural_layers is None:
-                    natural_layers = prepared_layers(args, "native", master, starnet, graxpert, render_log, {})
-                target = renders.natural_final_level(*natural_layers)
-            if measured is not None:
-                measured["finalWithStars"] = float(target)
-            nebula, shift = renders.match_final_sky_level(nebula, stars, target)
-            done["skyLevelFinalShift"] = round(shift, 6)
-        return nebula, stars
+        scale = float(imposed["scale"]) if imposed.get("scale") is not None else renders.stretch_scale(linear)
+        return renders.polished_layers(linear, native, nebula, scale, band, imposed=imposed, measured=measured, done=done)
     imposed = imposed or {}
     native = renders.prepare_native(
         master, args.gradient_degree, args.black_percentile, args.deconv_fwhm,
@@ -883,27 +878,73 @@ def is_dualband_filter(name: str | None) -> bool:
     return any(word in letters for word in DUALBAND_WORDS)
 
 
-def capture_is_dualband(args: argparse.Namespace, plan: Plan) -> bool:
-    """Whether the lights went through a dual-band filter: the green of such a capture is OIII, signal.
+# Words of a filter that is broadband for certain (whole words of the name, lower case, split at every other
+# character; ``session_detection/band.rs``'s strong broadband words).  "RGB" or "OSC" alone say how the camera
+# reads, not that nothing narrowed the light: they are no proof.
+BROADBAND_WORDS = (
+    "broadband", "broad_band", "wideband", "wide_band", "largebande", "large_bande", "uvir", "uv_ir", "ircut",
+    "ir_cut", "uv_ir_cut", "cls", "lps", "none", "nofilter", "no_filter", "clear", "lum", "luminance",
+)
+# Whole names of a dual-band filter that ``DUALBAND_WORDS`` cannot find inside a longer word: the Seestar's own
+# light-pollution filter, which its frames name ``LP``, is a dual-band one (Hα and OIII).
+DUALBAND_NAMES = ("lp",)
 
-    Three ways to know, any one is enough: ``--capture-filter`` names the
-    filter; the lights' ``FILTER`` keyword names one; a pipeline of the dual-band
-    filter (``dualband-correction``, ``hoo``) was chosen, which says what the
-    person shot.
+
+def _words(name: str) -> str:
+    """The name lower-cased, its words joined by ``_`` and framed by ``_`` (``"UV/IR cut"`` -> ``"_uv_ir_cut_"``)."""
+    out = "_"
+    for c in name.lower():
+        out += c if c.isascii() and c.isalnum() else ("" if out.endswith("_") else "_")
+    return out if out.endswith("_") else out + "_"
+
+
+def filter_band(name: str | None) -> str | None:
+    """``"dual-band"`` or ``"broadband"`` when a filter's name says it for certain; ``None`` when it does not (or both)."""
+    if not name or not name.strip():
+        return None
+    words = _words(name)
+    dual = is_dualband_filter(name) or words.strip("_") in DUALBAND_NAMES
+    broad = any(f"_{word}_" in words for word in BROADBAND_WORDS)
+    if dual != broad:
+        return "dual-band" if dual else "broadband"
+    return None
+
+
+def capture_band(args: argparse.Namespace, plan: Plan) -> tuple[str, str]:
+    """What is known of the band of the lights: ``(band, where it was read)``, ``band`` one of ``renders.CAPTURE_BANDS``.
+
+    The names of the filter come from ``--capture-filter`` (the target folder's record of its filter) and from
+    the ``FILTER`` keyword of the first light (of the master, for ``--from-master``; Astro Sync stamps the
+    record's filter on the masters it keeps).  The capture is:
+
+    - ``dual-band`` when a pipeline of the dual-band filter (``dualband-correction``, ``hoo``) was chosen, or a
+      name is a dual-band one: its green is OIII, signal;
+    - ``broadband`` when at least one name is known and every one is a broadband filter for certain;
+    - ``unknown`` otherwise (no name, a name that says neither, or names that disagree): in doubt, the green
+      of the nebula is kept.
     """
-    if is_dualband_filter(getattr(args, "capture_filter", None)):
-        return True
     if any(pipeline.filter == "dual-band" for pipeline in plan.pipelines):
-        return True
+        return "dual-band", "a dual-band pipeline was chosen"
+    names: list[tuple[str, str]] = []
+    if getattr(args, "capture_filter", None):
+        names.append(("the target's filter", str(args.capture_filter)))
     lights = plan.frames.get("lights") or ([plan.from_master] if plan.from_master else [])
-    if not lights:
-        return False
-    try:
-        from astropy.io import fits
+    if lights:
+        try:
+            from astropy.io import fits
 
-        return is_dualband_filter(str(fits.getheader(lights[0], memmap=False).get("FILTER", "")))
-    except (OSError, ValueError):
-        return False
+            keyword = str(fits.getheader(lights[0], memmap=False).get("FILTER", "") or "").strip()
+            if keyword:
+                names.append(("the FILTER keyword", keyword))
+        except (OSError, ValueError):
+            pass
+    bands = [filter_band(name) for _, name in names]
+    said = "; ".join(f"{where}: {name}" for where, name in names) or "no filter named"
+    if "dual-band" in bands:
+        return "dual-band", said
+    if bands and all(band == "broadband" for band in bands):
+        return "broadband", said
+    return "unknown", said
 
 
 def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runner: Runner,
@@ -921,12 +962,11 @@ def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runne
     import renders
 
     notes = {} if notes is None else notes
-    dualband = capture_is_dualband(args, plan)
+    band, band_source = capture_band(args, plan)
     kinds = list(dict.fromkeys(
         "native" if pipeline.script_path is not None else renders.preparation_of(pipeline.render_function)
         for pipeline in plan.pipelines
     ))
-    kinds.sort(key=lambda kind: kind != "native")  # the natural layers first: the polished sky is matched to them
     layers = {}
     # Keep stdout for the JSON events: the renderer's prints and StarNet2's
     # and GraXpert's progress go to render.log in the work folder.
@@ -935,8 +975,7 @@ def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runne
             # The display (imposed and recorded) is the image's own: the one preparation its pipeline uses.
             shown = len(kinds) == 1
             for kind in kinds:
-                layers[kind] = prepared_layers(args, kind, master, starnet, graxpert, render_log, notes, siril, dualband,
-                                               layers.get("native"),
+                layers[kind] = prepared_layers(args, kind, master, starnet, graxpert, render_log, notes, siril, band,
                                                getattr(args, "display", None) if shown else None,
                                                getattr(args, "measured_display", None) if shown else None)
                 if runner.cancelled:
@@ -947,6 +986,8 @@ def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runne
         raise StackingError("render_failed", str(error), EXIT_TOOL_FAILED) from error
     if runner.cancelled:
         raise Cancelled()
+    if isinstance(notes.get("polished"), dict):
+        notes["polished"]["bandFrom"] = band_source
     out.mkdir(parents=True, exist_ok=True)
     outputs = []
     for pipeline in plan.pipelines:
@@ -1214,6 +1255,12 @@ def stack_poses(args: argparse.Namespace, plan: Plan, report: Reporter, runner: 
                 report.emit("note", code="normalisation_skipped", lowestPixel=normalisation["lowestPixel"],
                             message=f"a calibrated frame goes down to {lowest:.4f}; the stack is not rescaled to [0, 1], "
                                     "which would lift the sky of the master")
+        if step == "integration":
+            # What the frames brought, read back from the sequence Siril stacked.
+            weighting = frame_weights.read_weighting(work / "process" / f"r_{prefix}_.seq")
+            normalisation["weighting"] = weighting
+            if weighting:
+                report.emit("weighting", **weighting)
         if step == "registration":
             sequence = work / "process" / f"{prefix}_.seq"
             registration = measured_registration(sequence, len(names))
@@ -1411,7 +1458,8 @@ def execute(args: argparse.Namespace, plan: Plan, report: Reporter, runner: Runn
                 "deconvFwhm": args.deconv_fwhm, "starSeparation": starnet is not None,
                 # "Polished render", under "polished": {"engine": "graxpert-ai" | "siril" | "polynomial"
                 # (+ "engineRequested", "fallbackReason" when it is not the one chosen), "background", "denoise",
-                # "scnr" (amount, or null on a dual-band capture), "deconvolutionFwhm", "skyLevelShift"},
+                # "deconvolutionFwhm", "band" ("broadband" | "dual-band" | "unknown") and "bandFrom" (where it was
+                # read), "green" (the SCNR on the nebula of a broadband capture, else null), "starGains"},
                 # present only when that pipeline was rendered.
                 **notes},
         },
@@ -1473,8 +1521,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                              "(default; Siril takes over when GraXpert is missing or fails) or Siril's own subsky -rbf "
                              "and denoise, with no model")
     parser.add_argument("--capture-filter", metavar="NAME",
-                        help="the filter of the lights, when their FITS header does not name it: a dual-band one "
-                             "keeps the green of the OIII (no SCNR in the 'Polished render')")
+                        help="the filter of the lights, when their FITS header does not name it: only a capture "
+                             "known to be broadband loses the green of its nebula in the 'Polished render' (a "
+                             "dual-band one keeps the green of the OIII, an unknown one keeps it too)")
     parser.add_argument("--contrast", type=render_finish.contrast_arg, default="none", metavar="none|presentation|strong|GAIN",
                         help="also write each image with an S-curve on the luminance around the sky level, as "
                              "<name>_<id>_presentation (gain 2.0) or _strong (gain 3.6), or with any gain from 0 to "

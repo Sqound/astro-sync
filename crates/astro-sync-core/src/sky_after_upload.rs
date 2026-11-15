@@ -136,10 +136,11 @@ pub struct UploadedImage {
 }
 
 /// Whether the annotations are made for a result of this kind: a progression
-/// image is the history of a capture, not one of its images.
+/// image is the history of a capture, not one of its images, and the linear
+/// file is a file to download, not an image (the service solves nothing for it).
 #[must_use]
 pub fn applies_to(kind: ResultKind) -> bool {
-    kind != ResultKind::Progression
+    !matches!(kind, ResultKind::Progression | ResultKind::Linear)
 }
 
 /// Solves the image just sent and sends its solution, once. Every state it

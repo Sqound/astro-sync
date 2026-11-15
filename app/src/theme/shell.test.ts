@@ -106,3 +106,30 @@ test("the snackbars sit at the bottom centre, a thin edge of their tone, never a
     );
   }
 });
+
+test("the window and the page are dark from their creation, never a white flash", async () => {
+  const { tokens } = await import("./tokens.ts");
+  const background = tokens.colors.pageBackground;
+  const conf = JSON.parse(
+    await readFile(
+      new URL("../../src-tauri/tauri.conf.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { app: { windows: { backgroundColor?: string }[] } };
+  // The window and its webview are painted before any page is loaded.
+  assert.equal(conf.app.windows[0].backgroundColor, background);
+  // The page itself, before the first script and the theme's variables.
+  const html = await readFile(
+    new URL("../../index.html", import.meta.url),
+    "utf8",
+  );
+  assert.match(html, /<meta name="color-scheme" content="dark" \/>/);
+  assert.ok(
+    html.includes(`<html lang="en" style="background-color: ${background}">`),
+    "the root element carries the page background",
+  );
+  assert.ok(
+    html.includes(`background-color: ${background};`),
+    "the inline style of html and body carries the page background",
+  );
+});

@@ -1,0 +1,327 @@
+/* « Régler l'image » (variant B): the preview over the whole width, the five
+   settings in a band under it, three per line. */
+.as-adjust {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+}
+
+.as-adjust__zone {
+  gap: var(--as-space-md);
+}
+
+.as-adjust__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--as-space-sm);
+}
+
+.as-adjust__preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  overflow: hidden;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-page-background);
+}
+
+.as-adjust__canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.as-adjust__pill {
+  position: absolute;
+  top: var(--as-space-sm);
+  left: var(--as-space-sm);
+  padding: 0.125rem var(--as-space-sm);
+  border-radius: var(--as-radius-sm);
+  background-color: var(--as-color-modal-surface);
+  color: var(--as-color-primary-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* The smoothing is computed (≈ 1 s): a veil and the star of the application. */
+.as-adjust__veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: color-mix(
+    in srgb,
+    var(--as-color-page-background) 45%,
+    transparent
+  );
+}
+
+.as-adjust__veil .as-waiting {
+  padding: var(--as-space-xs) var(--as-space-md);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-modal-surface);
+}
+
+.as-adjust__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-md);
+  padding: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+}
+
+.as-adjust__panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+.as-adjust__panel-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.as-adjust__sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--as-space-md) var(--as-space-lg);
+}
+
+.as-adjust__slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--as-space-xs);
+  min-width: 0;
+}
+
+.as-adjust__slider-head {
+  display: flex;
+  align-items: center;
+  gap: var(--as-space-sm);
+  min-height: 1.5rem;
+}
+
+.as-adjust__slider-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.as-adjust__track {
+  position: relative;
+}
+
+.as-adjust__range {
+  display: block;
+  max-width: none;
+}
+
+/* The render's value on the track. */
+.as-adjust__mark {
+  position: absolute;
+  top: calc(50% + 0.5rem);
+  width: 2px;
+  height: 0.375rem;
+  margin-left: -1px;
+  border-radius: 1px;
+  background-color: var(--as-color-muted-text);
+  pointer-events: none;
+}
+
+.as-adjust__value {
+  color: var(--as-color-primary-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.as-adjust__help,
+.as-adjust__note {
+  margin: 0;
+}
+
+.as-adjust__note {
+  color: var(--as-color-warning);
+}
+
+/* « Images à envoyer »: the line of an image set and its two actions. */
+.as-treat__adjusted {
+  color: var(--as-color-primary-text);
+}
+
+.as-treat__adjust-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm);
+}
+
+/* The night's « Récapitulatif »: « Régler l'image » on the line of a PNG
+   render, before its size. */
+.as-summary-rows__adjust {
+  margin-left: auto;
+  flex: none;
+}
+
+/* « Conserver le TIFF existant »: the box on the line of the TIFF that would
+   take the place of the one online, before its size. */
+.as-summary-rows__keep {
+  margin-left: auto;
+  flex: none;
+}
+
+/* The words of the box, as those of « Joindre aussi les TIFF », not in the
+   accent of the format of the line. */
+.as-summary-rows li .as-summary-rows__keep strong {
+  color: var(--as-color-primary-text);
+}
+
+.as-summary-rows__adjust.as-button {
+  padding-block: 0;
+  min-height: 0;
+}
+
+/* « Valeurs du rendu », « Modifiés », « Modifié »: small labels.
+*/
+.as-adjust__panel .as-badge {
+  padding: 0.0625rem var(--as-space-sm);
+  font-size: 0.75rem;
+}
+
+/* Saved settings (P1), in the head of « Réglages »: « Appliquer un réglage
+   enregistré » (tertiary) and « Enregistrer ce réglage » (link); the field of
+   the name and the sentence of an empty list under the head, the list over
+   the sliders. */
+.as-adjust__panel {
+  position: relative;
+}
+
+.as-adjust__panel-head {
+  position: relative;
+  flex-wrap: wrap;
+}
+
+/* The tertiary above the link, as the planche draws them. */
+.as-adjust__saved-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--as-space-xs);
+}
+
+.as-adjust__applied {
+  color: var(--as-color-primary-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.as-adjust__below {
+  order: 10;
+  flex-basis: 100%;
+}
+
+.as-adjust__saved-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-adjust__saved-empty p {
+  margin: 0;
+}
+
+.as-adjust__saved-box,
+.as-adjust__saved-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  padding: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  background-color: var(--as-color-modal-surface);
+}
+
+.as-adjust__saved-box p,
+.as-adjust__saved-list p {
+  margin: 0;
+}
+
+.as-adjust__saved-list {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + var(--as-space-xs));
+  right: 0;
+  width: min(36rem, 100%);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 45%);
+}
+
+.as-adjust__saved-label,
+.as-adjust__saved-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.as-adjust__saved-items {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.as-adjust__saved-item + .as-adjust__saved-item {
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-adjust__saved-item {
+  padding-block: var(--as-space-sm);
+}
+
+.as-adjust__saved-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-adjust__saved-text {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.as-adjust__saved-name.as-button {
+  padding: 0;
+  min-height: 0;
+  font-size: 0.9375rem;
+  text-align: left;
+}
+
+.as-adjust__saved-ask {
+  font-size: 0.875rem;
+}
+
+.as-adjust__saved-field {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.as-adjust__saved-error {
+  color: var(--as-color-warning);
+}
+
+.as-adjust__saved-foot {
+  padding-top: var(--as-space-xs);
+}

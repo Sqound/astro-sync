@@ -50,10 +50,17 @@ def write_stack(path: Path, sky: "np.ndarray", poses: int = 430, creator: str = 
 
 
 def stretched_sky() -> "np.ndarray":
-    """An image made to be looked at: its sky at 5 % of the range, black and white points in place."""
-    sky = star_field(150, 1.6, 1.6).copy()  # the sky sits at 0.05
-    sky[0, 0], sky[1, 1] = 0.0, 1.0
-    return sky
+    """An image made to be looked at, as a screen stretch makes it: the black clipped 2.8 noise widths under the
+    sky, then a midtones transfer that brings the sky to 5 % of the range, the white point in place.  (A sky lifted
+    by a constant is a pedestal, not a stretch: a linear master keeps it.)"""
+    field = star_field(150, 1.6, 1.6).astype(np.float64)  # the sky at 0.05, its noise 0.002
+    black = float(np.median(field)) - 2.8 * 0.002
+    clipped = np.clip((field - black) / (field.max() - black), 0, 1)
+    median, target = float(np.median(clipped)), 0.05
+    balance = (median * (target - 1)) / (2 * target * median - target - median)
+    sky = (balance - 1) * clipped / ((2 * balance - 1) * clipped - balance)
+    sky[1, 1] = 1.0
+    return sky.astype(np.float32)
 
 
 def run(argv: list[str]) -> tuple[int, list[dict], str]:

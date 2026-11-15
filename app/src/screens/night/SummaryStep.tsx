@@ -9,7 +9,9 @@ import { Notice } from "../../components/Notice";
 import { PaymentFailedNotice } from "../../components/PaymentFailedNotice";
 import type { DraftStore } from "../../hooks/useIncidents";
 import { useNow } from "../../hooks/useNow";
+import { useSnackbar } from "../../components/Snackbar";
 import { useI18n } from "../../i18n";
+import { engineNoticeText } from "../../lib/engineNotice";
 import {
   nightEnqueue,
   nightIntegrationsSend,
@@ -92,10 +94,19 @@ import {
   itemStateText,
   overallText,
   sendingItems,
+  isSeriesUnticked,
   sentLines,
+  summarySeries,
   summaryView,
   type SendingItem,
 } from "../../lib/wizardSummary";
+import {
+  defaultUntickedSeries,
+  seriesBanner,
+  seriesBoxKey,
+  seriesRowText,
+  type TargetSeries,
+} from "../../lib/seriesOfPoses";
 import {
   beginProgress,
   finishProgress,
@@ -111,10 +122,14 @@ import {
   type TreatmentProgress,
 } from "../../lib/treatmentProgress";
 import type { Phase } from "../../lib/wizardSteps";
-import { formatSize, pluralText } from "../../lib/written";
+import { formatSpaceSize, pluralText } from "../../lib/written";
 import type { ScreenId } from "../../lib/menu";
 import { frameToRun } from "../../lib/stackFrame";
-import { helpTextClassName, progressClassName } from "../../theme";
+import {
+  buttonClassName,
+  helpTextClassName,
+  progressClassName,
+} from "../../theme";
 import { nightPage, type NightContext } from "./NightWizard";
 import { IncidentsPanel } from "./IncidentsPanel";
 import { NIGHT_APPLY_DEPS, failureText } from "./applyDeps";
@@ -167,7 +182,10 @@ export function SummaryStep({
   onBack,
   onNights,
   onOpen,
+  onAdjust,
 }: {
+  /** « Régler l'image » on a PNG render of the summary. */
+  onAdjust?: (render: { path: string; target: string; render: string }) => void;
   context: NightContext;
   view: NightView | null;
   input: DetectionInput;
@@ -191,7 +209,22 @@ export function SummaryStep({
   onOpen: (screen: ScreenId) => void;
 }) {
   const { t, locale } = useI18n();
+  const { notify } = useSnackbar();
   const [precheck, setPrecheck] = useState<NightPrecheck | null>(null);
+  // One box per series of poses of a target that has several (the
+  // « Récapitulatif » sends whole series): the minor ones start unticked.
+  const [untickedSeries, setUntickedSeries] = useState<Set<string> | null>(
+    null,
+  );
+  const series = useMemo(
+    () =>
+      precheck ? summarySeries(precheck) : new Map<string, TargetSeries[]>(),
+    [precheck],
+  );
+  useEffect(() => {
+    if (precheck && untickedSeries === null)
+      setUntickedSeries(defaultUntickedSeries(summarySeries(precheck)));
+  }, [precheck, untickedSeries]);
   // « Joindre aussi les TIFF »: the renders leave as PNG unless the person
   // joins their TIFF to this sending. It starts from « Envoi des rendus » of
   // Réglages (`null` until read) and never changes it.
@@ -204,6 +237,18 @@ export function SummaryStep({
     return () => {
       gone = true;
     };
+  }, []);
+  // « Conserver le TIFF existant »: the TIFF (their SHA-256) that stay beside
+  // the TIFF online instead of replacing it. Per image, unticked on every
+  // opening of the summary, kept from nothing.
+  const [keepTiffs, setKeepTiffs] = useState<ReadonlySet<string>>(new Set());
+  const toggleKeepTiff = useCallback((sha256: string, kept: boolean) => {
+    setKeepTiffs((held) => {
+      const next = new Set(held);
+      if (kept) next.add(sha256);
+      else next.delete(sha256);
+      return next;
+    });
   }, []);
   const [error, setError] = useState<string | null>(null);
   // What « Envoyer » adds to the session before it sends: the incidents
@@ -482,8 +527,8 @@ export function SummaryStep({
                       ? "failed"
                       : "waiting",
               detail: t("wizard.sending.overall", {
-                sent: formatSize(t, entry.offset, locale),
-                total: formatSize(t, entry.size, locale),
+                sent: formatSpaceSize(t, entry.offset, locale),
+                total: formatSpaceSize(t, entry.size, locale),
               }),
               progress: entry.size > 0 ? entry.offset / entry.size : null,
             });
@@ -601,6 +646,14 @@ export function SummaryStep({
           frame: frameToRun(choices.targetFrames, targetId),
         });
         extra.push(...run.candidates);
+        // A render made by another engine than the one asked for says why.
+        for (const notice of run.outcome?.engineNotices ?? []) {
+          notify({
+            tone: "warning",
+            text: engineNoticeText(t, notice),
+            mode: "persistent",
+          });
+        }
         done.push(current);
       }
     } catch (caught) {
@@ -821,9 +874,13 @@ export function SummaryStep({
             locale,
             undefined,
             includeTiff ?? false,
+            [...keepTiffs],
           ),
         keep: (plan) =>
-          plan.image.kind !== "final" || treatments.has("final_image"),
+          (plan.image.kind !== "final" || treatments.has("final_image")) &&
+          // A series left unticked stays on this computer, its linear file
+          // with it.
+          !isSeriesUnticked(plan, untickedSeries ?? undefined),
         enqueue: (plans, quota) =>
           nightEnqueue(context.sessionId, plans, quota),
         upload: () =>
@@ -908,6 +965,8 @@ export function SummaryStep({
         failed,
         multiNight: multiNight.ok,
       });
+      // Nothing of the choice goes to the next sending.
+      setKeepTiffs(new Set());
       onPhase("sent");
     } catch (caught) {
       // The person stopped the stacking: nothing failed, and nothing was
@@ -1080,7 +1139,11 @@ export function SummaryStep({
                   : null,
                 pluralText(t, locale, "wizard.sent.targets", targets),
                 t("wizard.sent.bytes", {
-                  size: formatSize(t, precheck?.quota.toSendBytes ?? 0, locale),
+                  size: formatSpaceSize(
+                    t,
+                    precheck?.quota.toSendBytes ?? 0,
+                    locale,
+                  ),
                 }),
               ]
                 .filter(Boolean)
@@ -1180,6 +1243,8 @@ export function SummaryStep({
       );
     },
     includeTiff: includeTiff ?? false,
+    untickedSeries: untickedSeries ?? undefined,
+    keepTiffs,
     // « la session du 7 oct. »: the sentence form, the evening of the night.
     date: context.session
       ? nightSentence(
@@ -1254,6 +1319,61 @@ export function SummaryStep({
       <Notice tone="warning">
         {stopped ? t("wizard.sending.stackingStopped") : null}
       </Notice>
+      {/* A target with several series of poses: why, which one gives the
+          main image, and one box per series. */}
+      {[...series.entries()].map(([targetId, list]) => {
+        const target =
+          detection?.targets.find((item) => item.targetId === targetId)
+            ?.designation ?? targetId;
+        const banner = seriesBanner(t, locale, target, list);
+        return (
+          <section key={`series:${targetId}`} className="as-summary-series">
+            <p>
+              <strong>{banner.title}</strong>
+            </p>
+            <p className={helpTextClassName}>{banner.body}</p>
+            <p className={helpTextClassName}>{banner.main}</p>
+            <ul className="as-summary-rows">
+              {list.map((entry) => {
+                const box = seriesBoxKey(targetId, entry.key);
+                const on = !untickedSeries?.has(box);
+                return (
+                  <li key={box}>
+                    <label className="as-summary-series__box">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() =>
+                          setUntickedSeries((before) => {
+                            const next = new Set(before ?? []);
+                            if (on) next.add(box);
+                            else next.delete(box);
+                            return next;
+                          })
+                        }
+                      />
+                      <span>
+                        <strong>
+                          {seriesRowText(t, locale, entry.series)}
+                        </strong>
+                        {!on && entry.minor && (
+                          <span className={helpTextClassName}>
+                            {" "}
+                            {t("series.minorSummary")}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                    <span className="as-summary-rows__value">
+                      {entry.main ? t("series.mainBadge") : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
       {groups.map((group) => (
         <section key={group.key} className="as-summary-group">
           <h3 className="as-summary-group__title">
@@ -1275,6 +1395,7 @@ export function SummaryStep({
             {group.rows.map((row, index) => (
               <li
                 key={index}
+                id={row.id}
                 className={
                   [
                     row.over && "is-over",
@@ -1289,6 +1410,31 @@ export function SummaryStep({
                 <span>
                   <Segs segs={row.segs} />
                 </span>
+                {row.adjust && onAdjust && (
+                  <button
+                    type="button"
+                    className={`${buttonClassName("link")} as-summary-rows__adjust`}
+                    onClick={() => onAdjust(row.adjust!)}
+                  >
+                    {t("adjust.open")}
+                  </button>
+                )}
+                {row.keepTiff && (
+                  <label className="as-tidy__option as-summary-rows__keep">
+                    <input
+                      type="checkbox"
+                      checked={row.keepTiff.checked}
+                      aria-describedby={row.keepTiff.noteId}
+                      onChange={(event) =>
+                        toggleKeepTiff(
+                          row.keepTiff!.sha256,
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    <strong>{t("wizard.summary.keepTiffBox")}</strong>
+                  </label>
+                )}
                 <span className="as-summary-rows__value">{row.value}</span>
               </li>
             ))}

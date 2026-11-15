@@ -75,7 +75,19 @@ fn a_dual_band_filter_is_told_by_its_name() {
     ] {
         assert_eq!(band_of(Some(name)), Band::Dualband, "{name}");
     }
-    for name in ["UV/IR-cut", "RGB", "L-Pro", "Lum", "Ha"] {
+    // One narrowband line alone (a mono sensor's OIII, Hα, SII) is not a
+    // dual-band filter: the import's step says the same (`bandOfFilters` of
+    // the window, which mirrors these words).
+    for name in [
+        "UV/IR-cut",
+        "RGB",
+        "L-Pro",
+        "Lum",
+        "Ha",
+        "OIII",
+        "SII",
+        "Hα",
+    ] {
         assert_eq!(band_of(Some(name)), Band::Broadband, "{name}");
     }
     assert_eq!(band_of(None), Band::Broadband);
@@ -359,10 +371,10 @@ fn the_finish_of_a_plan_image_is_a_word_of_the_job_file_only_when_chosen() {
     );
 }
 
-/// With a contrast the plan's image stays the plain one (the capture of
-/// the plan), the image with the curve is kept beside it in `stacked/`.
+/// With a contrast only the image with the curve leaves (the capture of the
+/// plan); the plain one is kept beside it in `stacked/`, on this computer.
 #[test]
-fn the_image_of_a_plan_with_a_contrast_stays_the_plain_one_and_keeps_the_curve_beside_it() {
+fn the_image_of_a_plan_with_a_contrast_is_the_one_with_the_curve_and_the_plain_one_stays_here() {
     let dir = TempDir::new("plan-image-contrast");
     let (project, current) = heart_here(dir.path());
     let lines = plan_lines(dir.path(), &project, Some(&current));
@@ -399,56 +411,40 @@ fn the_image_of_a_plan_with_a_contrast_stays_the_plain_one_and_keeps_the_curve_b
         calls: Cell::new(0),
     };
     let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
-    // The PNG leaves; its TIFF is kept beside it, for the person to join.
+    // Only the image with the curve leaves: it is the capture's image. The
+    // plain one stays on this computer.
     assert_eq!(
         outcome.render.path,
-        plan_dir.join("stacked/IC_1805_plan_raw.png")
-    );
-    assert_eq!(
-        outcome
-            .render
-            .full_resolution
-            .as_ref()
-            .map(|f| f.path.clone()),
-        Some(plan_dir.join("stacked/IC_1805_plan_raw.tif"))
-    );
-    assert_eq!(outcome.render.contrast, crate::stacking::Contrast::None);
-    assert_eq!(outcome.plan_render.as_deref(), Some("natural"));
-    // The image with the curve is not set aside: it is an image of the same capture.
-    assert_eq!(outcome.finishes.len(), 1);
-    assert_eq!(
-        outcome.finishes[0].render.path,
         plan_dir.join("stacked/IC_1805_plan_raw_strong.tif")
     );
-    assert_eq!(
-        outcome.finishes[0].render.contrast,
-        crate::stacking::Contrast::Strong
+    assert_eq!(outcome.render.contrast, crate::stacking::Contrast::Strong);
+    assert_eq!(outcome.plan_render.as_deref(), Some("natural"));
+    assert!(outcome.finishes.is_empty());
+    assert!(
+        outcome
+            .other_files
+            .contains(&plan_dir.join("stacked/IC_1805_plan_raw.png")),
+        "the plain image is kept here"
     );
     assert!(
-        !outcome
+        outcome
             .other_files
-            .contains(&plan_dir.join("stacked/IC_1805_plan_raw_strong.tif"))
+            .contains(&plan_dir.join("stacked/IC_1805_plan_raw.tif")),
+        "and its TIFF"
     );
-    assert_eq!(
-        plan_results(&outcome, false).len(),
-        2,
-        "the capture and its curve"
-    );
-    // Joined, the TIFF of the render follows as an image of the same capture
-    // (the curve was written as a TIFF only: it has no twin to add).
-    let joined = plan_results(&outcome, true);
-    assert_eq!(joined.len(), 3);
-    assert!(joined[2].path.ends_with("IC_1805_plan_raw.tif"));
-    assert_eq!(
-        joined[2].target.variant_of,
-        Some(format!("sha256:{}", joined[0].sha256))
+    let results = plan_results(&outcome, false);
+    assert_eq!(results.len(), 1, "the image with the curve alone");
+    assert!(results[0].path.ends_with("IC_1805_plan_raw_strong.tif"));
+    assert_eq!(results[0].target.variant_of, None);
+    assert!(
+        plan_results(&outcome, true).len() <= 1,
+        "the TIFF of the plain image never leaves"
     );
 }
 
-/// The finishes (contrast, colours, softened stars) of a plan's image leave
-/// with it: one capture, the render without a finish as its main image and
-/// every finish an image of that capture, named after its treatment and
-/// carrying its own steps -- never the finish on the main image's steps.
+/// The finish (contrast, colours, softened stars) a plan's image was made
+/// with is the one that leaves: one capture, the image with the finish as its
+/// image, named after its treatment and carrying its steps.
 #[test]
 fn the_finishes_of_a_plan_image_leave_as_images_of_the_one_capture_named_after_their_treatment() {
     let dir = TempDir::new("plan-image-finishes");
@@ -487,62 +483,45 @@ fn the_finishes_of_a_plan_image_leave_as_images_of_the_one_capture_named_after_t
     };
     let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
     let results = plan_results(&outcome, false);
-    assert_eq!(results.len(), 2);
-    let (capture, finish) = (&results[0], &results[1]);
+    // The person chose a finish: that image is the capture, the bare one stays here.
+    assert_eq!(results.len(), 1);
+    let capture = &results[0];
     assert_eq!(capture.target.variant_of, None);
-    assert!(capture.path.ends_with("IC_1805_plan_raw.png"));
     assert!(
-        finish
+        capture
             .path
             .ends_with("IC_1805_plan_raw_strong_colour-40_stars-85.tif")
     );
-    assert_eq!(
-        finish.target.variant_of,
-        Some(format!("sha256:{}", capture.sha256))
+    assert!(
+        outcome
+            .other_files
+            .iter()
+            .any(|p| p.ends_with("IC_1805_plan_raw.png"))
     );
-    // The main image says no finish, in the capture's steps as in its own.
-    let steps = capture
-        .target
-        .metadata
+    // The capture's steps and the image's own say the finish.
+    let proposals = capture.target.metadata.as_ref().unwrap();
+    let steps = proposals
+        .processing
         .as_ref()
-        .and_then(|m| m.processing.as_ref())
         .and_then(|p| p.steps.clone())
         .unwrap();
     assert!(
-        !steps.contains("contrast") && !steps.contains("colour"),
+        steps.contains("contrast strong · colour 40 · soft stars 85"),
         "{steps}"
     );
-    // The finish names its treatment in each language and keeps its own steps.
-    let proposals = finish.target.metadata.as_ref().unwrap();
-    assert_eq!(
-        proposals.processing, None,
-        "the capture's steps are the main image's"
-    );
-    let finish_steps = proposals
+    let own = proposals
         .variant_processing
         .as_ref()
         .and_then(|p| p.steps.clone())
         .unwrap();
-    assert!(
-        finish_steps.contains("contrast strong · colour 40 · soft stars 85"),
-        "{finish_steps}"
-    );
+    assert_eq!(own, steps);
+    // It names its treatment in each language.
     let titles = proposals.variant_generated_title.as_ref().unwrap();
     assert_eq!(
         titles["en"],
         "Natural render · Contrast 3.6 · Colours +40% · Softened stars 85%"
     );
     assert!(titles["fr"].starts_with("Rendu naturel · Contraste 3,6 · Couleurs"));
-    assert_eq!(
-        capture
-            .target
-            .metadata
-            .as_ref()
-            .and_then(|m| m.variant_generated_title.as_ref())
-            .map(|t| t["en"].as_str()),
-        Some("Natural render"),
-        "the render without a finish keeps the render's own title"
-    );
 }
 
 /// The plan's capture is already online: nothing creates another one, every
@@ -981,17 +960,26 @@ fn the_image_of_a_plan_takes_the_pipelines_chosen_for_its_target() {
         .map(|outcome| outcome.plan_render.as_deref())
         .collect();
     assert_eq!(renders, vec![Some("hoo"), Some("none")]);
+    // "No processing" is a file of the capture, not a second image of it:
+    // it leaves only with the TIFF.
     let results = plan_results_of(&run.outcomes, None, None, false);
-    assert_eq!(results.len(), 2);
-    assert!(results.iter().all(|r| r.kind == ResultKind::Plan));
-    assert_ne!(results[0].path, results[1].path);
-    // One capture of the plan: the second render is an image of it.
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].kind, ResultKind::Plan);
+    let results = plan_results_of(&run.outcomes, None, None, true);
+    // The PNG, its TIFF (an image of the same capture), then the linear file.
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[0].kind, ResultKind::Plan);
+    assert_eq!(results[1].kind, ResultKind::Plan);
+    assert_eq!(results[2].kind, ResultKind::Linear);
+    assert_ne!(results[0].path, results[2].path);
+    // One capture of the plan: the file is attached to it.
     assert_eq!(results[0].target.variant_of, None);
     assert!(results[0].target.plan.is_some());
     assert_eq!(
-        results[1].target.variant_of,
+        results[2].target.variant_of,
         Some(format!("sha256:{}", results[0].sha256))
     );
+    assert!(results[2].target.plan.is_none());
 
     // A tool missing stops the series where it stands: nothing made, said.
     let closed = PlanImageGate {
@@ -1618,8 +1606,7 @@ fn the_crop_of_the_frame_is_a_step_of_the_image_and_its_kind_a_word_of_the_job()
     with_display.display = Some(PlanDisplay {
         black: [0.0125, 0.0131, 0.0128],
         scale: 0.4375,
-        sky: None,
-        final_with_stars: None,
+        curve: None,
     });
     assert_eq!(
         serde_json::to_value(&with_display).unwrap()["display"],
@@ -1637,23 +1624,35 @@ fn the_crop_of_the_frame_is_a_step_of_the_image_and_its_kind_a_word_of_the_job()
         serde_json::json!({"black": [0.0125, 0.0131, 0.0128], "scale": 0.4375, "imposed": false}),
     );
     assert_eq!(recorded_display(&job), with_display.display);
-    // The polished render records the sky levels its matches aim at.
+    // The polished render records the curve of its render.
     record(
-        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "sky": {"displayed": 0.16, "final": 0.275}, "finalWithStars": 0.3, "imposed": false}),
+        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.001, "top": 0.8, "midtones": 0.007, "lift": 0.85, "gains": [0.95, 1.0, 1.05]}, "imposed": false}),
     );
     let polished = recorded_display(&job).unwrap();
-    assert_eq!(polished.sky.unwrap().final_level, 0.275);
-    assert_eq!(polished.final_with_stars, Some(0.3));
+    let curve = polished.curve.unwrap();
+    assert_eq!(curve.midtones, 0.007);
+    assert_eq!(curve.gains, Some([0.95, 1.0, 1.05]));
     let json = serde_json::to_value(polished).unwrap();
     assert_eq!(
-        json["sky"],
-        serde_json::json!({"displayed": 0.16, "final": 0.275})
+        json["curve"],
+        serde_json::json!({"black": 0.001, "top": 0.8, "midtones": 0.007, "lift": 0.85, "gains": [0.95, 1.0, 1.05]})
     );
-    assert_eq!(json["finalWithStars"], 0.3);
     record(
-        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "sky": {"displayed": 0.16}}),
+        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.001, "top": 0.8, "midtones": 1.5}}),
     );
-    assert_eq!(recorded_display(&job), None, "half a sky is not a display");
+    assert_eq!(
+        recorded_display(&job),
+        None,
+        "midtones past 1 are not a curve"
+    );
+    record(
+        serde_json::json!({"black": [0.01, 0.02, 0.03], "scale": 0.5, "curve": {"black": 0.001, "top": 0.8}}),
+    );
+    assert_eq!(
+        recorded_display(&job),
+        None,
+        "half a curve is not a display"
+    );
     record(serde_json::Value::Null);
     assert_eq!(
         recorded_display(&job),
@@ -2054,6 +2053,42 @@ fn the_renders_of_a_plan_are_one_capture_and_its_variants_named_after_their_trea
 }
 
 #[test]
+fn the_linear_render_of_a_plan_is_a_file_of_its_capture_sent_only_with_the_tiff() {
+    let outcomes = [outcome_of("raw", true), outcome_of("linear", false)];
+    // Not joined: only the image leaves, the file stays on the computer.
+    let alone = plan_results_of(&outcomes, None, None, false);
+    assert_eq!(alone.len(), 1);
+    assert_eq!(alone[0].kind, ResultKind::Plan);
+    // Joined: the file follows the capture of the plan, as a linear file.
+    let joined = plan_results_of(&outcomes, None, None, true);
+    assert_eq!(joined.len(), 2);
+    let file = &joined[1];
+    assert_eq!(file.kind, ResultKind::Linear);
+    assert_eq!(file.path, outcomes[1].render.path);
+    assert_eq!(
+        file.target.variant_of,
+        Some(format!("sha256:{}", joined[0].sha256))
+    );
+    // Nothing of the plan, no proposal: the service refuses both with a file.
+    assert!(file.target.plan.is_none());
+    assert!(file.target.metadata.is_none());
+    assert_eq!(file.target.source.as_deref(), Some("stacking"));
+    // Onto a capture online, joined: the same file, aimed at it.
+    let online = plan_results_of(&outcomes[1..], None, Some("capture-7"), true);
+    assert_eq!(online.len(), 1);
+    assert_eq!(online[0].kind, ResultKind::Linear);
+    assert_eq!(online[0].target.variant_of.as_deref(), Some("capture-7"));
+    // The linear render alone never creates the capture of the plan.
+    assert!(plan_results_of(&outcomes[1..], None, None, true).is_empty());
+    assert!(plan_results(&outcomes[1], true).is_empty());
+    // A row asked by hand (« Envoyer N images ») returns the file whatever the box.
+    assert_eq!(
+        plan_variant_results(&outcomes[1], &"a".repeat(64), false).len(),
+        1
+    );
+}
+
+#[test]
 fn the_variants_of_a_plan_leave_through_the_queue_as_images_of_one_capture() {
     let dir = TempDir::new("plan-image-variants-queue");
     let queue = UploadQueue::open(&dir.path().join("queue.sqlite")).unwrap();
@@ -2109,10 +2144,10 @@ fn the_contrast_chosen_for_a_pipeline_reaches_the_finish_of_the_plan() {
             calls: Cell::new(0),
         };
         let outcome = run_plan_image(&imager, &job, open, &CancelFlag::new(), &mut |_| {}).unwrap();
-        assert_eq!(outcome.finishes.len(), 1);
-        let file = outcome.finishes[0].render.path.file_name().unwrap();
+        assert!(outcome.finishes.is_empty());
+        let file = outcome.render.path.file_name().unwrap();
         assert!(file.to_string_lossy().contains(expected), "{file:?}");
-        let steps = format!("{:?}", outcome.finishes[0].processing);
+        let steps = format!("{:?}", outcome.processing);
         assert!(
             steps.contains(&format!("contrast {}", own.token())),
             "{steps}"

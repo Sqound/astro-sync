@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -79,11 +80,11 @@ test("the summary: sent results with their SHA-256, kept online, never leaves; t
     [
       [
         "Image finale de NGC 7000 · NGC7000_final.tif · SHA-256 3f9a…c41e",
-        "412 Mo",
+        "392,9 Mo",
       ],
       [
         "Variante de la capture de M31 · M31_final_v2.jpg · SHA-256 8c1f…e2a7",
-        "15 Mo",
+        "14,3 Mo",
       ],
       ["Le rapport des journaux : paliers, qualité, guidage", "calculé ici"],
       ["Annotations du ciel de 3 images", "calculées ici"],
@@ -98,11 +99,11 @@ test("the summary: sent results with their SHA-256, kept online, never leaves; t
     [
       [
         "Image finale de IC 1396 · déjà en ligne, identique : non renvoyée",
-        "96 Mo",
+        "91,5 Mo",
       ],
       [
         "Image finale de M31 · M31_final.jpg, envoyée depuis le téléphone (image principale)",
-        "14 Mo",
+        "13,3 Mo",
       ],
     ],
   );
@@ -116,8 +117,8 @@ test("the summary: sent results with their SHA-256, kept online, never leaves; t
   assert.deepEqual(
     view.checks.map((c) => plain(c.text)),
     [
-      "À envoyer : 446 Mo · place restante : 231,4 Go sur 250 Go. Il en restera 230,9 Go.",
-      "Plus gros fichier\u00a0: NGC7000_final.tif, 412 Mo · plafond par fichier\u00a0: 1 Go.",
+      "À envoyer : 425,3 Mo · place restante : 215,5 Go sur 232,8 Go. Il en restera 215 Go.",
+      "Plus gros fichier\u00a0: NGC7000_final.tif, 392,9 Mo · plafond par fichier\u00a0: 953,6 Mo.",
       // A subscription has no cap on the variants: no « N sur M ».
       "Variantes de la capture de M31 : 1, sans limite de nombre.",
     ],
@@ -172,7 +173,7 @@ test("a server that keeps no quota says « sans limite », never a figure of 9 m
   });
   assert.equal(
     plain(view.checks[0].text),
-    "À envoyer : 446 Mo · place restante : sans limite.",
+    "À envoyer : 425,3 Mo · place restante : sans limite.",
   );
 });
 
@@ -230,8 +231,8 @@ test("a limit passed: « Envoi impossible : rien n'est envoyé », which file an
     "M31_final_v2.jpg · votre espace ne garde qu’une image par capture",
   );
   assert.deepEqual(view.refusals.map(plain), [
-    "NGC7000_final.tif pèse 412 Mo ; le plafond par fichier de votre abonnement est de 100 Mo.",
-    "À envoyer : 412 Mo ; place restante : 380 Mo sur 50 Go.",
+    "NGC7000_final.tif pèse 392,9 Mo ; le plafond par fichier de votre abonnement est de 95,3 Mo.",
+    "À envoyer : 392,9 Mo ; place restante : 362,3 Mo sur 46,5 Go.",
   ]);
   assert.deepEqual(view.checks, []);
   assert.equal(
@@ -292,14 +293,14 @@ test("a resume: the notice says what is online and what was added; only the comp
     [
       [
         "Image finale de M31 · M31_final.jpg, envoyée depuis le téléphone",
-        "14 Mo",
+        "13,3 Mo",
       ],
       ["Annotations du ciel de M31", "en ligne"],
     ],
   );
   assert.deepEqual(
     view.checks.map((c) => plain(c.text)),
-    ["À envoyer : 38 ko · place restante : 231,4 Go sur 250 Go."],
+    ["À envoyer : 37,1 ko · place restante : 215,5 Go sur 232,8 Go."],
   );
   assert.ok(view.analysisNote);
   assert.equal(fr(view.primaryKey), "Envoyer les compléments");
@@ -530,8 +531,8 @@ test("a stacked image of an earlier run, the target not stacked again: said as a
   assert.deepEqual(
     fresh[0].rows.slice(0, 2).map((r) => [text(r.segs), r.value]),
     [
-      ["Image empilée de M31", "1 image · 47,9 Mo"],
-      ["M31_2026-08-10_raw.tif · TIFF seul · SHA-256 32a2…9dcf", "47,9 Mo"],
+      ["Image empilée de M31", "1 image · 45,6 Mo"],
+      ["M31_2026-08-10_raw.tif · TIFF seul · SHA-256 32a2…9dcf", "45,6 Mo"],
     ],
   );
   const same = view([
@@ -745,4 +746,345 @@ test("under a final image the quality is said as measured on the person's master
   // No measure, no line.
   const bare = { ...final, metadata: undefined };
   assert.equal(rows([bare]).filter((r) => r.note).length, 0);
+});
+
+// « Sans traitement » is a file attached to the capture, never one of its
+// images: its own lines, with its sentence; tied to « Joindre aussi les TIFF ».
+function linearPlan(decision: ImagePlan["decision"]): ImagePlan {
+  return {
+    image: {
+      targetId: M31,
+      path: `${NIGHT_FOLDER}/M31/stacked/M31_2026-08-10_linear.tif`,
+      sha256: "linear".padEnd(64, "0"),
+      size: 19_000_000,
+      kind: "linear",
+      render: "linear",
+    },
+    decision,
+  };
+}
+
+function linearGroups(
+  plans: ImagePlan[],
+  kept: ImagePlan["image"][] = [],
+  treatments: ReadonlySet<Treatment> = new Set<Treatment>(["sky_annotations"]),
+) {
+  const view = summaryView(fr, "fr", {
+    precheck: { ...precheck(plans), linearKeptHere: kept },
+    detection: detectionMixed(),
+    online: onlineMixed(),
+    treatments,
+    stackTargets: new Set(),
+    resume: false,
+    privateServer: false,
+    date: "07/10/2026",
+  });
+  const rows = (key: string) =>
+    (view.groups.find((g) => g.key === key)?.rows ?? []).map((r) => [
+      text(r.segs),
+      r.value,
+    ]);
+  return { rows, view };
+}
+
+test("joined, the linear file is a line of its own after the images, with its sentence, not counted among them nor annotated", () => {
+  const { rows } = linearGroups([
+    render("raw"),
+    linearPlan({
+      decision: "file_of_new",
+      firstSha256: "raw".padEnd(64, "0"),
+    }),
+  ]);
+  const sent = rows("sent");
+  assert.deepEqual(sent[0], ["Image empilée de M31", "1 image · 45,6 Mo"]);
+  const file = sent.findIndex(([line]) => line.startsWith("Fichier linéaire"));
+  assert.ok(file > 1, "after the images");
+  assert.deepEqual(sent[file], [
+    "Fichier linéaire de M31 · TIFF 16 bits · SHA-256 line…0000",
+    "18,1 Mo",
+  ]);
+  assert.equal(
+    sent[file + 1][0],
+    "Non étiré, pour retraiter ailleurs : il est proposé au téléchargement depuis la capture, jamais affiché dans la galerie.",
+  );
+  // Only the image is annotated: the file adds nothing to the count.
+  const annotations = (list: string[][]) =>
+    list.find(([line]) => line.startsWith("Annotations du ciel"));
+  assert.deepEqual(
+    annotations(sent),
+    annotations(linearGroups([render("raw")]).rows("sent")),
+  );
+});
+
+test("not joined, the linear file stays under « Ne quitte jamais cet ordinateur », with the sentence and the way to send it", () => {
+  const { rows, view } = linearGroups(
+    [render("raw")],
+    [linearPlan({ decision: "new_capture" }).image],
+  );
+  assert.equal(
+    rows("sent").filter(([line]) => line.includes("linéaire")).length,
+    0,
+  );
+  assert.deepEqual(rows("neverLeaves").slice(0, 3), [
+    ["Fichier linéaire de M31 · TIFF 16 bits", "18,1 Mo"],
+    [
+      "Non étiré, pour retraiter ailleurs : il est proposé au téléchargement depuis la capture, jamais affiché dans la galerie.",
+      "",
+    ],
+    ["Envoyé seulement si « Joindre aussi les TIFF » est coché.", ""],
+  ]);
+  assert.ok(view.groups.some((g) => g.key === "neverLeaves"));
+});
+
+test("a linear file the space already holds is kept; one with no capture to join stays here, said", () => {
+  const { rows } = linearGroups([
+    linearPlan({
+      decision: "file_online",
+      captureId: "c1",
+      attachmentId: "a1",
+    }),
+  ]);
+  assert.deepEqual(rows("keptOnline")[0], [
+    "Fichier linéaire de M31 · déjà en ligne, identique : non renvoyé",
+    "18,1 Mo",
+  ]);
+  const aside = linearGroups([
+    linearPlan({ decision: "not_sent", reason: "no_capture_for_file" }),
+  ]).rows("setAside");
+  assert.match(
+    aside[0][0],
+    /reste sur cet ordinateur : la cible n’a pas de capture/,
+  );
+});
+
+test("the sending names the linear file apart from the images, and it counts for the largest file", () => {
+  const plans = [
+    render("raw"),
+    linearPlan({
+      decision: "file_of_new",
+      firstSha256: "raw".padEnd(64, "0"),
+    }),
+  ];
+  const items = sendingItems(fr, "fr", {
+    plans,
+    treatments: new Set<Treatment>(),
+    detection: detectionMixed(),
+    online: onlineMixed(),
+    progress: {},
+  });
+  assert.ok(items.some((item) => item.label === "Fichier linéaire de M31"));
+});
+
+test("an image set taking the place of its render online says so, and one whose render is a variant is set aside with why", () => {
+  const view = (plans: ImagePlan[]) =>
+    summaryView(fr, "fr", {
+      precheck: precheck(plans),
+      detection: detectionMixed(),
+      online: onlineMixed(),
+      treatments: new Set<Treatment>(["logs"]),
+      stackTargets: new Set(),
+      resume: false,
+      privateServer: false,
+      date: "07/10/2026",
+    });
+  const replaced = view([
+    leftover({ decision: "replace", captureId: "c", imageId: "i" }),
+  ]).groups;
+  const sent = replaced.find((g) => g.key === "sent")!;
+  assert.ok(
+    sent.rows.some(
+      (r) =>
+        text(r.segs) ===
+        "Image réglée\u00a0: elle remplace l’image principale en ligne de M31, sans capture ni variante de plus.",
+    ),
+    sent.rows.map((r) => text(r.segs)).join("\n"),
+  );
+  // The main image online is replaced, not « kept ».
+  const kept = replaced.find((g) => g.key === "keptOnline");
+  assert.ok(
+    !(kept?.rows ?? []).some((r) => text(r.segs).includes("image principale")),
+  );
+  const aside = view([
+    leftover({ decision: "not_sent", reason: "adjusted_variant_online" }),
+  ]).groups.find((g) => g.key === "setAside")!;
+  assert.match(
+    text(aside.rows[0].segs),
+    /^M31_2026-08-10_raw\.tif · réglée, mais ce rendu est en ligne comme variante/,
+  );
+});
+
+function adjustedTiff(
+  decision: ImagePlan["decision"],
+  path = `${NIGHT_FOLDER}/M31/stacked/M31_natural_adjusted.tif`,
+): ImagePlan {
+  return {
+    image: {
+      targetId: M31,
+      path,
+      sha256: "7b1e".padEnd(60, "0") + "44ac",
+      size: 47_900_000,
+      kind: "stacked",
+      render: "natural",
+      twinSha256: "9a3c".padEnd(60, "0") + "02d1",
+    },
+    decision,
+  };
+}
+
+const REPLACING: ImagePlan["decision"] = {
+  decision: "variant",
+  captureId: "c",
+  replacesSha256: "55aa".padEnd(64, "0"),
+};
+
+test("an adjusted TIFF that replaces the TIFF online offers « Conserver le TIFF existant », unticked, and says what happens in both states", () => {
+  const view = (plans: ImagePlan[], keepTiffs?: ReadonlySet<string>) =>
+    summaryView(fr, "fr", {
+      precheck: precheck(plans),
+      detection: detectionMixed(),
+      online: onlineMixed(),
+      treatments: new Set<Treatment>(["stacking", "logs"]),
+      stackTargets: new Set(),
+      resume: false,
+      privateServer: false,
+      date: "07/10/2026",
+      includeTiff: true,
+      keepTiffs,
+    });
+  const rows = (plans: ImagePlan[], keepTiffs?: ReadonlySet<string>) =>
+    view(plans, keepTiffs).groups.find((g) => g.key === "sent")!.rows;
+  const tiff = adjustedTiff(REPLACING);
+  const unticked = rows([tiff]);
+  const at = unticked.findIndex((r) => r.keepTiff);
+  assert.ok(at >= 0, unticked.map((r) => text(r.segs)).join("\n"));
+  assert.equal(unticked[at].keepTiff!.checked, false);
+  assert.equal(unticked[at].keepTiff!.sha256, tiff.image.sha256);
+  // The note of the PNG's model, under the line of the TIFF, which the box
+  // is described by.
+  assert.equal(
+    text(unticked[at + 1].segs),
+    "TIFF réglé : il remplace le TIFF en ligne de M31.",
+  );
+  assert.equal(unticked[at + 1].note, true);
+  assert.equal(unticked[at + 1].id, unticked[at].keepTiff!.noteId);
+  // Ticked: both stay online.
+  const ticked = rows([tiff], new Set([tiff.image.sha256]));
+  const on = ticked.findIndex((r) => r.keepTiff);
+  assert.equal(ticked[on].keepTiff!.checked, true);
+  assert.equal(text(ticked[on + 1].segs), "Les deux TIFF resteront en ligne.");
+  // A check made with the box ticked has no `replacesSha256` left: the box
+  // stays, to be unticked.
+  const beside = rows(
+    [adjustedTiff({ decision: "variant", captureId: "c" })],
+    new Set([tiff.image.sha256]),
+  );
+  assert.equal(beside.filter((r) => r.keepTiff?.checked).length, 1);
+});
+
+test("nothing new is said when the TIFF replaces nothing: a plain variant, a PNG, a main image replaced, an image not set", () => {
+  const rowsOf = (plans: ImagePlan[]) =>
+    summaryView(fr, "fr", {
+      precheck: precheck(plans),
+      detection: detectionMixed(),
+      online: onlineMixed(),
+      treatments: new Set<Treatment>(["stacking", "logs"]),
+      stackTargets: new Set(),
+      resume: false,
+      privateServer: false,
+      date: "07/10/2026",
+      includeTiff: true,
+    }).groups.flatMap((g) => g.rows);
+  for (const plans of [
+    // The service does not know the replacement (the core clears it), or
+    // there is no TIFF online to replace.
+    [adjustedTiff({ decision: "variant", captureId: "c" })],
+    [adjustedTiff({ decision: "new_capture" })],
+    // « Joindre aussi les TIFF » unticked: no TIFF leaves.
+    [
+      adjustedTiff(
+        REPLACING,
+        `${NIGHT_FOLDER}/M31/stacked/M31_natural_adjusted.png`,
+      ),
+    ],
+    [leftover({ decision: "replace", captureId: "c", imageId: "i" })],
+  ]) {
+    const rows = rowsOf(plans);
+    assert.ok(!rows.some((r) => r.keepTiff || r.id), JSON.stringify(rows));
+    assert.ok(!rows.some((r) => /TIFF réglé|Les deux TIFF/.test(text(r.segs))));
+  }
+});
+
+test("« Conserver le TIFF existant » and its two notes exist in the ten languages, in the register of each", () => {
+  const keys = [
+    "wizard.summary.replacesTiff",
+    "wizard.summary.keepsTiff",
+    "wizard.summary.keepTiffBox",
+  ];
+  const placeholders = (value: string) =>
+    [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+  const dicts = new Map<string, Record<string, string>>();
+  for (const locale of SUPPORTED_LOCALES) {
+    dicts.set(
+      locale,
+      JSON.parse(
+        readFileSync(
+          new URL(`../i18n/${locale}.json`, import.meta.url),
+          "utf8",
+        ),
+      ) as Record<string, string>,
+    );
+  }
+  assert.equal(SUPPORTED_LOCALES.length, 10);
+  for (const [locale, dict] of dicts) {
+    for (const key of keys) {
+      assert.ok(dict[key]?.trim(), `${locale}: ${key}`);
+      assert.deepEqual(
+        placeholders(dict[key]),
+        key === "wizard.summary.replacesTiff" ? ["target"] : [],
+        `${locale}: ${key}`,
+      );
+    }
+    // The box is a label, the notes are sentences about the TIFF.
+    assert.match(dict["wizard.summary.keepTiffBox"], /TIFF/);
+    assert.match(dict["wizard.summary.replacesTiff"], /TIFF/);
+    // Never the words the app does not use in a text.
+    for (const key of keys) {
+      assert.doesNotMatch(
+        dict[key],
+        /gratuit|libre|sans achat|free of charge|kostenlos/i,
+        `${locale}: ${key}`,
+      );
+    }
+  }
+  const fr10 = dicts.get("fr")!;
+  assert.equal(
+    fr10["wizard.summary.keepTiffBox"],
+    "Conserver le TIFF existant",
+  );
+  assert.equal(
+    fr10["wizard.summary.replacesTiff"],
+    "TIFF réglé : il remplace le TIFF en ligne de {target}.",
+  );
+  assert.equal(
+    dicts.get("en")!["wizard.summary.keepsTiff"],
+    "Both TIFFs will stay online.",
+  );
+  // No « vous » in a language that tutoies: nothing of the formal register
+  // slipped into the German, Spanish or Italian texts.
+  assert.doesNotMatch(
+    keys.map((key) => dicts.get("de")![key]).join(" "),
+    /\b(Sie|Ihr|Ihre|Ihnen)\b/,
+  );
+  assert.doesNotMatch(
+    keys.map((key) => dicts.get("es")![key]).join(" "),
+    /\busted/i,
+  );
+  assert.doesNotMatch(
+    keys.map((key) => dicts.get("it")![key]).join(" "),
+    /\b(Lei|Suo|Sua)\b/,
+  );
+  assert.doesNotMatch(
+    keys.map((key) => dicts.get("zh-Hans")![key]).join(" "),
+    /\u60a8/,
+  );
 });

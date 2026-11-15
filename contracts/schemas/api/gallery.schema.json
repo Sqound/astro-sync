@@ -139,11 +139,11 @@
       "properties": {
         "image": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media(\\?v=[0-9a-f]{12})?$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media(\\?v=[0-9a-f]{12}(&o=(90|180|270))?)?$"
         },
         "thumbnail": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail(&v=[0-9a-f]{12})?$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail(&v=[0-9a-f]{12}(&o=(90|180|270))?)?$"
         }
       },
       "additionalProperties": false
@@ -155,11 +155,11 @@
       "properties": {
         "image": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?imageId=[^&#]+(&v=[0-9a-f]{12})?$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?imageId=[^&#]+(&v=[0-9a-f]{12}(&o=(90|180|270))?)?$"
         },
         "thumbnail": {
           "type": "string",
-          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail&imageId=[^&#]+(&v=[0-9a-f]{12})?$"
+          "pattern": "^/api/v1/gallery/[^/?#]+/media\\?variant=thumbnail&imageId=[^&#]+(&v=[0-9a-f]{12}(&o=(90|180|270))?)?$"
         }
       },
       "additionalProperties": false
@@ -435,7 +435,7 @@
     },
     "qualityCharts": {
       "type": "object",
-      "description": "The catalogue's quality charts of the nights the capture combines (« Qualité des captures » and « Guidage et journal de la nuit », `CaptureQuality.js`), read from the nights' analyses with the Journal's functions: `series` the measured frames grouped in chronological points (48 at most for one night, 36 for several), each with its sky background relative to the darkest point (`backgroundRelativePercent`, 100 = the darkest), its median FWHM in pixels and eccentricity; `sessionTelemetry` one entry per night with guiding: its RMS, its counts of dithers, expired settles, focus runs and meridian flips, its guiding trace (`guideSeries`: the mean RA and Dec offsets and the RMS of each point, in arc seconds; empty when the night kept no raw sample) and its events. Every time is `fromMinute` / `toMinute` / `minute`, minutes since the night's first measure (several nights follow one another on one axis in `series`): never a date, a clock time, a session's identifier or a place.",
+      "description": "The catalogue's quality charts of the nights the capture combines (« Qualité des captures » and « Guidage et journal de la nuit », `CaptureQuality.js`), read from the nights' analyses with the Journal's functions: `series` the measured frames grouped in chronological points (48 at most for one night, 36 for several), each with its sky background relative to the darkest point (`backgroundRelativePercent`, 100 = the darkest), its median FWHM in pixels and eccentricity; `sessionTelemetry` one entry per night with guiding: its RMS, its counts of dithers, expired settles, focus runs and meridian flips, its guiding trace (`guideSeries`: the mean RA and Dec offsets and the RMS of each point, in arc seconds; cut from the report's trace when it has no slices; empty when the night kept neither a raw sample nor a trace) and its events (the dithers, expired settles, pauses, star losses, meridian flips and focus runs, at most 300). Every time is `fromMinute` / `toMinute` / `minute`, minutes since the night's first measure (several nights follow one another on one axis in `series`): never a date, a clock time, a session's identifier or a place.",
       "required": ["frameCount", "summary", "series", "sessionTelemetry"],
       "properties": {
         "frameCount": { "type": "integer", "minimum": 0 },
@@ -557,12 +557,24 @@
               },
               "events": {
                 "type": "array",
+                "maxItems": 300,
+                "description": "What the night's guiding drew, in order, at most 300 (past that the dithers are thinned, the other events are kept): `dither`, `settle-timeout` (an expired settle, from the dither to PHD2's verdict: `minute` to `endMinute`), `pause` (`minute` to its resume `endMinute`), `star-lost`, `meridian-flip` and `autofocus` (`temperatureC` when the run told it). Every time is in minutes since the night's first measure, never a clock time.",
                 "items": {
                   "type": "object",
                   "required": ["type", "minute"],
                   "properties": {
-                    "type": { "enum": ["meridian-flip", "autofocus"] },
+                    "type": {
+                      "enum": [
+                        "dither",
+                        "settle-timeout",
+                        "pause",
+                        "star-lost",
+                        "meridian-flip",
+                        "autofocus"
+                      ]
+                    },
                     "minute": { "type": "number" },
+                    "endMinute": { "type": "number" },
                     "temperatureC": { "type": "number" }
                   },
                   "additionalProperties": false
@@ -622,6 +634,10 @@
         },
         "media": {
           "$ref": "#/$defs/media"
+        },
+        "orientation": {
+          "description": "Additive: the quarter turns, clockwise, the owner gave the capture (90, 180 or 270); absent while it is not turned. The files of `media` are already turned (the address carries `o`, the same turn, so that a copy kept before the turn is never shown again); the original is never turned. The viewer turns the sky annotations the same way.",
+          "enum": [90, 180, 270]
         },
         "equipment": {
           "type": "array",

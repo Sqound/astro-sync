@@ -107,3 +107,68 @@ fn detect_then_organise_through_the_window_commands() {
         .unwrap_err();
     assert!(format!("{refused:?}").contains("no_fits_folder"));
 }
+
+/// The window gives the places, equipment, plans and rights it read a moment
+/// before (`sessions_user_data`): the detection reads only the sessions of
+/// the dates it found -- not the rest again, nor the capabilities -- and says
+/// what it is doing (`detect-phase`), never a count that stays at 0 while the
+/// service answers (the smoke on Windows: ~30 s on « 0 found » for 5 files).
+#[test]
+fn a_detection_given_the_person_s_data_reads_only_the_sessions_and_says_its_phases() {
+    use std::sync::{Arc, Mutex};
+    use tauri::Listener;
+
+    use crate::wake_tests::fake_service::{FakeService, Wake};
+
+    let _serial = serialized();
+    let harness = harness(fast());
+    let service = FakeService::start(Wake::Instant, crate::wake_tests::portal_app);
+    harness.pair_with(&service.base_url());
+    let phases: Arc<Mutex<Vec<String>>> = Arc::default();
+    let sink = Arc::clone(&phases);
+    harness
+        .app
+        .listen(crate::commands_detect::DETECT_PHASE_EVENT, move |event| {
+            let phase: String = serde_json::from_str(event.payload()).unwrap();
+            sink.lock().unwrap().push(phase);
+        });
+    let root = unique_dir("detect-phases");
+    let lights = root.join("fits").join("lights");
+    std::fs::create_dir_all(&lights).unwrap();
+    std::fs::write(
+        lights.join("l0.fit"),
+        fits(&[
+            ("IMAGETYP", "'Light'"),
+            ("OBJECT", "'NGC 7000'"),
+            ("DATE-OBS", "'2026-08-17T22:00:00'"),
+            ("EXPTIME", "180."),
+        ]),
+    )
+    .unwrap();
+
+    let proposal = harness
+        .invoke(
+            "sessions_detect",
+            serde_json::json!({
+                "request": { "fits": [root.join("fits")] },
+                "user": { "account": { "advancedPlanning": true } },
+                "catalogue": []
+            }),
+        )
+        .answer(Duration::from_secs(10))
+        .unwrap();
+    assert_eq!(proposal["reading"]["lights"], 1);
+
+    for route in [
+        "/api/v1/places",
+        "/api/v1/equipment",
+        "/api/v1/plans",
+        "/api/v1/capabilities",
+    ] {
+        assert_eq!(service.app_hits("GET", route), 0, "{route} read again");
+    }
+    assert!(service.app_hits("GET", "/api/v1/sessions") >= 1);
+    assert_eq!(*phases.lock().unwrap(), ["files", "sessions"]);
+    let _ = std::fs::remove_dir_all(&root);
+    drop(harness.app);
+}

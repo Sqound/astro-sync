@@ -10,6 +10,8 @@ import {
 } from "react";
 
 import { useI18n } from "../i18n";
+import { engineNoticeText } from "../lib/engineNotice";
+import { useSnackbar } from "./Snackbar";
 import { useCapabilities } from "./CapabilitiesProvider";
 import {
   detectImagesSend,
@@ -24,6 +26,7 @@ import {
   localWorkCancel,
   nightSendLogs,
   onDetectFound,
+  onDetectPhase,
   onLocalWork,
   onPlanImage,
   onStacking,
@@ -39,6 +42,7 @@ import {
   workingFolderGet,
   type PlanImageOutcome,
   type PlanProgressionStep,
+  type IntegrationMaster,
   type StackedRender,
   type LastFolders,
 } from "../lib/bridge";
@@ -48,6 +52,7 @@ import {
   lastFoldersOf,
   windowFromLast,
   type DetectWindowState,
+  isScanPhase,
 } from "../lib/detectFlow";
 import { withUtcOffsets } from "../lib/detectPlaces";
 import {
@@ -67,7 +72,12 @@ import { contrastValue } from "../lib/contrast";
 import { colourOf, pipelinesToRun, softStarsOf } from "../lib/finish";
 import { NO_PROCESSING_ID } from "../lib/pipelineChoice";
 import { formatError } from "../lib/format";
-import { importSends, renderOf, variantCount } from "../lib/importSend";
+import {
+  imageCount,
+  importSends,
+  renderOf,
+  variantCount,
+} from "../lib/importSend";
 import { nightDay } from "../lib/nights";
 import { applyRecap, PlanNotCreated, type ApplyEnd } from "../lib/importApply";
 import { tidyNames, type TidyChoice, type TidyState } from "../lib/tidy";
@@ -96,7 +106,7 @@ import {
   type TreatmentProgress,
 } from "../lib/treatmentProgress";
 import { isAnalysisSendingHeld } from "../lib/capabilities";
-import { runTarget } from "../lib/uploads";
+import { followSentFiles, runTarget } from "../lib/uploads";
 import { useUploads } from "./UploadsProvider";
 
 export interface ImportApi {
@@ -218,6 +228,7 @@ function failureText(
  */
 export function ImportProvider({ children }: { children: ReactNode }) {
   const { t, locale } = useI18n();
+  const { notify } = useSnackbar();
   const { submit } = useUploads();
   const [state, dispatch] = useReducer(importReducer, NO_IMPORT);
   const stateRef = useRef(state);
@@ -332,6 +343,12 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                 total: work.total,
                 current: work.current ?? undefined,
               });
+          }),
+        );
+        off.push(
+          await onDetectPhase((phase) => {
+            if (mine === generation.current && isScanPhase(phase))
+              dispatch({ type: "scanPhase", phase });
           }),
         );
         off.push(
@@ -515,8 +532,11 @@ export function ImportProvider({ children }: { children: ReactNode }) {
             // Every render of the first night (one per pipeline, and the ones
             // with the curve of presentation): each is listed in « Images à
             // envoyer ».
-            let first: { sessionId: string; renders: StackedRender[] } | null =
-              null;
+            let first: {
+              sessionId: string;
+              renders: StackedRender[];
+              integrations: IntegrationMaster[];
+            } | null = null;
             try {
               for (const night of mineNights) {
                 const target = night.targets.find(
@@ -534,9 +554,20 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                   longitude: night.longitude,
                   pipelines: choice,
                 });
+                for (const notice of stacked.outcome?.engineNotices ?? []) {
+                  notify({
+                    tone: "warning",
+                    text: engineNoticeText(t, notice),
+                    mode: "persistent",
+                  });
+                }
                 const renders = stacked.outcome?.renders ?? [];
                 if (renders.length > 0 && !first)
-                  first = { sessionId: night.sessionId, renders };
+                  first = {
+                    sessionId: night.sessionId,
+                    renders,
+                    integrations: stacked.outcome?.integrations ?? [],
+                  };
               }
               let plans: PlanImageOutcome[] = [];
               let history: PlanProgressionStep[] = [];
@@ -577,6 +608,11 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                     designation: card.designation,
                     pipelineId: plan.render.pipelineId,
                     nights: plan.combinedNightIds.length || mineNights.length,
+                    // "Sans traitement" is a file attached to the capture of
+                    // the plan, not an image of it.
+                    ...(plan.render.pipelineId === NO_PROCESSING_ID
+                      ? { file: "linear" as const }
+                      : {}),
                   };
                   results.push({
                     ...row,
@@ -606,6 +642,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                 }
               } else if (first) {
                 for (const render of first.renders) {
+                  // The series it was stacked from (its family's master).
+                  const master = first.integrations.find(
+                    (item) => item.family === render.family,
+                  );
                   const row = {
                     targetId: card.targetId,
                     designation: card.designation,
@@ -614,6 +654,32 @@ export function ImportProvider({ children }: { children: ReactNode }) {
                     colour: colourOf(render.colour),
                     softStars: softStarsOf(render.softStars),
                     nights: 1,
+                    ...(master
+                      ? {
+                          series: {
+                            filter: master.filter,
+                            totalSeconds: master.totalSeconds,
+                            // The series: one capture per series.
+                            ...(master.exposureSeconds !== null
+                              ? {
+                                  exposureSeconds: master.exposureSeconds,
+                                  gain:
+                                    master.gain !== null &&
+                                    Number.isInteger(master.gain)
+                                      ? master.gain
+                                      : null,
+                                  binning: master.binning ?? 1,
+                                  frames: master.frameCount || null,
+                                }
+                              : {}),
+                          },
+                        }
+                      : {}),
+                    // "Sans traitement" is a file attached to the capture of
+                    // its target, not an image of it.
+                    ...(render.pipelineId === NO_PROCESSING_ID
+                      ? { file: "linear" as const }
+                      : {}),
                   };
                   const send = {
                     kind: "night" as const,
@@ -735,16 +801,22 @@ export function ImportProvider({ children }: { children: ReactNode }) {
               // each with its notification and the page « Envois ».
               submit(
                 "detect",
-                chosen.map(({ row }, index) => {
-                  const render = renderOf(images[index]);
-                  return {
-                    sha256: render.sha256,
-                    path: render.path,
-                    size: render.size,
-                    target: row.designation,
-                    rendering: rendering!(row),
-                  };
-                }),
+                // A render set in « Régler l'image » leaves as its image set:
+                // its row follows that file, the one the run's events name.
+                followSentFiles(
+                  chosen.map(({ row }, index) => {
+                    const render = renderOf(images[index]);
+                    return {
+                      sha256: render.sha256,
+                      path: render.path,
+                      size: render.size,
+                      target: row.designation,
+                      rendering: rendering!(row),
+                      file: row.role === "file",
+                    };
+                  }),
+                  enqueued?.sentInstead,
+                ),
                 runTarget(
                   created.outcome.sessions,
                   images.map((image) =>
@@ -785,7 +857,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           },
         );
         if (end.ok) {
-          dispatch({ type: "sent", count: chosen.length, variants });
+          dispatch({ type: "sent", count: imageCount(chosen), variants });
           return;
         }
         dispatch({

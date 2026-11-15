@@ -195,6 +195,20 @@
             }
           },
           "additionalProperties": true
+        },
+        "designations": {
+          "type": "object",
+          "description": "Additive (IDENTIFY-DESIGNATIONS-02): present when the component's second file, `designations.bin` (`PSDD`, `packages/portal/src/offline-pack/camera-designations.js`), is listed in `files`: the HD / HDE and SAO numbers of the stars from magnitude 8.3 to about 11, with their J2000 position, that name the faint stars of a telescope image (SAO Star Catalog J2000 and Henry Draper Extension Charts, CDS I/131A and III/182). Its own `attribution` and `license` (the component's top-level ones are Tycho-2's); `source` is the provenance of the build. A phone without the file names no faint star.",
+          "required": ["file", "attribution", "license"],
+          "properties": {
+            "file": { "const": "designations.bin" },
+            "layout": { "const": "PSDD" },
+            "stars": { "type": "integer", "minimum": 0 },
+            "attribution": { "type": "string", "minLength": 1 },
+            "license": { "type": "string", "minLength": 1 },
+            "source": { "type": "object", "additionalProperties": true }
+          },
+          "additionalProperties": true
         }
       },
       "additionalProperties": true

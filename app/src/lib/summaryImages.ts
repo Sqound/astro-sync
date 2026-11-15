@@ -22,6 +22,9 @@ export interface SummaryImageView {
   meta: string;
   /** Why the box cannot be ticked, or `null`. */
   blocked: string | null;
+  /** What the linear file is, under its line (the file of « Sans traitement
+   * »): `null` for an image. */
+  sentence: string | null;
 }
 
 /** « Trop lourde pour votre espace (46,5 Mo > 26,2 Mo) ». */
@@ -56,7 +59,22 @@ export function summaryImageView(
             maximumFractionDigits: 2,
           }).format(row.contrast ?? 0),
         });
+  if (row.role === "file") {
+    // The linear file: not a variant of the capture, a file attached to it,
+    // with no picture to look at (a non-stretched 16-bit TIFF shows nothing).
+    return {
+      title: t("wizard.linear.of", { target: row.designation }),
+      // The file is always "Sans traitement".
+      render: t("wizard.treatments.noProcessing"),
+      meta: [t("wizard.linear.format"), formatBytes(t, row.size, locale)].join(
+        t("detect.join"),
+      ),
+      blocked: row.blocked ? blockText(t, locale, row.blocked) : null,
+      sentence: t("wizard.linear.sentence"),
+    };
+  }
   return {
+    sentence: null,
     title:
       row.role === "variant"
         ? t("wizard.sending.variant", { target: row.designation })

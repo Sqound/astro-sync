@@ -28,6 +28,7 @@ const errorTypes = [
   "uploader.rs",
   "working_folder.rs",
   "detection.rs",
+  "image_adjust.rs",
 ];
 
 function rustFiles(directory: URL): URL[] {

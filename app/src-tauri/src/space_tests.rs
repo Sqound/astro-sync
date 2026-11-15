@@ -811,3 +811,74 @@ fn the_queue_the_page_reads_is_the_linked_space_s_and_what_came_before_is_apart(
     let _ = std::fs::remove_dir_all(&night);
     drop(harness.app);
 }
+
+/// « Accueil » asks the service before it says « Connecté »: a space deleted
+/// while the service slept is learnt by the check (the sign-in ends, the page
+/// is told), a service that answers confirms the connection, and one that
+/// cannot be reached is said as such -- never « Connecté » on the faith of the
+/// token kept on disk.
+#[test]
+fn the_home_s_check_asks_the_service_before_it_says_connected() {
+    let _serial = serialized();
+
+    // The space was deleted: the check learns it and ends the sign-in.
+    let space = harness(fast());
+    forget_files(&space);
+    let deleted = exchange("call-after-deletion");
+    let service = FakeService::start(Wake::Instant, move |request| {
+        if request.path == "/api/v1/service" {
+            fake_service::identity_reply()
+        } else {
+            reply_of(&deleted)
+        }
+    });
+    signed_in_to(&space, &service.base_url());
+    let check = space
+        .invoke("space_check", serde_json::json!({}))
+        .answer(ANSWER)
+        .unwrap();
+    assert_eq!(check["answered"], true, "{check}");
+    assert_eq!(check["status"]["paired"], false, "{check}");
+    assert_eq!(check["status"]["ended"]["reason"], "space_deleted");
+    assert_eq!(
+        space.space_events.lock().unwrap().clone(),
+        [serde_json::json!({"kind": "signed_out", "reason": "space_deleted"})]
+    );
+    drop(space.app);
+
+    // The service answers: the connection is confirmed.
+    let space = harness(fast());
+    forget_files(&space);
+    let service = FakeService::start(Wake::Instant, |request| match request.path.as_str() {
+        "/api/v1/service" => fake_service::identity_reply(),
+        "/api/v1/capabilities" => fake_service::capabilities_reply(),
+        _ => fake_service::error_reply(404, "not_found", "no such route"),
+    });
+    signed_in_to(&space, &service.base_url());
+    let check = space
+        .invoke("space_check", serde_json::json!({}))
+        .answer(ANSWER)
+        .unwrap();
+    assert_eq!(check["answered"], true, "{check}");
+    assert_eq!(check["status"]["paired"], true);
+    assert_eq!(check["status"]["space"]["email"], "vous@exemple.fr");
+    assert!(space.space_events.lock().unwrap().is_empty());
+    drop(space.app);
+
+    // The service cannot be reached: not answered, the token kept.
+    let space = harness(fast());
+    forget_files(&space);
+    let closed = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port())
+    };
+    signed_in_to(&space, &closed);
+    let check = space
+        .invoke("space_check", serde_json::json!({}))
+        .answer(ANSWER)
+        .unwrap();
+    assert_eq!(check["answered"], false, "{check}");
+    assert_eq!(check["status"]["paired"], true);
+    assert!(space.space_events.lock().unwrap().is_empty());
+    drop(space.app);
+}

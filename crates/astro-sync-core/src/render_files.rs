@@ -12,9 +12,13 @@
 //!   *full-resolution twin*, which leaves only when the person joins the TIFF
 //!   for that sending (the box « Joindre aussi les TIFF », whose starting
 //!   value is [`crate::local_settings::RendersUpload`]);
-//! - a render written in one format only leaves as that file: the linear
-//!   stack ("No processing") exists only as a TIFF, and the person asked for
-//!   it by ticking its pipeline;
+//! - the linear stack ("No processing") exists only as a TIFF and is not a
+//!   render of the gallery but a *file attached* to the capture (`role:
+//!   "linear"`, [`crate::upload_queue::ResultKind::Linear`]): it follows the
+//!   same rule as a twin, it leaves only when the person joins the TIFF, the
+//!   person asking for it by ticking its pipeline is not the choice to send
+//!   it;
+//! - any other render written in one format only leaves as that file;
 //! - the small picture of the plan (`*.preview.png`) is never a render.
 //!
 //! The person's own final image (`<target>/final/`) is not a render: this
@@ -46,6 +50,22 @@ fn extension(path: &Path) -> Option<String> {
 #[must_use]
 pub fn is_tiff(path: &Path) -> bool {
     matches!(extension(path).as_deref(), Some("tif" | "tiff"))
+}
+
+/// The suffix a pipeline's id takes in the name of its file: `<name>_linear.tif`
+/// is the linear stack ([`crate::pipelines::LINEAR_PIPELINE`]).
+const LINEAR_SUFFIX: &str = "_linear";
+
+/// The linear stack, by its name: a TIFF `<name>_linear.tif`. A fallback of
+/// [`crate::metadata::is_linear_render`] for a file whose stacking record is
+/// gone; the record decides when it is there.
+#[must_use]
+pub fn is_linear_name(path: &Path) -> bool {
+    is_tiff(path)
+        && path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .is_some_and(|stem| stem.to_ascii_lowercase().ends_with(LINEAR_SUFFIX))
 }
 
 /// A PNG, by its name.
@@ -113,10 +133,11 @@ pub fn pair_render_files<T>(items: Vec<T>, path_of: impl Fn(&T) -> &Path) -> Vec
 }
 
 /// Whether a file of a render leaves with this sending: always, unless it is
-/// the full-resolution twin of a PNG (`is_twin`) and the TIFF are not joined.
+/// a TIFF the person chooses (`is_optional_tiff`: the full-resolution twin of
+/// a PNG, or the linear file) and the TIFF are not joined.
 #[must_use]
-pub fn leaves(is_twin: bool, include_tiff: bool) -> bool {
-    !is_twin || include_tiff
+pub fn leaves(is_optional_tiff: bool, include_tiff: bool) -> bool {
+    !is_optional_tiff || include_tiff
 }
 
 #[cfg(test)]
@@ -177,6 +198,15 @@ mod tests {
             ]),
             [("p/IC1396_plan_raw.PNG".into(), None)]
         );
+    }
+
+    #[test]
+    fn the_linear_stack_is_known_by_its_name_when_no_record_says_it() {
+        assert!(is_linear_name(Path::new("s/M31_linear.tif")));
+        assert!(is_linear_name(Path::new("s/M31_LINEAR.TIFF")));
+        assert!(!is_linear_name(Path::new("s/M31_linear.png")));
+        assert!(!is_linear_name(Path::new("s/M31_raw.tif")));
+        assert!(!is_linear_name(Path::new("s/linear_M31.tif")));
     }
 
     #[test]

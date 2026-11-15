@@ -1042,19 +1042,24 @@ fn existing_sessions_and_plans_are_never_duplicated() {
     assert!(line.ask && !line.checked);
 }
 
+fn plan_with(status: &str, session: Option<&str>) -> KnownPlan {
+    KnownPlan {
+        id: "held".into(),
+        name: "Already there".into(),
+        evening_date: "2026-08-19".into(),
+        status: status.into(),
+        session_id: session.map(Into::into),
+        ..KnownPlan::default()
+    }
+}
+
 #[test]
-fn a_free_account_keeps_one_plan_a_night_and_a_locked_group() {
+fn a_free_account_keeps_one_plan_at_a_time_and_a_locked_group() {
     let tree = Tree::new("detect-free");
     two_nights(&tree);
+    // A plan in progress (a session, not closed) holds the night.
     let user = UserData {
-        plans: vec![KnownPlan {
-            id: "done".into(),
-            name: "Already done".into(),
-            evening_date: "2026-08-19".into(),
-            status: "executed".into(),
-            session_id: Some("elsewhere".into()),
-            ..KnownPlan::default()
-        }],
+        plans: vec![plan_with("active", Some("elsewhere"))],
         ..UserData::default()
     };
     let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
@@ -1083,6 +1088,159 @@ fn a_free_account_keeps_one_plan_a_night_and_a_locked_group() {
             .filter(|l| l.reason == "session.create")
             .count(),
         1
+    );
+}
+
+#[test]
+fn a_closed_plan_no_longer_holds_the_night_of_a_free_account() {
+    let tree = Tree::new("detect-free-closed");
+    two_nights(&tree);
+    for status in ["executed", "partial", "abandoned", "archived"] {
+        let user = UserData {
+            plans: vec![plan_with(status, Some("elsewhere"))],
+            ..UserData::default()
+        };
+        let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+        assert_eq!(
+            proposal.sessions[1].existing,
+            SessionMatch::Create,
+            "a plan {status} frees the night"
+        );
+    }
+    // Planned and not executed: still reused or replaced, as before.
+    let user = UserData {
+        plans: vec![plan_with("pending", None)],
+        ..UserData::default()
+    };
+    let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+    assert!(matches!(
+        proposal.sessions[1].existing,
+        SessionMatch::ReplacePlan { .. }
+    ));
+}
+
+/* ------------------------ Several sessions in a night ----------------------- */
+
+/// Two targets, 17 August (evening): NGC 7000 21:00-21:19 UTC, Mu Cephei
+/// 22:30-22:51 UTC.
+fn two_sessions_of(window_a: (&str, &str), window_b: (&str, &str)) -> Vec<KnownSession> {
+    let session = |id: &str, target: &str, window: (&str, &str)| KnownSession {
+        id: id.into(),
+        evening_date: "2026-08-17".into(),
+        targets: vec![KnownSlot {
+            target_id: Some(target.into()),
+            start: Some(window.0.into()),
+            end: Some(window.1.into()),
+            ..KnownSlot::default()
+        }],
+        ..KnownSession::default()
+    };
+    vec![
+        session("sess-a", "t-other-a", window_a),
+        session("sess-b", "t-other-b", window_b),
+    ]
+}
+
+fn route_of(proposal: &Proposal) -> Vec<(Option<String>, bool)> {
+    proposal.sessions[0]
+        .targets
+        .iter()
+        .map(|t| (t.session_id.clone(), t.to_review))
+        .collect()
+}
+
+fn id(text: &str) -> Option<String> {
+    Some(text.to_string())
+}
+
+#[test]
+fn a_night_with_one_session_goes_to_it_unchanged() {
+    let tree = Tree::new("detect-one-session");
+    two_nights(&tree);
+    let mut user = advanced();
+    user.sessions = two_sessions_of(("2026-08-17T20:00:00Z", "2026-08-17T23:30:00Z"), ("x", "y"))
+        .into_iter()
+        .take(1)
+        .collect();
+    let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+    assert_eq!(
+        proposal.sessions[0].existing,
+        SessionMatch::Existing {
+            session_id: "sess-a".into()
+        }
+    );
+    assert_eq!(route_of(&proposal), vec![(None, false), (None, false)]);
+}
+
+#[test]
+fn two_disjoint_sessions_take_the_frames_of_their_window() {
+    let tree = Tree::new("detect-two-sessions");
+    two_nights(&tree);
+    let mut user = advanced();
+    user.sessions = two_sessions_of(
+        ("2026-08-17T20:50:00Z", "2026-08-17T21:40:00Z"),
+        ("2026-08-17T22:20:00Z", "2026-08-17T23:10:00Z"),
+    );
+    let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+    assert_eq!(
+        route_of(&proposal),
+        vec![(id("sess-a"), false), (id("sess-b"), false)],
+        "each target to the session whose window holds it, nothing to review"
+    );
+    assert_eq!(
+        proposal.sessions[0].existing,
+        SessionMatch::Existing {
+            session_id: "sess-a".into()
+        }
+    );
+}
+
+#[test]
+fn frames_between_two_sessions_go_to_the_nearest_and_are_to_review() {
+    let tree = Tree::new("detect-between-sessions");
+    two_nights(&tree);
+    let mut user = advanced();
+    // A ends at 20:00, B starts at 23:30: the first target (21:00) is
+    // nearer A, the second (22:30-22:51) nearer B.
+    user.sessions = two_sessions_of(
+        ("2026-08-17T19:00:00Z", "2026-08-17T20:00:00Z"),
+        ("2026-08-17T23:30:00Z", "2026-08-18T00:30:00Z"),
+    );
+    let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+    assert_eq!(
+        route_of(&proposal),
+        vec![(id("sess-a"), true), (id("sess-b"), true)],
+        "the nearest session, flagged to be read again; never a third one"
+    );
+}
+
+#[test]
+fn sessions_on_both_sides_of_midnight_are_told_apart_by_the_clock() {
+    let tree = Tree::new("detect-midnight-sessions");
+    let before = unix("2026-08-17T23:40:00Z");
+    for i in 0..4 {
+        tree.frame(
+            &format!("fits/NGC_7000/lights/n{i}.fit"),
+            &light(Some("NGC 7000"), before + f64::from(i) * 190.0, 180.0, Some((314.82, 44.52))),
+        );
+    }
+    let after = unix("2026-08-18T00:20:00Z");
+    for i in 0..4 {
+        tree.frame(
+            &format!("fits/Mu_Cephei/lights/m{i}.fit"),
+            &light(Some("Mu Cephei"), after + f64::from(i) * 190.0, 180.0, Some(MU_CEPHEI)),
+        );
+    }
+    let mut user = advanced();
+    user.sessions = two_sessions_of(
+        ("2026-08-17T23:30:00Z", "2026-08-17T23:58:00Z"),
+        ("2026-08-18T00:15:00Z", "2026-08-18T00:40:00Z"),
+    );
+    let proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
+    assert_eq!(proposal.sessions.len(), 1, "one night, from noon to noon");
+    assert_eq!(
+        route_of(&proposal),
+        vec![(id("sess-a"), false), (id("sess-b"), false)]
     );
 }
 
@@ -1152,17 +1310,17 @@ fn a_change_of_plans_per_night_needs_the_plans_read_again() {
     two_nights(&tree);
     let user = UserData {
         plans: vec![KnownPlan {
-            id: "done".into(),
-            name: "Already done".into(),
+            id: "running".into(),
+            name: "In progress".into(),
             evening_date: "2026-08-19".into(),
-            status: "executed".into(),
+            status: "active".into(),
             session_id: Some("elsewhere".into()),
             ..KnownPlan::default()
         }],
         ..UserData::default()
     };
     let mut proposal = detect(&request(&tree, &["fits"], &[], &[]), &user);
-    // "One plan per night" decided the night of the 19th: only a new
+    // "One plan at a time" decided the night of the 19th: only a new
     // detection knows what becomes of it.
     assert_eq!(
         proposal.refresh_rights(advanced().account),

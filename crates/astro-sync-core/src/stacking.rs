@@ -1655,6 +1655,97 @@ pub struct StackOutcome {
     /// The lights left out because they are outside the night.
     #[serde(default)]
     pub outside_frames: u64,
+    /// The renders whose background and denoising were not made by the
+    /// engine asked for (GraXpert not given, installed without its AI
+    /// library, failed): the stacking succeeded, but not the way chosen.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub engine_notices: Vec<EngineNotice>,
+}
+
+/// Why the engine of the "polished render" was not the one asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineCause {
+    /// GraXpert is not installed (or not given to the stacking).
+    GraxpertMissing,
+    /// GraXpert is installed without onnxruntime, its AI library.
+    GraxpertNoLibrary,
+    /// GraXpert ran and stopped.
+    GraxpertFailed,
+    /// Siril is not installed (or not given to the stacking).
+    SirilMissing,
+    /// Siril ran the background or denoising and stopped.
+    SirilFailed,
+}
+
+/// A fallback the stacking made, read from the record it wrote beside its
+/// renders (`recipe.render.polished`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EngineNotice {
+    /// The family stacked, when the target has several.
+    #[serde(default)]
+    pub family: Option<String>,
+    /// What did the work in the end: `siril` or `polynomial`.
+    pub used: String,
+    /// Why, in the order the engines were tried.
+    pub causes: Vec<EngineCause>,
+}
+
+/// The causes of a fallback, from the words the stacking script records
+/// (`fallbackReason`, English, `; `-separated).
+fn engine_causes(reason: &str) -> Vec<EngineCause> {
+    reason
+        .split("; ")
+        .filter_map(|part| {
+            let part = part.trim();
+            if part.starts_with("GraXpert not given") {
+                Some(EngineCause::GraxpertMissing)
+            } else if part.starts_with("GraXpert failed") && part.contains("onnxruntime") {
+                Some(EngineCause::GraxpertNoLibrary)
+            } else if part.starts_with("GraXpert failed") {
+                Some(EngineCause::GraxpertFailed)
+            } else if part.starts_with("Siril not given") {
+                Some(EngineCause::SirilMissing)
+            } else if part.starts_with("Siril failed") {
+                Some(EngineCause::SirilFailed)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// The fallbacks recorded in the `*_stacking.json` among `files`.
+#[must_use]
+pub fn engine_notices(files: &[PathBuf], family: Option<&str>) -> Vec<EngineNotice> {
+    files
+        .iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with("_stacking.json"))
+        })
+        .filter_map(|path| {
+            let record: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+            let polished = record.pointer("/recipe/render/polished")?;
+            let reason = polished.get("fallbackReason")?.as_str()?;
+            let causes = engine_causes(reason);
+            if causes.is_empty() {
+                return None;
+            }
+            Some(EngineNotice {
+                family: family.map(str::to_string),
+                used: polished
+                    .get("engine")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("polynomial")
+                    .to_string(),
+                causes,
+            })
+        })
+        .collect()
 }
 
 /// About what the scratch folder takes per light frame (3.2 GB for 12
@@ -1732,6 +1823,7 @@ fn run_plan(
         set_aside: plan.set_aside.clone(),
         integrations: Vec::new(),
         outside_frames: plan.outside.len() as u64,
+        engine_notices: Vec::new(),
     };
     let total = plan.jobs.len() as u32;
     for (index, job) in plan.jobs.iter().enumerate() {
@@ -1752,6 +1844,7 @@ fn run_plan(
             }));
         outcome.other_files.extend(done.other_files);
         outcome.integrations.extend(done.integrations);
+        outcome.engine_notices.extend(done.engine_notices);
     }
     Ok(outcome)
 }
@@ -1995,6 +2088,7 @@ pub fn run_stacking(
         set_aside: Vec::new(),
         integrations: Vec::new(),
         outside_frames: 0,
+        engine_notices: Vec::new(),
     };
     let mut written = Vec::new();
     for output in outputs {
@@ -2048,6 +2142,7 @@ pub fn run_stacking(
             logs: None,
         });
     }
+    outcome.engine_notices = engine_notices(&outcome.other_files, job.family.as_deref());
     // The master kept: described from its own header.
     if let Some(family) = &job.integration
         && let Some(master) = multi_night::read_master(&integration_path(job, family))
@@ -2078,17 +2173,52 @@ pub fn stacked_candidates(outcome: &StackOutcome, target_id: &str) -> Vec<ImageC
             asked.push(&render.pipeline_id);
         }
     }
+    // With a finish chosen, only the finished image leaves: the bare twin of
+    // a pipeline that has one stays on this computer.
+    let finished = |r: &StackedRender| !r.contrast.is_none() || !r.retouch.is_none();
     outcome
         .renders
         .iter()
+        .filter(|render| {
+            render.pipeline_id == crate::pipelines::LINEAR_PIPELINE
+                || finished(render)
+                || !outcome
+                    .renders
+                    .iter()
+                    .any(|r| r.pipeline_id == render.pipeline_id && finished(r))
+        })
         .flat_map(|render| {
             let candidate =
                 |path: &Path, sha256: &str, size: u64, twin: Option<&str>| ImageCandidate {
+                    // The series the render was stacked from (its family's
+                    // master): the main image comes from the longest one.
+                    series_seconds: render.family.as_deref().and_then(|family| {
+                        outcome
+                            .integrations
+                            .iter()
+                            .find(|master| master.family == family)
+                            .filter(|master| master.total_seconds.is_finite())
+                            .map(|master| master.total_seconds.max(0.0).round() as u64)
+                    }),
+                    // Its series of poses: one capture per series.
+                    series: render.family.as_deref().and_then(|family| {
+                        outcome
+                            .integrations
+                            .iter()
+                            .find(|master| master.family == family)
+                            .and_then(crate::series::Series::of_master)
+                    }),
                     target_id: target_id.to_string(),
                     path: path.to_path_buf(),
                     sha256: sha256.to_string(),
                     size,
-                    kind: ResultKind::Stacked,
+                    // "No processing" is a file attached to the capture, not
+                    // one of its images.
+                    kind: if render.pipeline_id == crate::pipelines::LINEAR_PIPELINE {
+                        ResultKind::Linear
+                    } else {
+                        ResultKind::Stacked
+                    },
                     render: Some(render.pipeline_id.clone()),
                     render_rank: asked
                         .iter()

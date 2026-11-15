@@ -71,11 +71,25 @@ pub struct UploadMetadata {
     /// itself.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capture_id: Option<String>,
+    /// `replace`: the image takes the place of the main image of
+    /// `capture_id` (an image set in « Régler l'image » whose render is
+    /// online); absent: the service's own rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placement: Option<String>,
+    /// The digest of the variant of `capture_id` this image takes the place
+    /// of (the TIFF of an image set in « Régler l'image » in place of the
+    /// render's TIFF online); absent: the image is added. A service of before
+    /// the field refuses it: [`upload_entry`] sends the image again without
+    /// it, as a variant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replaces_sha256: Option<String>,
     /// `astro-sync` or `stacking` (never `web` from a device).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     /// `progression` for a progression image, the history of
-    /// `capture_id` (never a variant, never counted as one).
+    /// `capture_id` (never a variant, never counted as one); `linear` for the
+    /// linear file, attached to `capture_id` (never an image: no placement,
+    /// no plan field, no proposal).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// The light frames a progression image stacks.
@@ -150,6 +164,10 @@ pub struct FinalizeResponse {
     /// image: what a proposal after the fact names.
     #[serde(default)]
     pub variant: Option<ImageRef>,
+    /// The file a linear upload attached (or found): the answer carries it
+    /// instead of `variant`.
+    #[serde(default)]
+    pub attachment: Option<ImageRef>,
     #[serde(default)]
     pub capture: Option<CaptureRef>,
     /// True when this image **replaced** the image of the capture it belongs
@@ -157,9 +175,14 @@ pub struct FinalizeResponse {
     /// the Journal's `replaced`. Absent = false.
     #[serde(default)]
     pub replaced: bool,
+    /// The variant this image took the place of (`replacesSha256`); absent
+    /// when it was added (a service of before the field, a variant deleted
+    /// since, bytes already held).
+    #[serde(default)]
+    pub replaced_image_id: Option<String>,
 }
 
-/// The `id` of the `variant` of a finalize answer.
+/// The `id` of the `variant` (or the `attachment`) of a finalize answer.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ImageRef {
     pub id: String,
@@ -445,7 +468,8 @@ fn refusal_verdict(status: u16, code: &str) -> Verdict {
             | "capture_variant_limit_reached"
             | "storage_quota_reached"
             | "entitlement_read_only"
-            | "variant_capture_pending",
+            | "variant_capture_pending"
+            | "file_capture_pending",
         ) => Verdict::NeedsPerson,
         // The space already keeps its ceiling of unfinished uploads open;
         // one of them finishing (or expiring) makes room.
@@ -978,9 +1002,10 @@ pub fn build_metadata(entry: &QueueEntry, target: &UploadTarget) -> UploadMetada
         byte_size: entry.size,
         content_type: None,
         capture_id: own.variant_of.clone(),
+        placement: own.placement.clone(),
+        replaces_sha256: own.replaces_sha256.clone(),
         source: own.source.clone(),
-        role: (entry.kind == ResultKind::Progression)
-            .then(|| crate::precheck::PROGRESSION_ROLE.to_string()),
+        role: crate::precheck::role_of(entry.kind),
         progression_frames: own
             .frame_count
             .filter(|_| entry.kind == ResultKind::Progression),
@@ -991,7 +1016,18 @@ pub fn build_metadata(entry: &QueueEntry, target: &UploadTarget) -> UploadMetada
         metadata_source: None,
         proposals: Proposals::default(),
     }
-    .with_proposals(own.metadata.as_ref(), own.variant_of.is_some())
+    .with_proposals(proposals_of(entry), own.variant_of.is_some())
+}
+
+/// What Astro Sync proposes with the file of `entry`: nothing for the linear
+/// file, which the service refuses any proposal for (`role: "linear"`: a file
+/// attached to a capture is not an image to describe).
+fn proposals_of(entry: &QueueEntry) -> Option<&Proposals> {
+    entry
+        .target
+        .metadata
+        .as_ref()
+        .filter(|_| entry.kind != ResultKind::Linear)
 }
 
 /// The role an image of a multi-night plan is sent with.
@@ -1012,6 +1048,8 @@ fn plan_image_metadata(entry: &QueueEntry, original_name: String) -> UploadMetad
         byte_size: entry.size,
         content_type: None,
         capture_id: None,
+        placement: None,
+        replaces_sha256: None,
         source: entry.target.source.clone(),
         role: Some(PLAN_ROLE.to_string()),
         progression_frames: None,
@@ -1081,8 +1119,15 @@ impl UploadMetadata {
 /// The capture the image `first_sha256` of the same sending created: a
 /// variant waits for it (held, `variant_capture_pending`) and is refused for
 /// good when that image was (`variant_capture_refused`).
-fn capture_created_by(queue: &UploadQueue, first_sha256: &str) -> Result<String, UploadError> {
+fn capture_created_by(
+    queue: &UploadQueue,
+    first_sha256: &str,
+    kind: ResultKind,
+) -> Result<String, UploadError> {
     use crate::upload_queue::QueueState;
+    // The linear file is attached to the capture, not a variant of it: its
+    // codes say so.
+    let file = kind == ResultKind::Linear;
     match queue.find_by_sha256(first_sha256)? {
         Some(first) if first.state == QueueState::Completed && first.capture_id.is_some() => {
             Ok(first.capture_id.unwrap_or_default())
@@ -1090,14 +1135,22 @@ fn capture_created_by(queue: &UploadQueue, first_sha256: &str) -> Result<String,
         Some(first) if matches!(first.state, QueueState::Refused | QueueState::Failed) => {
             Err(UploadError::refusal(
                 400,
-                "variant_capture_refused",
-                "The image whose capture this one is a variant of was not sent.",
+                if file {
+                    "file_capture_refused"
+                } else {
+                    "variant_capture_refused"
+                },
+                "The image whose capture this one belongs to was not sent.",
             ))
         }
         _ => Err(UploadError::refusal(
             409,
-            "variant_capture_pending",
-            "The image whose capture this one is a variant of is not sent yet.",
+            if file {
+                "file_capture_pending"
+            } else {
+                "variant_capture_pending"
+            },
+            "The image whose capture this one belongs to is not sent yet.",
         )),
     }
 }
@@ -1118,14 +1171,48 @@ fn reconcile_or_create<T: UploadTransport>(
             Ok(session) => session,
             Err(UploadError::SessionNotFound(_)) => {
                 queue.reset_for_restart(&entry.sha256)?;
-                transport.create(token, metadata)?
+                create_session(transport, token, metadata)?
             }
             Err(other) => return Err(other),
         },
-        None => transport.create(token, metadata)?,
+        None => create_session(transport, token, metadata)?,
     };
     queue.mark_progress(&entry.sha256, &session.upload_id, session.offset)?;
     Ok(session)
+}
+
+/// Whether a refusal says the service does not know `replacesSha256` (a
+/// private server older than the field: `400 invalid_request`, « Unexpected
+/// metadata property "replacesSha256" »). The image is then sent as before,
+/// beside the variant it would have replaced -- never refused for it.
+#[must_use]
+pub fn refuses_unknown_replacement(code: &str, message: &str) -> bool {
+    code == "invalid_request"
+        && message.contains("Unexpected metadata property")
+        && message.contains("replacesSha256")
+}
+
+/// The create step, with the fall back of a service that does not know
+/// `replacesSha256`: the same create without it (the image is added, as
+/// before the field).
+fn create_session<T: UploadTransport>(
+    transport: &T,
+    token: &str,
+    metadata: &UploadMetadata,
+) -> Result<UploadSession, UploadError> {
+    match transport.create(token, metadata) {
+        Err(UploadError::Refused { code, message, .. })
+            if metadata.replaces_sha256.is_some()
+                && refuses_unknown_replacement(&code, &message) =>
+        {
+            let plain = UploadMetadata {
+                replaces_sha256: None,
+                ..metadata.clone()
+            };
+            transport.create(token, &plain)
+        }
+        other => other,
+    }
 }
 
 /// Sends every remaining chunk of `entry`'s file, from `session.offset`
@@ -1275,7 +1362,7 @@ fn follow_up_proposals<T: UploadTransport>(
     applied_at_create: bool,
 ) -> Result<Proposed, UploadError> {
     let mut answer = Proposed::default();
-    let Some(proposals) = entry.target.metadata.as_ref().filter(|p| !p.is_empty()) else {
+    let Some(proposals) = proposals_of(entry).filter(|p| !p.is_empty()) else {
         return Ok(answer);
     };
     let is_variant = entry.target.variant_of.is_some();
@@ -1429,13 +1516,24 @@ fn upload_entry_inner<T: UploadTransport>(
         ));
     }
     let mut metadata = build_metadata(entry, target);
+    if entry.kind == ResultKind::Linear {
+        // A file attached to a capture carries nothing of a night's plan.
+        metadata.plan_id = None;
+        if entry.target.variant_of.is_none() {
+            return Err(UploadError::refusal(
+                400,
+                "file_capture_refused",
+                "The linear file is attached to a capture; this one names none.",
+            ));
+        }
+    }
     if let Some(first) = entry
         .target
         .variant_of
         .as_deref()
         .and_then(|v| v.strip_prefix(VARIANT_OF_SHA256))
     {
-        metadata.capture_id = Some(capture_created_by(queue, first)?);
+        metadata.capture_id = Some(capture_created_by(queue, first, entry.kind)?);
     }
     let mut session = reconcile_or_create(transport, queue, token, entry, &metadata)?;
 
@@ -1787,6 +1885,218 @@ mod tests {
         assert_eq!(stored.state, crate::upload_queue::QueueState::Completed);
         assert_eq!(stored.capture_id.as_deref(), Some("capture-1"));
         assert_eq!(stored.offset, 10);
+    }
+
+    /// A TIFF that takes the place of a variant online, waiting in the queue.
+    fn queue_with_a_replacing_tiff() -> (UploadQueue, QueueEntry, crate::test_support::TempDir) {
+        use crate::upload_queue::{EntryTarget, ResultFile, ResultKind};
+        let root = crate::test_support::TempDir::new("uploader-replacing-tiff");
+        let file = root.path().join("M31/stacked/M 31_natural.tif");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, b"0123").unwrap();
+        let queue = UploadQueue::open(&root.path().join("queue.sqlite")).unwrap();
+        queue
+            .enqueue_results(&[ResultFile {
+                path: file,
+                sha256: "sha-new-tiff".into(),
+                size: 4,
+                kind: ResultKind::Stacked,
+                target: EntryTarget {
+                    variant_of: Some("capture-1".into()),
+                    source: Some("stacking".into()),
+                    replaces_sha256: Some("sha-old-tiff".into()),
+                    ..EntryTarget::default()
+                },
+            }])
+            .unwrap();
+        let entry = queue.find_by_sha256("sha-new-tiff").unwrap().unwrap();
+        (queue, entry, root)
+    }
+
+    fn script_a_whole_upload(transport: &FakeTransport, replaced_image_id: Option<&str>) {
+        transport
+            .puts
+            .borrow_mut()
+            .push_back(Ok(PutOutcome::Advanced(session("up-1", 4, 4, 4, false))));
+        transport
+            .finalizes
+            .borrow_mut()
+            .push_back(Ok(FinalizeOutcome::Completed(FinalizeResponse {
+                capture_id: "capture-1".to_string(),
+                replaced_image_id: replaced_image_id.map(str::to_string),
+                ..Default::default()
+            })));
+    }
+
+    /// The row keeps the variant its TIFF replaces (a sending resumed after a
+    /// cut declares the same), and the create step carries it.
+    #[test]
+    fn a_replacing_tiff_declares_the_variant_it_replaces() {
+        let (queue, entry, root) = queue_with_a_replacing_tiff();
+        assert_eq!(
+            entry.target.replaces_sha256.as_deref(),
+            Some("sha-old-tiff")
+        );
+        // Reopened: the same row, the same replacement.
+        drop(queue);
+        let queue = UploadQueue::open(&root.path().join("queue.sqlite")).unwrap();
+        let entry = queue.find_by_sha256("sha-new-tiff").unwrap().unwrap();
+        let body = serde_json::to_value(build_metadata(&entry, &UploadTarget::default())).unwrap();
+        assert_eq!(body["captureId"], "capture-1");
+        assert_eq!(body["replacesSha256"], "sha-old-tiff");
+        assert!(body.get("placement").is_none());
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Ok(session("up-1", 0, 4, 4, false)));
+        script_a_whole_upload(&transport, Some("img-old-tiff"));
+        upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+        let created = transport.created.borrow();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].replaces_sha256.as_deref(), Some("sha-old-tiff"));
+        let stored = queue.find_by_sha256("sha-new-tiff").unwrap().unwrap();
+        assert_eq!(stored.state, crate::upload_queue::QueueState::Completed);
+        // Not the main image's replacement: no note on the row.
+        assert_eq!(stored.last_error_code, None);
+        // A body without the field never names it (a service of before).
+        let plain = serde_json::to_value(build_metadata(
+            &QueueEntry {
+                target: crate::upload_queue::EntryTarget {
+                    replaces_sha256: None,
+                    ..entry.target.clone()
+                },
+                ..entry
+            },
+            &UploadTarget::default(),
+        ))
+        .unwrap();
+        assert!(plain.get("replacesSha256").is_none());
+    }
+
+    /// A private server older than the field refuses it: the TIFF is sent
+    /// again at once without it, as a variant (the behaviour of before), never
+    /// refused for it.
+    #[test]
+    fn a_service_that_does_not_know_the_replacement_receives_the_tiff_as_a_variant() {
+        let (queue, entry, _root) = queue_with_a_replacing_tiff();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Err(UploadError::refusal(
+                400,
+                "invalid_request",
+                "Unexpected metadata property \"replacesSha256\".",
+            )));
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Ok(session("up-1", 0, 4, 4, false)));
+        script_a_whole_upload(&transport, None);
+        upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+        let created = transport.created.borrow();
+        assert_eq!(created.len(), 2);
+        assert_eq!(created[0].replaces_sha256.as_deref(), Some("sha-old-tiff"));
+        assert_eq!(created[1].replaces_sha256, None);
+        assert_eq!(created[1].capture_id.as_deref(), Some("capture-1"));
+        let stored = queue.find_by_sha256("sha-new-tiff").unwrap().unwrap();
+        assert_eq!(stored.state, crate::upload_queue::QueueState::Completed);
+    }
+
+    /// Any other refusal is not a missing field: no second create, the file
+    /// is refused as before.
+    #[test]
+    fn another_refusal_of_a_replacing_tiff_is_not_retried_without_the_field() {
+        let (queue, entry, _root) = queue_with_a_replacing_tiff();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Err(UploadError::refusal(
+                409,
+                "main_image",
+                "replacesSha256 names the main image of the capture: it is replaced with placement replace.",
+            )));
+        let error = upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap_err();
+        assert_eq!(error.verdict(), Verdict::Refused);
+        assert_eq!(transport.created.borrow().len(), 1);
+        assert!(!refuses_unknown_replacement(
+            "invalid_request",
+            "replacesSha256 must be a lowercase 64-character hex digest."
+        ));
+    }
+
+    /// Cut after the create: the next run reconciles the session it had, at
+    /// the service's offset, and finishes it (the service keeps the
+    /// replacement with the session).
+    #[test]
+    fn a_replacing_tiff_cut_after_its_create_resumes_its_session() {
+        let (queue, entry, _root) = queue_with_a_replacing_tiff();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Ok(session("up-1", 0, 4, 4, false)));
+        transport
+            .puts
+            .borrow_mut()
+            .push_back(Err(UploadError::Transport("connection reset".into())));
+        let cut = upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap_err();
+        assert_eq!(cut.verdict(), Verdict::RetryLater);
+        let entry = queue.next_pending().unwrap().unwrap();
+        assert_eq!(entry.upload_id.as_deref(), Some("up-1"));
+        assert_eq!(
+            entry.target.replaces_sha256.as_deref(),
+            Some("sha-old-tiff")
+        );
+        transport
+            .statuses
+            .borrow_mut()
+            .push_back(Ok(session("up-1", 0, 4, 4, false)));
+        script_a_whole_upload(&transport, Some("img-old-tiff"));
+        upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &entry,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+        assert_eq!(transport.created.borrow().len(), 1, "no second create");
     }
 
     /// The plan folder of an image waiting in the queue was renamed after its
@@ -2672,6 +2982,8 @@ mod tests {
                 metadata: None,
                 frame_count: None,
                 plan: None,
+                placement: None,
+                replaces_sha256: None,
             },
         };
         let run = UploadTarget {
@@ -2720,6 +3032,8 @@ mod tests {
                     totals_by_filter: Vec::new(),
                     plan_render: Some("natural".into()),
                 }),
+                placement: None,
+                replaces_sha256: None,
             },
         };
         let head = serde_json::to_value(build_metadata(&plan_row(None), &UploadTarget::default()))
@@ -2806,6 +3120,8 @@ mod tests {
                     metadata,
                     frame_count: None,
                     plan: None,
+                    placement: None,
+                    replaces_sha256: None,
                 },
             }])
             .unwrap();
@@ -2959,6 +3275,124 @@ mod tests {
             "raw · contrast strong · 12 lights"
         );
         assert!(json.get("processing").is_none());
+    }
+
+    /// A queue with one linear file carrying `metadata` (which it must never
+    /// send), attached to `variant_of`.
+    fn queue_with_a_linear_file(
+        variant_of: Option<&str>,
+    ) -> (
+        UploadQueue,
+        QueueEntry,
+        crate::test_support::TempDir,
+        crate::test_support::TempDir,
+    ) {
+        let source_dir = crate::test_support::TempDir::new("uploader-linear-source");
+        let path = source_dir.path().join("M31_linear.tif");
+        fs::write(&path, b"0123").unwrap();
+        let queue_dir = crate::test_support::TempDir::new("uploader-linear-queue");
+        let queue = UploadQueue::open(&queue_dir.path().join("queue.sqlite")).unwrap();
+        queue
+            .enqueue_results(&[crate::upload_queue::ResultFile {
+                path,
+                sha256: "sha-linear".into(),
+                size: 4,
+                kind: crate::upload_queue::ResultKind::Linear,
+                target: crate::upload_queue::EntryTarget {
+                    session_id: Some("night-1".into()),
+                    target_ids: vec!["t-m31".into()],
+                    variant_of: variant_of.map(str::to_string),
+                    source: Some("stacking".into()),
+                    // A row written by a build that proposed with the file.
+                    metadata: Some(proposals()),
+                    frame_count: Some(12),
+                    plan: None,
+                    placement: None,
+                    replaces_sha256: None,
+                },
+            }])
+            .unwrap();
+        let entry = queue.find_by_sha256("sha-linear").unwrap().unwrap();
+        (queue, entry, source_dir, queue_dir)
+    }
+
+    #[test]
+    fn the_linear_file_is_sent_with_its_role_and_its_capture_and_proposes_nothing() {
+        let (queue, entry, _a, _b) = queue_with_a_linear_file(Some("capture-1"));
+        let transport = FakeTransport::default();
+        script_a_complete_upload(
+            &transport,
+            serde_json::from_str(
+                r#"{"captureId":"capture-1","deduplicated":false,"attachment":{"id":"att-1"},"capture":{"mainImageId":"image-1"}}"#,
+            )
+            .unwrap(),
+        );
+
+        let outcome = run(&transport, &queue, &entry).unwrap();
+
+        assert_eq!(outcome.capture_id, "capture-1");
+        assert!(!outcome.deduplicated);
+        let json = serde_json::to_value(&transport.created.borrow()[0]).unwrap();
+        assert_eq!(json["role"], "linear");
+        assert_eq!(json["captureId"], "capture-1");
+        assert_eq!(json["source"], "stacking");
+        // The service refuses any of these with `role: "linear"`.
+        for key in [
+            "progressionFrames",
+            "planId",
+            "metadataSource",
+            "acquisition",
+            "calibration",
+            "processing",
+            "variantProcessing",
+            "variantGeneratedTitle",
+            "variantGeneratedDescription",
+            "imageQuality",
+        ] {
+            assert!(json.get(key).is_none(), "{key}");
+        }
+        // Nothing is proposed after the fact either: a file is not an image.
+        assert!(transport.captures_proposed.borrow().is_empty());
+        assert!(transport.images_proposed.borrow().is_empty());
+        assert_eq!(
+            queue.find_by_sha256("sha-linear").unwrap().unwrap().state,
+            crate::upload_queue::QueueState::Completed
+        );
+    }
+
+    #[test]
+    fn the_linear_file_already_attached_is_a_deduplicated_answer_with_an_attachment() {
+        let (queue, entry, _a, _b) = queue_with_a_linear_file(Some("capture-1"));
+        let transport = FakeTransport::default();
+        script_a_complete_upload(
+            &transport,
+            serde_json::from_str(
+                r#"{"captureId":"capture-1","deduplicated":true,"attachment":{"id":"att-1"}}"#,
+            )
+            .unwrap(),
+        );
+        let outcome = run(&transport, &queue, &entry).unwrap();
+        assert!(outcome.deduplicated, "already sent");
+        // And the resumable create may answer it before a byte.
+        let (queue, entry, _c, _d) = queue_with_a_linear_file(Some("capture-1"));
+        let transport = FakeTransport::default();
+        transport.creates.borrow_mut().push_back(Ok(serde_json::from_str(
+            r#"{"uploadId":"up-9","offset":4,"byteSize":4,"chunkSize":8388608,"completed":true,"captureId":"capture-1","present":true,"attachmentId":"att-1"}"#,
+        )
+        .unwrap()));
+        let outcome = run(&transport, &queue, &entry).unwrap();
+        assert!(outcome.deduplicated);
+        assert_eq!(outcome.capture_id, "capture-1");
+        assert!(transport.puts.borrow().is_empty(), "no byte sent");
+    }
+
+    #[test]
+    fn a_linear_file_with_no_capture_is_never_sent() {
+        let (queue, entry, _a, _b) = queue_with_a_linear_file(None);
+        let transport = FakeTransport::default();
+        let error = run(&transport, &queue, &entry).unwrap_err();
+        assert_eq!(error.code(), "file_capture_refused");
+        assert!(transport.created.borrow().is_empty());
     }
 
     #[test]
@@ -3275,6 +3709,8 @@ mod tests {
     fn the_images_already_online_are_proposed_to_by_their_ids() {
         use crate::precheck::{Decision, ImageCandidate, ImagePlan};
         let candidate = |sha: &str| ImageCandidate {
+            series_seconds: None,
+            series: None,
             render_rank: None,
             target_id: "t-m31".into(),
             path: PathBuf::from("/night/M31/stacked/M31_raw.tif"),

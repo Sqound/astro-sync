@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Astro Sync",
   "mainBinaryName": "astro-sync-app",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "identifier": "space.planastro.astrosync",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -18,7 +18,8 @@
         "height": 760,
         "minWidth": 1040,
         "minHeight": 600,
-        "center": true
+        "center": true,
+        "backgroundColor": "#0a0d0b"
       }
     ],
     "security": {
@@ -37,7 +38,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "displayLanguageSelector": false,
+        "displayLanguageSelector": true,
         "languages": [
           "English",
           "French",
@@ -49,7 +50,19 @@
           "Japanese",
           "SimpChinese",
           "TradChinese"
-        ]
+        ],
+        "customLanguageFiles": {
+          "English": "nsis/English.nsh",
+          "French": "nsis/French.nsh",
+          "German": "nsis/German.nsh",
+          "Italian": "nsis/Italian.nsh",
+          "Spanish": "nsis/Spanish.nsh",
+          "PortugueseBR": "nsis/PortugueseBR.nsh",
+          "Russian": "nsis/Russian.nsh",
+          "Japanese": "nsis/Japanese.nsh",
+          "SimpChinese": "nsis/SimpChinese.nsh",
+          "TradChinese": "nsis/TradChinese.nsh"
+        }
       }
     },
     "icon": [
@@ -65,6 +78,7 @@
       "../../stacking/pipeline_defs.py": "stacking/pipeline_defs.py",
       "../../stacking/renders.py": "stacking/renders.py",
       "../../stacking/render_finish.py": "stacking/render_finish.py",
+      "../../stacking/image_adjust.py": "stacking/image_adjust.py",
       "../../stacking/linear_export.py": "stacking/linear_export.py",
       "../../stacking/integration_master.py": "stacking/integration_master.py",
       "../../stacking/device_master.py": "stacking/device_master.py",
@@ -93,7 +107,8 @@
       "../../stacking/plan_framing.py": "stacking/plan_framing.py",
       "../../stacking/plan_crop.py": "stacking/plan_crop.py",
       "../../stacking/siril_config.py": "stacking/siril_config.py",
-      "../../stacking/software_tag.py": "stacking/software_tag.py"
+      "../../stacking/software_tag.py": "stacking/software_tag.py",
+      "../../stacking/frame_weights.py": "stacking/frame_weights.py"
     }
   }
 }

@@ -241,41 +241,7 @@ where
     let (places, default_place_id) = places_of(&transport.read(base_url, token, "/v1/places")?);
     let equipment = equipment_of(&transport.read(base_url, token, "/v1/equipment")?);
     let plans = plans_of(&transport.read(base_url, token, "/v1/plans")?);
-    let mut sessions = Vec::new();
-    if let Some((first, last)) = range {
-        let day = |date: &str, days: i64| {
-            crate::time_util::parse_iso8601_utc_to_unix_seconds(&format!("{date}T00:00:00Z"))
-                .map(|t| crate::time_util::format_iso8601_utc_millis(t + days as f64 * 86_400.0))
-        };
-        let (from, to) = (day(&first, -1), day(&last, 2));
-        let mut since: Option<String> = None;
-        loop {
-            let page = transport.list_sessions(base_url, token, since.as_deref(), Some(100))?;
-            for summary in &page.sessions {
-                let inside = match (&from, &to) {
-                    (Some(from), Some(to)) => {
-                        summary.started_at.as_str() >= from.as_str()
-                            && summary.started_at.as_str() < to.as_str()
-                    }
-                    _ => true,
-                };
-                if !inside {
-                    continue;
-                }
-                let detail = transport.session_detail(base_url, token, &summary.id)?;
-                sessions.push(session_of(
-                    &summary.id,
-                    summary.plan_id.clone(),
-                    &summary.started_at,
-                    &detail,
-                ));
-            }
-            if !page.has_more || page.next_since.is_none() || page.sessions.is_empty() {
-                break;
-            }
-            since = page.next_since;
-        }
-    }
+    let sessions = read_sessions(transport, base_url, token, range)?;
     Ok(UserData {
         places,
         default_place_id,
@@ -284,4 +250,56 @@ where
         plans,
         account,
     })
+}
+
+/// The sessions of the evenings `range` alone (inclusive, `YYYY-MM-DD`, a day
+/// of margin each side): what the detection reads once it knows the dates,
+/// when the window already gave the places, the equipment, the plans and the
+/// rights ([`read_user_data`] read them a moment before).
+pub fn read_sessions<T>(
+    transport: &T,
+    base_url: &str,
+    token: &str,
+    range: Option<(String, String)>,
+) -> Result<Vec<KnownSession>, GuiBridgeError>
+where
+    T: PortalGuiTransport + NightServiceTransport,
+{
+    let mut sessions = Vec::new();
+    let Some((first, last)) = range else {
+        return Ok(sessions);
+    };
+    let day = |date: &str, days: i64| {
+        crate::time_util::parse_iso8601_utc_to_unix_seconds(&format!("{date}T00:00:00Z"))
+            .map(|t| crate::time_util::format_iso8601_utc_millis(t + days as f64 * 86_400.0))
+    };
+    let (from, to) = (day(&first, -1), day(&last, 2));
+    let mut since: Option<String> = None;
+    loop {
+        let page = transport.list_sessions(base_url, token, since.as_deref(), Some(100))?;
+        for summary in &page.sessions {
+            let inside = match (&from, &to) {
+                (Some(from), Some(to)) => {
+                    summary.started_at.as_str() >= from.as_str()
+                        && summary.started_at.as_str() < to.as_str()
+                }
+                _ => true,
+            };
+            if !inside {
+                continue;
+            }
+            let detail = transport.session_detail(base_url, token, &summary.id)?;
+            sessions.push(session_of(
+                &summary.id,
+                summary.plan_id.clone(),
+                &summary.started_at,
+                &detail,
+            ));
+        }
+        if !page.has_more || page.next_since.is_none() || page.sessions.is_empty() {
+            break;
+        }
+        since = page.next_since;
+    }
+    Ok(sessions)
 }

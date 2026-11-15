@@ -345,7 +345,7 @@ pub fn progression(args: &ProgressionArgs) -> Result<(), Box<dyn Error>> {
 fn read_token_file(path: &Path) -> Result<String, Box<dyn Error>> {
     let raw = std::fs::read_to_string(path).map_err(|source| {
         ArgError(format!(
-            "could not read the token ({}): {source}",
+            "could not read the token ({}): {source}. Sign in first: `astro-sync sign-in --token <file>`",
             path.display()
         ))
     })?;
@@ -603,7 +603,7 @@ fn upload_with(
                             "queue.startedNotice",
                             &[("file", &source_path.display().to_string())]
                         ),
-                        crate::words::size_text(locale, bytes)
+                        crate::words::space_size_text(locale, bytes)
                     );
                 }
                 current_file = source_path;
@@ -612,8 +612,8 @@ fn upload_with(
                 if print_lines {
                     print!(
                         "\r  {} / {}",
-                        crate::words::size_text(locale, sent),
-                        crate::words::size_text(locale, total)
+                        crate::words::space_size_text(locale, sent),
+                        crate::words::space_size_text(locale, total)
                     );
                     let _ = std::io::stdout().flush();
                 }

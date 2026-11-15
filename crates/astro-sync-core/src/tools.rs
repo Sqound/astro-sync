@@ -384,6 +384,10 @@ pub struct ToolRow {
     /// that did not finish ("Resume the installation").
     #[serde(default)]
     pub interrupted: bool,
+    /// The Python environment (and the stacking pipeline) found but
+    /// outdated: what installing will redo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redo: Option<python_env::EnvRedo>,
     /// Astro Sync can install it here without a download of the registry
     /// (the Python environment, when a Python in the range was found).
     #[serde(default)]
@@ -417,15 +421,7 @@ impl DetectContext {
     /// This computer: `PATH` and the usual folders.
     #[must_use]
     pub fn system(data_dir: &Path, reference_stars: &Path) -> Self {
-        let mut search_dirs: Vec<PathBuf> = std::env::var_os("PATH")
-            .map(|path| std::env::split_paths(&path).collect())
-            .unwrap_or_default();
-        for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
-            let extra = PathBuf::from(extra);
-            if !search_dirs.contains(&extra) {
-                search_dirs.push(extra);
-            }
-        }
+        let search_dirs = system_search_dirs(std::env::var_os("PATH"), std::env::var_os("HOME"));
         let mut known_paths = BTreeMap::new();
         known_paths.insert(
             "siril".to_string(),
@@ -457,6 +453,31 @@ impl DetectContext {
     fn tools_dir(&self, id: &str) -> PathBuf {
         self.data_dir.join("tools").join(id)
     }
+}
+
+/// The folders searched for a program on this computer: `PATH`, then the
+/// usual ones, then the person's own programs (`~/.local/bin`, where `pipx`,
+/// `uv tool` and `pip --user` put them). A window opened from the Finder has a
+/// short `PATH` that names none of these: GraXpert installed with `uv tool`
+/// was « not given » to the stacking of a real night.
+fn system_search_dirs(
+    path: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Vec<PathBuf> {
+    let mut search_dirs: Vec<PathBuf> = path
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    let own = home.map(|home| PathBuf::from(home).join(".local").join("bin"));
+    for extra in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+        .into_iter()
+        .map(PathBuf::from)
+        .chain(own.filter(|_| cfg!(not(target_os = "windows"))))
+    {
+        if !search_dirs.contains(&extra) {
+            search_dirs.push(extra);
+        }
+    }
+    search_dirs
 }
 
 fn astap_install_locations() -> Vec<PathBuf> {
@@ -628,6 +649,7 @@ fn registry_row(context: &DetectContext, entry: &RegistryEntry) -> ToolRow {
         download,
         progression_compatible: None,
         interrupted: false,
+        redo: None,
         installable: false,
         blocked_by: Vec::new(),
     };
@@ -637,6 +659,7 @@ fn registry_row(context: &DetectContext, entry: &RegistryEntry) -> ToolRow {
         row.version = status.python_version;
         row.path = status.path;
         row.interrupted = status.interrupted;
+        row.redo = status.redo;
         if row.state != ToolState::Present {
             let python = python_env::find_python(context, python_env::python_range());
             row.installable = python.is_some() && context.stacking.is_some();
@@ -747,11 +770,17 @@ fn star_database_folder(context: &DetectContext, astap: Option<&Path>) -> Option
 /// The registry entry of ASTAP's star database (the row `astap-database`).
 const DATABASE_ID: &str = "astap-database";
 
-fn names(fr: &str, en: &str) -> BTreeMap<String, String> {
-    BTreeMap::from([
-        ("fr".to_string(), fr.to_string()),
-        ("en".to_string(), en.to_string()),
-    ])
+/// The name of a row Astro Sync adds beside the registry's, in the ten
+/// languages of the application (`fr`, `en`, `ja`, `de`, `es`, `it`,
+/// `pt-BR`, `ru`, `zh-Hans`, `zh-Hant`, in this order).
+fn names(texts: [&str; 10]) -> BTreeMap<String, String> {
+    [
+        "fr", "en", "ja", "de", "es", "it", "pt-BR", "ru", "zh-Hans", "zh-Hant",
+    ]
+    .into_iter()
+    .zip(texts)
+    .map(|(language, text)| (language.to_string(), text.to_string()))
+    .collect()
 }
 
 /// Every row of "Dependencies", in the registry's order, then the star
@@ -777,10 +806,18 @@ pub fn detect_tools(context: &DetectContext) -> Vec<ToolRow> {
                 this_system().and_then(|system| database?.downloads.get(system).cloned());
             rows.push(ToolRow {
                 id: "astap-database".to_string(),
-                name: names(
+                name: names([
                     "Base d\u{2019}étoiles d\u{2019}ASTAP",
                     "ASTAP star database",
-                ),
+                    "ASTAP 星データベース",
+                    "ASTAP-Sterndatenbank",
+                    "Base de datos de estrellas de ASTAP",
+                    "Database stellare di ASTAP",
+                    "Banco de estrelas do ASTAP",
+                    "База звёзд ASTAP",
+                    "ASTAP 星表数据库",
+                    "ASTAP 星表資料庫",
+                ]),
                 kind: "data".to_string(),
                 required: true,
                 state: if folder.is_some() {
@@ -798,6 +835,7 @@ pub fn detect_tools(context: &DetectContext) -> Vec<ToolRow> {
                 download,
                 progression_compatible: None,
                 interrupted: false,
+                redo: None,
                 installable: false,
                 blocked_by: Vec::new(),
             });
@@ -806,7 +844,18 @@ pub fn detect_tools(context: &DetectContext) -> Vec<ToolRow> {
     let catalogue = &crate::analysis::reference_catalogue::TYCHO2;
     rows.push(ToolRow {
         id: "tycho-2".to_string(),
-        name: names("Liste d\u{2019}étoiles Tycho-2", "Tycho-2 star list"),
+        name: names([
+            "Liste d\u{2019}étoiles Tycho-2",
+            "Tycho-2 star list",
+            "Tycho-2 星リスト",
+            "Tycho-2-Sternliste",
+            "Lista de estrellas Tycho-2",
+            "Elenco stellare Tycho-2",
+            "Lista de estrelas Tycho-2",
+            "Список звёзд Tycho-2",
+            "Tycho-2 星表",
+            "Tycho-2 星表",
+        ]),
         kind: "data".to_string(),
         required: false,
         state: if context.reference_stars.is_file() {
@@ -827,6 +876,7 @@ pub fn detect_tools(context: &DetectContext) -> Vec<ToolRow> {
         partial_bytes: None,
         progression_compatible: None,
         interrupted: false,
+        redo: None,
         installable: false,
         blocked_by: Vec::new(),
     });
@@ -850,7 +900,18 @@ fn stacking_pipeline_row(rows: &[ToolRow]) -> ToolRow {
     }
     ToolRow {
         id: "stacking-pipeline".to_string(),
-        name: names("Pipeline d\u{2019}empilement", "Stacking pipeline"),
+        name: names([
+            "Pipeline d\u{2019}empilement",
+            "Stacking pipeline",
+            "スタッキングパイプライン",
+            "Stacking-Pipeline",
+            "Pipeline de apilado",
+            "Pipeline di impilamento",
+            "Pipeline de empilhamento",
+            "Конвейер сложения",
+            "叠加流水线",
+            "疊加流程",
+        ]),
         kind: "pipeline".to_string(),
         required: false,
         state: match env_state {
@@ -868,6 +929,7 @@ fn stacking_pipeline_row(rows: &[ToolRow]) -> ToolRow {
         partial_bytes: None,
         progression_compatible: None,
         interrupted: env.is_some_and(|r| r.interrupted),
+        redo: env.and_then(|r| r.redo),
         installable: env.is_some_and(|r| r.installable),
         blocked_by,
     }

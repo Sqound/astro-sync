@@ -111,9 +111,13 @@ pub struct CheckArgs {
     #[arg(long, value_name = "ID")]
     pub main: Option<String>,
     /// Join the TIFF of the renders (full resolution) to the sending; without it, a render written as
-    /// PNG and TIFF leaves as its PNG, and a render that exists only as a TIFF (`linear`) as its TIFF.
+    /// PNG and TIFF leaves as its PNG, and the linear file ("No processing", `<name>_linear.tif`, a file attached to the capture) leaves only with it.
     #[arg(long)]
     pub with_tiff: bool,
+    /// When the TIFF of an image set in "Régler l'image" would take the place of the TIFF already online
+    /// for the capture, keep the old TIFF too: both stay online (the limits are checked with it added).
+    #[arg(long)]
+    pub keep_tiff: bool,
     /// Language of the titles and descriptions proposed for a render (fr, en, ja...).
     #[arg(long, default_value = "en")]
     pub lang: String,
@@ -134,9 +138,13 @@ pub struct SendNightArgs {
     #[arg(long, value_name = "ID")]
     pub main: Option<String>,
     /// Join the TIFF of the renders (full resolution) to the sending; without it, a render written as
-    /// PNG and TIFF leaves as its PNG, and a render that exists only as a TIFF (`linear`) as its TIFF.
+    /// PNG and TIFF leaves as its PNG, and the linear file ("No processing", `<name>_linear.tif`, a file attached to the capture) leaves only with it.
     #[arg(long)]
     pub with_tiff: bool,
+    /// When the TIFF of an image set in "Régler l'image" would take the place of the TIFF already online
+    /// for the capture, keep the old TIFF too: both stay online (the limits are checked with it added).
+    #[arg(long)]
+    pub keep_tiff: bool,
     /// Upload queue (SQLite).
     #[arg(long)]
     pub queue: PathBuf,

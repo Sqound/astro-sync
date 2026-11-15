@@ -166,12 +166,24 @@ pub fn local_images(
                 Some(tiff) => Some((tiff, scanner::digest_of(tiff, cache, cancel)?)),
                 None => None,
             };
+            // The linear stack is a file attached to the capture, not a
+            // render of the gallery.
+            // With a finish chosen, only the finished image leaves: the bare
+            // twin the stacker wrote beside it stays on this computer.
+            if crate::metadata::recorded_bare_twin(&file.path) {
+                continue;
+            }
+            let kind = if crate::metadata::is_linear_render(&file.path) {
+                ResultKind::Linear
+            } else {
+                ResultKind::Stacked
+            };
             images.push(LocalImage {
                 target_id: target.target_id.clone(),
                 path: file.path.clone(),
                 sha256: sha256.clone(),
                 size: file.stamp.size,
-                kind: ResultKind::Stacked,
+                kind,
                 twin_sha256: twin.as_ref().map(|(_, digest)| digest.clone()),
             });
             if let Some((tiff, digest)) = twin {
@@ -193,12 +205,13 @@ pub fn local_images(
 /// ([`ResumeLocal::candidates`]) and `extra` (the renders and progression
 /// images this sending just made).
 ///
-/// **The TIFF of a render that also leaves as a PNG is kept only when
-/// `include_tiff`** (the box « Joindre aussi les TIFF » of the sending,
-/// [`crate::render_files`]): the gallery shows the PNG, and the TIFF only
-/// serves the download in full resolution, so it is the person's choice,
-/// never the default. A render that exists only as a TIFF (the linear one)
-/// and the person's own `final/` image are never concerned.
+/// **A TIFF the person chooses is kept only when `include_tiff`** (the box
+/// « Joindre aussi les TIFF » of the sending, [`crate::render_files`]): the
+/// TIFF of a render that also leaves as a PNG (the gallery shows the PNG,
+/// and the TIFF only serves the download in full resolution) and the linear
+/// file ("No processing", a file to download that the gallery never shows).
+/// It is the person's choice, never the default. The person's own `final/`
+/// image is never concerned.
 ///
 /// A stacked image an earlier stacking left in `<target>/stacked/` is **never
 /// a final image to send again**: when this sending stacks the target again
@@ -216,25 +229,45 @@ pub fn precheck_candidates(
     restack: &[String],
     include_tiff: bool,
 ) -> Vec<ImageCandidate> {
+    let is_render = |c: &ImageCandidate| matches!(c.kind, ResultKind::Stacked | ResultKind::Linear);
     let replaced = |target: &str| {
         restack.iter().any(|t| t == target)
-            || extra
-                .iter()
-                .any(|e| e.kind == ResultKind::Stacked && e.target_id == target)
+            || extra.iter().any(|e| is_render(e) && e.target_id == target)
     };
     let mut candidates: Vec<ImageCandidate> = local
         .candidates()
         .into_iter()
-        .filter(|c| !(c.kind == ResultKind::Stacked && replaced(&c.target_id)))
+        .filter(|c| !(is_render(c) && replaced(&c.target_id)))
         .collect();
     candidates.extend(extra);
-    candidates.retain(|c| render_files::leaves(c.is_full_resolution_twin(), include_tiff));
-    candidates
+    candidates.retain(|c| render_files::leaves(c.is_optional_tiff(), include_tiff));
+    // A render set in « Régler l'image » leaves as its image set.
+    crate::image_adjust::substitute_candidates(candidates)
 }
 
-/// The TIFF of the renders a sending could join (« Joindre aussi les TIFF
-/// (pleine résolution, ≈ 47 Mo chacun) »): how many there are and what they
-/// weigh, whether they are joined or not.
+/// The linear files the person does not join (`precheck_candidates(.., false)`
+/// drops them): what the « Récapitulatif » lists under « Ne quitte jamais cet
+/// ordinateur ». Empty when the TIFF are joined.
+#[must_use]
+pub fn linear_files_kept_here(
+    local: &ResumeLocal,
+    extra: Vec<ImageCandidate>,
+    restack: &[String],
+    include_tiff: bool,
+) -> Vec<ImageCandidate> {
+    if include_tiff {
+        return Vec::new();
+    }
+    precheck_candidates(local, extra, restack, true)
+        .into_iter()
+        .filter(|c| c.kind == ResultKind::Linear)
+        .collect()
+}
+
+/// The TIFF a sending could join (« Joindre aussi les TIFF (pleine résolution,
+/// ≈ 47 Mo chacun) »): the twins of the renders and the linear files, how many
+/// there are and what they weigh, whether they are joined or not. The label
+/// stays an average (« ≈ »): the exact total is the check's.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FullResolution {
@@ -244,11 +277,11 @@ pub struct FullResolution {
     pub bytes: u64,
 }
 
-/// [`FullResolution`] of a sending: the TIFF twins among the candidates taken
-/// with every TIFF (`precheck_candidates(.., true)`).
+/// [`FullResolution`] of a sending: the optional TIFF among the candidates
+/// taken with every TIFF (`precheck_candidates(.., true)`).
 #[must_use]
 pub fn full_resolution_of(with_tiff: &[ImageCandidate], joined: bool) -> FullResolution {
-    let twins = with_tiff.iter().filter(|c| c.is_full_resolution_twin());
+    let twins = with_tiff.iter().filter(|c| c.is_optional_tiff());
     FullResolution {
         joined,
         count: twins.clone().count() as u64,
@@ -318,6 +351,10 @@ pub struct NightPrecheck {
     /// [`full_resolution_of`]).
     #[serde(default)]
     pub full_resolution: FullResolution,
+    /// The linear files the person does not join: they stay on this computer
+    /// (set by the caller, [`linear_files_kept_here`]).
+    #[serde(default)]
+    pub linear_kept_here: Vec<ImageCandidate>,
 }
 
 /// The check before a sending (see [`NightPrecheck`]): nothing is sent.
@@ -328,6 +365,21 @@ pub fn precheck_night<T: PrecheckTransport>(
     online: &NightOnline,
     candidates: &[ImageCandidate],
 ) -> Result<NightPrecheck, GuiBridgeError> {
+    precheck_night_keeping(transport, portal_url, token, online, candidates, &|_| false)
+}
+
+/// [`precheck_night`] where `keep` says which images that would take the
+/// place of a variant online stay beside it instead (« Conserver le TIFF
+/// existant »: [`crate::precheck::keep_beside`]): the limits are then checked
+/// with that image added, not replacing.
+pub fn precheck_night_keeping<T: PrecheckTransport>(
+    transport: &T,
+    portal_url: &str,
+    token: &str,
+    online: &NightOnline,
+    candidates: &[ImageCandidate],
+    keep: &dyn Fn(&ImagePlan) -> bool,
+) -> Result<NightPrecheck, GuiBridgeError> {
     let storage = transport.space_storage(portal_url, token)?;
     let mut plans = plan_images_within(
         online,
@@ -335,6 +387,9 @@ pub fn precheck_night<T: PrecheckTransport>(
         storage.variant_limit,
         storage.max_file_bytes,
     );
+    // An image set whose render is online takes its place, never beside it.
+    crate::image_adjust::place_replacements(online, &mut plans);
+    crate::precheck::keep_beside_where(&mut plans, keep);
     let refused = check_with_service(transport, portal_url, token, &online.session_id, &mut plans)?;
     rebind_progressions(&mut plans);
     let mut quota = check_quotas(&storage, online, &plans);
@@ -343,6 +398,7 @@ pub fn precheck_night<T: PrecheckTransport>(
     Ok(NightPrecheck {
         several_renders_allowed: several_renders_allowed(&storage),
         full_resolution: FullResolution::default(),
+        linear_kept_here: Vec::new(),
         storage,
         plans,
         quota,

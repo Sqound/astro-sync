@@ -47,6 +47,8 @@ fn storage() -> SpaceStorage {
 
 fn image(target: &str, path: &str, sha: char, size: u64, kind: ResultKind) -> ImageCandidate {
     ImageCandidate {
+        series_seconds: None,
+        series: None,
         render_rank: None,
         target_id: target.into(),
         path: PathBuf::from(path),

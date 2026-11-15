@@ -826,6 +826,8 @@ pub(super) fn group(
                 } else {
                     Vec::new()
                 },
+                session_id: None,
+                to_review: false,
                 existing: super::TargetMatch::New,
             });
         }

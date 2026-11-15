@@ -839,6 +839,9 @@ pub struct SectionDependency {
     /// made here.
     pub installable: bool,
     pub interrupted: bool,
+    /// The Python environment found but outdated: what installing redoes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redo: Option<crate::python_env::EnvRedo>,
     pub blocked_by: Vec<String>,
 }
 
@@ -931,6 +934,7 @@ pub fn sections(
                             .or_else(|| tools::download_bytes(entry)),
                         installable: download.is_some() || row.is_some_and(|r| r.installable),
                         interrupted: row.is_some_and(|r| r.interrupted),
+                        redo: row.and_then(|r| r.redo),
                         blocked_by: row.map(|r| r.blocked_by.clone()).unwrap_or_default(),
                     })
                 })
@@ -1128,6 +1132,7 @@ mod tests {
             partial_bytes: None,
             progression_compatible: None,
             interrupted: false,
+            redo: None,
             installable: false,
             blocked_by: Vec::new(),
         }

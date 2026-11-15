@@ -17,3 +17,4 @@ import "./poses.css";
 import "./incidents.css";
 import "./uploads.css";
 import "./processing.css";
+import "./adjust.css";

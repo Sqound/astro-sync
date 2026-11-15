@@ -251,6 +251,34 @@ class Measure(Folder):
         few = self.refused(self.fits_of(stretched(star_field(5, 1.6, 1.6), 0.001), "few-stars.fit"))
         self.assertEqual(few.code, "too_few_stars")
 
+    def test_a_linear_master_on_a_pedestal_is_not_taken_for_a_stretched_image(self) -> None:
+        # A real master of a smart telescope keeps the sky glow and the offset under its sky (a median at 2 % of
+        # the range on a 3 h 34 night at dawn) while a few pixels of its edges sit near 0: the gap between them
+        # is tens of noise widths, where a stretch clips its black a few widths under the sky.  The pedestal
+        # is not a stretch.
+        for pedestal in (0.02, 0.05, 0.2):
+            master = linear_master(star_field(150, 1.6, 1.6)) + pedestal
+            master[-2:, :] = 0.0  # the edges no frame covers (the bright pixel of the top row kept)
+            self.assertIsNone(star_quality.stretch_reason(star_quality.luminance(master)), f"pedestal {pedestal}")
+            self.assertEqual(star_quality.measure_file(self.fits_of(master, f"pedestal-{pedestal}.fit"))["measuredOn"],
+                             "linear")
+
+    def test_the_pedestal_is_read_beyond_ten_noise_widths_only(self) -> None:
+        # Just inside the bound (a dark pixel 9 widths under the sky) the range starts at that pixel; just beyond
+        # (11 widths) the range starts 10 widths under the sky.  A stretch of 3 % stays refused either way.
+        self.assertEqual(star_quality.PEDESTAL_SIGMAS, 10)
+        sky = star_field(150, 1.6, 1.6)
+        sigma = 0.002
+        for widths, linear in ((9, False), (11, True)):
+            level = sky.copy()
+            level[0, :] = float(np.median(sky)) - widths * sigma
+            level = (level - level.min()) / (level.max() - level.min()) * 0.9 + 0.0
+            level[1, 0] = 1.0
+            # Lift the sky to 2.5 % of the range: only a pedestal read as one lets it pass.
+            reason = star_quality.stretch_reason(level)
+            self.assertEqual(reason is None, linear, f"{widths} widths: {reason}")
+        self.assertIsNotNone(star_quality.stretch_reason(stretched(self.sky, 0.03)))
+
     def test_a_gently_stretched_colour_image_and_an_eight_bit_image_are_refused_too(self) -> None:
         colour = np.stack([stretched(self.sky, 0.3)] * 3)
         self.assertEqual(self.refused(self.xisf_of(colour)).code, "stretched")

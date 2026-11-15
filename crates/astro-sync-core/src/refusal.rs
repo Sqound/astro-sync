@@ -28,7 +28,7 @@
 /// A sentence says the reason and what the person can do; the wrapper around
 /// it (the queue's notice, the command line's line) says what became of the
 /// file.
-const KNOWN: [(&str, &str); 20] = [
+const KNOWN: [(&str, &str); 22] = [
     (
         "capture_content_refused",
         "This file is an SVG or HTML document: the service does not accept it. If it was meant to be an image, export it as JPEG, PNG or TIFF, then add it again.",
@@ -92,6 +92,14 @@ const KNOWN: [(&str, &str); 20] = [
     (
         "variant_capture_pending",
         "Waiting: this image is a variant of the capture another image of this sending creates. It will leave as soon as that image is sent; send again.",
+    ),
+    (
+        "file_capture_pending",
+        "Waiting: this file is attached to the capture another image of this sending creates. It will leave as soon as that image is sent; send again.",
+    ),
+    (
+        "file_capture_refused",
+        "This file was not sent: it is attached to a capture, and the image that creates it was not sent. Send the night again with its image.",
     ),
     (
         "project_not_found",

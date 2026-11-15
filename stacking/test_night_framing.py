@@ -185,6 +185,10 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(registration["framing"], "common")
         self.assertEqual((registration["frame"]["notches"], registration["frame"]["rank"]), ([], None))
         self.assertTrue(any("-framing=min" in line for line in provenance["recipe"]["siril"]))
+        # What the frames brought is said, and the record keeps it.
+        weighting = next(e for e in events if e["event"] == "weighting")
+        self.assertEqual((weighting["method"], weighting["frames"], weighting["noisy"]), ("wfwhm", 6, 0))
+        self.assertEqual(provenance["normalisation"]["weighting"]["frames"], 6)
         self.assertLess(provenance["width"], SHAPE[1])
         self.assertFalse((lights.parent / "stacked" / "M45_field.fit").exists())
         # An alt-azimuth night keeps the whole field, the notches measured, nothing cut.

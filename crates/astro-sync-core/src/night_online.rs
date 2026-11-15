@@ -38,6 +38,20 @@ impl OnlineImage {
     }
 }
 
+/// One file attached to a capture (`attachments[]` of a capture: the linear
+/// file), never among its images.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnlineAttachment {
+    pub id: String,
+    /// `linear`.
+    pub role: String,
+    pub sha256: String,
+    pub byte_size: u64,
+    pub original_name: String,
+    pub created_at: String,
+}
+
 /// One capture of the night.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +68,18 @@ pub struct OnlineCapture {
     pub main_image: Option<OnlineImage>,
     pub image_count: u64,
     pub images: Vec<OnlineImage>,
+    /// The files attached to it (the linear file): not images, not counted in
+    /// `image_count`. Absent on an answer written before the files existed.
+    #[serde(default)]
+    pub attachments: Vec<OnlineAttachment>,
+    /// Its series of poses ([`crate::series`]); absent on a capture sent
+    /// without one (before, or by a phone).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<crate::series::Series>,
+    /// Whether it is the main capture of its target (the longest series, or
+    /// the owner's choice); written when the target has a capture of a series.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_main: Option<bool>,
 }
 
 impl OnlineCapture {
@@ -113,6 +139,41 @@ impl NightOnline {
         self.target(target_id)?.captures.first()
     }
 
+    /// The capture of `target_id` an image of `series` goes to, as the
+    /// service decides it (`capture-series.js#captureForUpload`): the capture
+    /// of the same series; else a capture without a series whose main image
+    /// names no other series (it takes this one); else none (a new capture).
+    /// Without a series: [`Self::capture_of`], the main capture of the target,
+    /// which the service lists first.
+    #[must_use]
+    pub fn capture_for(
+        &self,
+        target_id: &str,
+        series: Option<&crate::series::Series>,
+    ) -> Option<&OnlineCapture> {
+        let Some(series) = series else {
+            return self.capture_of(target_id);
+        };
+        let key = series.key();
+        let captures = &self.target(target_id)?.captures;
+        let with_image = || captures.iter().filter(|c| c.main_image.is_some());
+        let mut by_date: Vec<&OnlineCapture> = with_image().collect();
+        by_date.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+        if let Some(same) = by_date
+            .iter()
+            .find(|c| c.series.as_ref().is_some_and(|s| s.key() == key))
+        {
+            return Some(same);
+        }
+        by_date.into_iter().find(|c| {
+            c.series.is_none()
+                && c.main_image.as_ref().is_none_or(|image| {
+                    crate::series::Series::from_file_name(&image.original_name)
+                        .is_none_or(|named| series.same_named(&named))
+                })
+        })
+    }
+
     /// Every image online, with the capture that holds it.
     pub fn images(&self) -> impl Iterator<Item = (&OnlineCapture, &OnlineImage)> {
         self.targets
@@ -126,6 +187,16 @@ impl NightOnline {
     pub fn image_with(&self, sha256: &str) -> Option<(&OnlineCapture, &OnlineImage)> {
         self.images()
             .find(|(_, image)| image.sha256.eq_ignore_ascii_case(sha256))
+    }
+
+    /// The file attached to a capture online with the digest `sha256`, if any.
+    #[must_use]
+    pub fn attachment_with(&self, sha256: &str) -> Option<(&OnlineCapture, &OnlineAttachment)> {
+        self.targets
+            .iter()
+            .flat_map(|t| t.captures.iter())
+            .flat_map(|c| c.attachments.iter().map(move |a| (c, a)))
+            .find(|(_, attachment)| attachment.sha256.eq_ignore_ascii_case(sha256))
     }
 
     /// A night with nothing online beyond its plan: no capture, no analysis.

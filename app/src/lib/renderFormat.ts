@@ -6,7 +6,7 @@
 // `node --test`.
 
 import type { TranslateParams } from "../i18n/locale.ts";
-import { formatSize } from "./written.ts";
+import { formatSpaceSize } from "./written.ts";
 
 type Translate = (key: string, params?: TranslateParams) => string;
 
@@ -47,7 +47,7 @@ export function joinTiffLabel(
 ): string {
   return fullResolution && fullResolution.count > 0
     ? t("uploadFormat.joinTiffSized", {
-        size: formatSize(
+        size: formatSpaceSize(
           t,
           Math.round(fullResolution.bytes / fullResolution.count),
           locale,
@@ -68,6 +68,6 @@ export function withoutTiffText(
   const without = quota.toSendBytes - tiff;
   if (tiff <= 0 || without > remainingBytes) return null;
   return t("uploadFormat.withoutTiff", {
-    size: formatSize(t, without, locale),
+    size: formatSpaceSize(t, without, locale),
   });
 }

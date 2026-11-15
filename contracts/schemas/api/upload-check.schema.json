@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://astroportal.invalid/schemas/api/upload-check.schema.json",
   "title": "Astro Portal API v1 — the check before an upload",
-  "description": "`POST /v1/uploads/check` (a device token or the web session with its CSRF token) takes an upload's declared metadata (`uploadMetadata` of capture.schema.json: `sha256`, `byteSize`, `originalName`, the optional `captureId`, `targetId`/`targetIds`, `sessionId`, `planId`, `source`) and answers before a single byte is sent: `present` (the space already holds these bytes, as the image `imageId` of the capture `captureId` (`main`: its main image); an upload would store nothing), `accepted` (as a new capture, `adds: capture`, or as an image of `captureId`, `adds: variant`, or as a progression image of `captureId`, `adds: progression`), or `refused` with the code and the numbers the upload itself would answer. Nothing is written. A malformed body, an unknown or foreign capture, plan, session or target are errors, as for the upload (`400`, `404`). See api/uploads.md, « Checking before sending ».",
+  "description": "`POST /v1/uploads/check` (a device token or the web session with its CSRF token) takes an upload's declared metadata (`uploadMetadata` of capture.schema.json: `sha256`, `byteSize`, `originalName`, the optional `captureId`, `targetId`/`targetIds`, `sessionId`, `planId`, `source`) and answers before a single byte is sent: `present` (the space already holds these bytes, as the image `imageId` of the capture `captureId` (`main`: its main image) or as the file `attachmentId` attached to it; an upload would store nothing), `accepted` (as a new capture, `adds: capture`, or as an image of `captureId`, `adds: variant`, or as a progression image of `captureId`, `adds: progression`, or as a file attached to `captureId`, `adds: attachment`), or `refused` with the code and the numbers the upload itself would answer. Nothing is written. A malformed body, an unknown or foreign capture, plan, session or target are errors, as for the upload (`400`, `404`). See api/uploads.md, « Checking before sending ».",
   "$defs": {
     "storage": {
       "type": "object",
@@ -28,6 +28,7 @@
     },
     "present": {
       "type": "object",
+      "description": "The space already holds these bytes as the image `imageId` of `captureId` (`main`: its main image).",
       "required": ["result", "captureId", "imageId", "main", "storage"],
       "properties": {
         "result": { "const": "present" },
@@ -38,12 +39,32 @@
       },
       "additionalProperties": false
     },
+    "presentAttachment": {
+      "type": "object",
+      "description": "The space already holds these bytes as the file `attachmentId` attached to `captureId` (capture-attachment.schema.json), whatever the upload declares.",
+      "required": ["result", "captureId", "attachmentId", "storage"],
+      "properties": {
+        "result": { "const": "present" },
+        "captureId": { "$ref": "capture.schema.json#/$defs/uuid" },
+        "attachmentId": { "type": "string", "minLength": 1 },
+        "storage": { "$ref": "#/$defs/storage" }
+      },
+      "additionalProperties": false
+    },
     "accepted": {
       "type": "object",
       "required": ["result", "adds", "storage"],
       "properties": {
         "result": { "const": "accepted" },
-        "adds": { "enum": ["capture", "variant", "progression"] },
+        "adds": {
+          "description": "`attachment`: a file attached to `captureId` (`role: linear`).",
+          "enum": ["capture", "variant", "progression", "attachment"]
+        },
+        "replacesImageId": {
+          "description": "Additive, with `adds: variant` only: the variant of `captureId` the upload would take the place of (`replacesSha256` naming one the capture holds). Absent when the field was not sent or names no variant of the capture (the image would be added).",
+          "type": "string",
+          "minLength": 1
+        },
         "storage": { "$ref": "#/$defs/storage" }
       },
       "additionalProperties": false
@@ -70,6 +91,7 @@
   },
   "oneOf": [
     { "$ref": "#/$defs/present" },
+    { "$ref": "#/$defs/presentAttachment" },
     { "$ref": "#/$defs/accepted" },
     { "$ref": "#/$defs/refused" }
   ]

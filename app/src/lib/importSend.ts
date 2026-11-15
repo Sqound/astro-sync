@@ -61,9 +61,15 @@ export function importSends(
     return {
       row,
       send: { ...item.send, variantOfSha256 },
-      variant: true,
+      // The linear file is attached to the capture, not a variant of it.
+      variant: row.role !== "file",
     };
   });
+}
+
+/** How many images are queued: the linear file is a file, not an image. */
+export function imageCount(sends: readonly ImportSend[]): number {
+  return sends.filter((item) => item.row.role !== "file").length;
 }
 
 /** How many of the images queued are variants of another one queued. */

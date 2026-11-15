@@ -54,12 +54,17 @@ fn astro_sync(args: &[&str], stdin: &str) -> Output {
         .stderr(Stdio::piped())
         .spawn()
         .expect("run the astro-sync binary");
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(stdin.as_bytes())
-        .unwrap();
+    // A command that refuses before it reads its input (a refusal of the
+    // contract needs none) has closed the pipe when this writes: a broken pipe
+    // is the process having answered first, not a failure of the test. Any
+    // other write error is one.
+    let mut input = child.stdin.take().unwrap();
+    match input.write_all(stdin.as_bytes()) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+        Err(error) => panic!("write the standard input of the binary: {error}"),
+    }
+    drop(input);
     child.wait_with_output().unwrap()
 }
 

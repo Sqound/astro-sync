@@ -554,7 +554,10 @@ mod solvers {
         let words = failure.sentence();
         assert!(words.contains("astrometry.net"), "{words}");
         assert!(words.contains("index"), "{words}");
-        assert!(words.contains("Settings › Dependencies"), "{words}");
+        // The window installs no index of astrometry.net: the sentence
+        // never sends the person there, and says the annotations wait.
+        assert!(!words.contains('›'), "{words}");
+        assert!(words.contains("Annotations page"), "{words}");
         assert!(!words.contains("255"), "{words}");
 
         // Any other stop keeps the solver's last words for the ⓘ.

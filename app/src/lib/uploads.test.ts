@@ -6,6 +6,7 @@ import type { QueueDriveEvent, QueueEntry } from "./bridge";
 import {
   NO_UPLOADS,
   bannerLines,
+  followSentFiles,
   isLive,
   latestBatch,
   liveRows,
@@ -92,7 +93,7 @@ test("a recorded sequence queued -> progress -> done: the row, the badge and the
   const row = state.rows[0];
   assert.equal(percentOf(row), 20);
   assert.ok(row.speed !== null && row.speed > 4_000_000, "bytes per second");
-  assert.match(progressLine(fr, "fr", row), /9,3 Mo sur 46,5 Mo/);
+  assert.match(progressLine(fr, "fr", row), /8,9 Mo sur 44,3 Mo/);
   assert.match(progressLine(fr, "fr", row), /Mo\/s/);
 
   // The person closes the notification: the upload goes on.
@@ -149,7 +150,7 @@ test("queued -> refused: the service's reason is said, with the size against the
   state = play([{ type: "limit", sha256: SHA, bytes: 25_000_000 }], state);
   assert.equal(
     reasonOf(fr, "fr", state.rows[0]),
-    "46,5 Mo > 25,0 Mo pour votre espace",
+    "44,3 Mo > 23,8 Mo pour votre espace",
   );
 
   const quota = play([
@@ -386,7 +387,7 @@ test("a row is « cible · rendu · taille », or the name of the file", () => {
   const state = play([tracked()]);
   assert.equal(
     titleLine(fr, "fr", state.rows[0]),
-    "IC 1805 · Bibande · 46,5 Mo",
+    "IC 1805 · Bibande · 44,3 Mo",
   );
   const bare = play([
     {
@@ -480,7 +481,7 @@ test("the snackbars of the uploads: the one on its way has a bar, persistent; se
   assert.equal(running.mode, "persistent");
   assert.equal(running.progress, 20);
   assert.equal(running.tone, "info");
-  assert.match(running.detail ?? "", /9,3 Mo sur 46,5 Mo/);
+  assert.match(running.detail ?? "", /8,9 Mo sur 44,3 Mo/);
   assert.equal(running.action?.label, "Voir les envois");
   running.action?.run();
   assert.equal(calls.opened, 1);
@@ -665,4 +666,59 @@ test("a file that is gone says its name and folder, and « Réessayer » stays p
   assert.equal(other.rows[0].retryable, false);
   const again = play([{ type: "requeue", sha256: SHA }], settled);
   assert.equal(again.rows[0].status, "queued");
+});
+
+test("a render set in « Régler l'image » is followed as the image set that leaves: its row ends with the queue's events, and « Tout envoyer » has nothing left to start", () => {
+  const RENDER = "r".repeat(64);
+  const SET = "s".repeat(64);
+  const files = followSentFiles(
+    [
+      {
+        sha256: RENDER,
+        path: "/n/M31/stacked/M31_polished.png",
+        size: 169_300,
+        target: "M31",
+        rendering: "Polished render",
+      },
+      { sha256: SHA, path: "/n/NGC 7000/stacked/n.png", size: 20 },
+    ],
+    [
+      {
+        renderSha256: RENDER.toUpperCase(),
+        sha256: SET,
+        path: "/n/M31/stacked/adjusted/M31_polished_adjusted.png",
+        size: 103_400,
+      },
+    ],
+  );
+  assert.equal(files[0].sha256, SET);
+  assert.equal(
+    files[0].path,
+    "/n/M31/stacked/adjusted/M31_polished_adjusted.png",
+  );
+  assert.equal(files[0].size, 103_400);
+  assert.equal(files[0].target, "M31");
+  assert.equal(files[0].rendering, "Polished render");
+  assert.equal(files[1].sha256, SHA);
+  // The row the window tracks is the one the queue's events name.
+  let state = uploadsReducer(NO_UPLOADS, {
+    type: "track",
+    origin: "detect",
+    files,
+  });
+  state = uploadsReducer(state, {
+    type: "event",
+    event: {
+      kind: "Completed",
+      sha256: SET,
+      captureId: "cap-1",
+    } as QueueDriveEvent,
+    now: 1,
+  });
+  const row = state.rows.find((item) => item.sha256 === SET)!;
+  assert.equal(row.status, "done");
+  assert.equal(row.size, 103_400);
+  assert.equal(state.rows.length, 2);
+  // Nothing given: the files as they were.
+  assert.deepEqual(followSentFiles(files, undefined), files);
 });

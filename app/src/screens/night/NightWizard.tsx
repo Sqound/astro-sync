@@ -14,6 +14,7 @@ import { WizardFrame } from "../../components/WizardFrame";
 import { usePromptWindow } from "../../components/PromptWindow";
 import { useSnackbar } from "../../components/Snackbar";
 import { Waiting } from "../../components/Waiting";
+import { AdjustScreen } from "../adjust/AdjustScreen";
 import { useI18n } from "../../i18n";
 import {
   assistantPrompt,
@@ -46,6 +47,7 @@ import {
   type ToolRow,
   type WizardStep,
 } from "../../lib/bridge";
+import { latestOnly } from "../../lib/concurrency";
 import { formatError } from "../../lib/format";
 import { promptNames } from "../../lib/promptWindow";
 import { displayPath, homeOf } from "../../lib/home";
@@ -185,6 +187,18 @@ export function NightWizard({
   // The installed tools and the pipelines, read when « Traitements » opens.
   const [toolsRead, setToolsRead] = useState<string | null>(null);
   const [view, setView] = useState<NightView | null>(null);
+  // « Régler l'image » on a render of the « Récapitulatif »: the page in place
+  // of the wizard; coming back reads the summary again.
+  const [adjusting, setAdjusting] = useState<{
+    path: string;
+    target: string;
+    render: string;
+  } | null>(null);
+  // « Vérifier à nouveau » reads the night again: while it reads, the step
+  // says so; and only the last read started writes the view -- an older
+  // read that ends later never shows what was on disk before.
+  const viewReads = useRef(latestOnly()).current;
+  const [checking, setChecking] = useState(false);
   const [phase, setPhase] = useState<Phase | null>(initialStep);
   // « Mesurer les poses » asks « Fichiers » for a target's card: a step is
   // not enough, the card is brought to the top and focused.
@@ -416,17 +430,23 @@ export function NightWizard({
 
   const refreshView = useCallback(async () => {
     if (!input) return null;
+    const ticket = viewReads.begin();
+    setChecking(true);
     try {
       const next = await nightView(sessionId, input);
+      if (!viewReads.isLatest(ticket)) return null;
       setView(next);
       setViewFailed(false);
       return next;
     } catch (caught) {
+      if (!viewReads.isLatest(ticket)) return null;
       setError(formatError(t, caught));
       setViewFailed(true);
       return null;
+    } finally {
+      if (viewReads.isLatest(ticket)) setChecking(false);
     }
-  }, [input, sessionId, t]);
+  }, [input, sessionId, t, viewReads]);
 
   // The view once the night is known; the phase it opens at.
   useEffect(() => {
@@ -702,6 +722,22 @@ export function NightWizard({
     }
   }
 
+  if (adjusting && phase === "recapitulatif") {
+    return (
+      <AdjustScreen
+        path={adjusting.path}
+        target={adjusting.target}
+        render={adjusting.render}
+        eyebrow={header?.eyebrow ?? t("wizard.summary.title")}
+        back={{
+          label: t("wizard.previous"),
+          onClick: () => setAdjusting(null),
+        }}
+        onSaved={() => setAdjusting(null)}
+      />
+    );
+  }
+
   return (
     <WizardFrame
       back={{ label: t("nav.sessions"), onClick: onBack }}
@@ -807,6 +843,7 @@ export function NightWizard({
             await reloadNight();
           }}
           onRefresh={() => void refreshView()}
+          checking={checking}
           onRetry={retryView}
           onMakeFolder={() => runPrepare(null)}
           poses={poses}
@@ -871,6 +908,7 @@ export function NightWizard({
             onBack={() => goTo("traitements")}
             onNights={onBack}
             onOpen={onOpen}
+            onAdjust={setAdjusting}
           />
         )}
     </WizardFrame>

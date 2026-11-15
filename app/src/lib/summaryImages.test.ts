@@ -85,10 +85,10 @@ test("every pipeline's image is listed: the first as the capture, the others as 
   );
   assert.equal(capture.title, "IC 1805");
   assert.equal(capture.render, "Rendu naturel");
-  assert.equal(flat(capture.meta), "3 nuits empilées · PNG · 46,5 Mo");
+  assert.equal(flat(capture.meta), "3 nuits empilées · PNG · 44,4 Mo");
   assert.equal(variant.title, "Variante de la capture de IC 1805");
   assert.equal(variant.render, "Correction bibande");
-  assert.equal(flat(variant.meta), "PNG · 46,8 Mo");
+  assert.equal(flat(variant.meta), "PNG · 44,6 Mo");
 });
 
 test("the natural render is the capture whatever the order of the pipelines; a render with the curve of presentation is never one", () => {
@@ -164,7 +164,7 @@ test("size guard: an image above the space's per-file ceiling cannot be ticked, 
   });
   assert.equal(
     flat(summaryImageView(fr, "fr", rows[0], pipelineName).blocked ?? ""),
-    "Trop lourde pour votre espace (46,5 Mo > 26,2 Mo)",
+    "Trop lourde pour votre espace (44,4 Mo > 25,0 Mo)",
   );
   assert.equal(canTickImage(rows[0], rows, [], null), false);
   // At the ceiling exactly, it still goes.
@@ -313,12 +313,12 @@ test("the Récapitulatif with two pipelines: two rows, each with its box, its pa
   assert.ok(!html.includes("disabled"), "both boxes open");
   assert.ok(!/checked=""/.test(html), "nothing ticked by default");
   assert.match(html, /<strong>IC 1805<\/strong> · Rendu naturel/);
-  assert.match(html, /3 nuits empilées · PNG · 46,5 Mo/);
+  assert.match(html, /3 nuits empilées · PNG · 44,4 Mo/);
   assert.match(
     html,
     /<strong>Variante de la capture de IC 1805<\/strong> · Correction bibande/,
   );
-  assert.match(html, /PNG · 46,8 Mo/);
+  assert.match(html, /PNG · 44,6 Mo/);
   // The path is the link that opens the file.
   for (const row of TWO) {
     assert.ok(html.includes(`>${row.path}</button>`), row.path);
@@ -341,8 +341,8 @@ test("the Récapitulatif with a size guard: the box is disabled, with the reason
     draw(summaryImages(TWO, storage({ maxFileBytes: 26_214_400 }))),
   );
   assert.equal((html.match(/disabled/g) ?? []).length, 2);
-  assert.match(html, /Trop lourde pour votre espace \(46,5 Mo &gt; 26,2 Mo\)/);
-  assert.match(html, /Trop lourde pour votre espace \(46,8 Mo &gt; 26,2 Mo\)/);
+  assert.match(html, /Trop lourde pour votre espace \(44,4 Mo &gt; 25,0 Mo\)/);
+  assert.match(html, /Trop lourde pour votre espace \(44,6 Mo &gt; 25,0 Mo\)/);
 });
 
 /* --------------------------------- The wiring -------------------------------- */
@@ -446,9 +446,9 @@ test("the row of a render's TIFF says « TIFF pleine résolution », a TIFF alon
     rows.map((row) => flat(summaryImageView(fr, "fr", row, pipelineName).meta)),
     [
       // The nights stacked are said on the capture's row only.
-      "3 nuits empilées · PNG · 13,0 Mo",
-      "TIFF pleine résolution · 47,0 Mo",
-      "TIFF seul · 20,0 Mo",
+      "3 nuits empilées · PNG · 12,4 Mo",
+      "TIFF pleine résolution · 44,8 Mo",
+      "TIFF seul · 19,1 Mo",
     ],
   );
 });

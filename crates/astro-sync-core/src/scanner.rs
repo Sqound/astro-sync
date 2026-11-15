@@ -186,9 +186,9 @@ const WALK_REPORT_EVERY: Duration = Duration::from_millis(100);
 
 /// [`walk_folder`] that says where it is: `report(found, folder)` is called at
 /// most every 100 ms with the number of files met so far and the folder being
-/// walked (absolute). It is what the window shows
-/// while the files are searched, before any header is read (a walk reads no
-/// byte, so there is no total to measure).
+/// walked (absolute), and once at the end with the count of the whole walk.
+/// It is what the window shows while the files are searched, before any
+/// header is read (a walk reads no byte, so there is no total to measure).
 pub fn walk_folder_reporting(
     root: &Path,
     cancel: Option<&CancelFlag>,
@@ -254,6 +254,11 @@ pub fn walk_folder_reporting(
             stamp: FileStamp::from_metadata(&metadata),
             through_link: through_link(root, relative),
         });
+    }
+    // The last word is the count: a walk shorter than one report's interval
+    // would otherwise only ever say « 0 found ».
+    if let Some(report) = report {
+        report(walk.files.len() as u64, root);
     }
     walk.files
         .sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -704,10 +709,12 @@ mod tests {
         let walk = walk_folder_reporting(dir.path(), None, Some(&report)).unwrap();
         assert_eq!(walk.files.len(), 5);
         let seen = seen.lock().unwrap();
-        // At most every 100 ms: a short walk reports once, at once, from the root.
-        assert!(!seen.is_empty() && seen.len() <= 2, "{seen:?}");
+        // At most every 100 ms: a short walk reports at once, from the root,
+        // then its count at the end -- never only « 0 found ».
+        assert!(seen.len() >= 2 && seen.len() <= 3, "{seen:?}");
         assert_eq!(seen[0], (0, dir.path().to_path_buf()));
         assert!(seen.iter().all(|(found, _)| *found <= 5));
+        assert_eq!(seen.last(), Some(&(5, dir.path().to_path_buf())));
 
         // Without a sink, the same walk.
         assert_eq!(walk_folder(dir.path(), None).unwrap(), walk);
