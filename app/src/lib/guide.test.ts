@@ -63,7 +63,7 @@ test("Guide: the structure table says what each folder receives and what Astro S
   );
   same(
     fr(STRUCTURE_NOTES[2]),
-    "Seuls des résultats sont envoyés : l’image finale ou empilée, le rapport des journaux, les solutions de ciel, les images de progression. Les poses FITS et les journaux bruts ne quittent jamais cet ordinateur.",
+    "Seuls des résultats sont envoyés : l’image finale ou empilée, le rapport des journaux, les solutions de ciel, les images de progression. Les poses (FITS, XISF ou RAW) et les journaux bruts ne quittent jamais cet ordinateur.",
   );
   // A variant, never a revision nor a version.
   assert.ok(!/révision|version/u.test(fr(STRUCTURE_ROWS[3].useKey)));

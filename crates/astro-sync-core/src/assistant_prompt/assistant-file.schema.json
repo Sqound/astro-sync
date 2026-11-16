@@ -72,7 +72,7 @@
       }
     },
     "multi_night": {
-      "description": "The section written only when the multi-night plans are open for the space (analysis.progression, on the hosted service).",
+      "description": "The section written only when the multi-night plans are open for the space (planner.mosaic, on the hosted service).",
       "type": "object",
       "additionalProperties": false,
       "required": ["heading", "paragraphs"],

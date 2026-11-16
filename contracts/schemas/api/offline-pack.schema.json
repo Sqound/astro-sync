@@ -389,7 +389,8 @@
         "maxOrder",
         "frame",
         "attribution",
-        "license",
+        "tilingLicense",
+        "imageryLicense",
         "upstreamRoot"
       ],
       "properties": {
@@ -400,7 +401,8 @@
         "maxOrder": { "type": "integer", "minimum": 0 },
         "frame": { "type": "string", "minLength": 1 },
         "attribution": { "type": "string", "minLength": 1 },
-        "license": { "type": "string", "minLength": 1 },
+        "tilingLicense": { "type": "string", "minLength": 1 },
+        "imageryLicense": { "type": "string", "minLength": 1 },
         "licenseUrl": { "type": "string" },
         "imageryCopyright": { "type": "string" },
         "upstreamRoot": { "type": "string", "minLength": 1 },
@@ -519,6 +521,98 @@
       },
       "additionalProperties": true
     },
+    "targetPhotosPart": {
+      "type": "object",
+      "description": "One archive of the target photos: a ustar file whose entries are `<folder>/<file>` (`folder` one of the component's `families`), `bytes` and `sha256` those of the archive as served. `photos` counts its entries, `targets` the targets of the catalogue it covers.",
+      "required": ["id", "url", "bytes", "sha256", "photos", "targets"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(?:best|extended|all-[0-9]{2})$"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Live portal `/v1/offline-pack/target-photos/{part}.tar`; with a download origin, the absolute address on it with `?rev=<sha256>`."
+        },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "photos": { "type": "integer", "minimum": 1 },
+        "targets": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "targetPhotosLevel": {
+      "type": "object",
+      "description": "One level, named after the catalogue's selections: `best` (Essentielles), `extended` (Essentielles and Étendues), `all` (the whole catalogue). `parts` are the archives it needs; `targets`, `photos` and `bytes` are their totals.",
+      "required": ["id", "parts", "targets", "photos", "bytes"],
+      "properties": {
+        "id": { "enum": ["best", "extended", "all"] },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^(?:best|extended|all-[0-9]{2})$"
+          }
+        },
+        "targets": { "type": "integer", "minimum": 0 },
+        "photos": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "targetPhotosComponent": {
+      "type": "object",
+      "description": "Additive: « Photos des cibles », the optional component that puts the catalogue's pictures (the photograph and the visual preview the index names for each target: `photoUrl`, `visualPreviewUrl`) on the phone, so that the cards, the target sheets, the plans and the session pages keep their pictures without a network. The pictures are the very files the image routes serve one by one (`families`: the archive folder and the route whose files it holds), cut into a few `.tar` archives (`parts`) along the catalogue's selections; a level lists the archives it needs, cumulatively (Essentielles ⊂ Étendues ⊂ the whole catalogue). Only the levels whose archives are all built are listed; with none built there is no component. The third-party visual references are never packed. Credits travel with the catalogue (the index's attributions, each target's `photoImageCredit`); `attribution` repeats the sources and licences of the packed families.",
+      "required": [
+        "id",
+        "kind",
+        "required",
+        "revision",
+        "estimatedBytes",
+        "families",
+        "parts",
+        "levels"
+      ],
+      "properties": {
+        "id": { "const": "target-photos" },
+        "kind": { "const": "photo-archives" },
+        "required": { "const": false },
+        "revision": { "type": "string", "minLength": 1 },
+        "estimatedBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The highest level listed."
+        },
+        "families": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["folder", "route"],
+            "properties": {
+              "folder": { "type": "string", "minLength": 1 },
+              "route": { "type": "string", "pattern": "^/" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "attribution": { "type": "object", "additionalProperties": true },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/targetPhotosPart" }
+        },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/targetPhotosLevel" }
+        }
+      },
+      "additionalProperties": true
+    },
     "catalogue": {
       "type": "object",
       "required": ["revision", "targets", "locales"],
@@ -553,6 +647,7 @@
           { "$ref": "#/$defs/baseMapComponent" },
           { "$ref": "#/$defs/textShardsComponent" },
           { "$ref": "#/$defs/readAloudComponent" },
+          { "$ref": "#/$defs/targetPhotosComponent" },
           { "$ref": "#/$defs/component" }
         ]
       }

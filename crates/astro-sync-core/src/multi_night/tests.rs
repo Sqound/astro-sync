@@ -159,21 +159,35 @@ fn the_lines_say_the_family_never_a_file() {
 }
 
 #[test]
-fn the_right_is_the_progression_where_the_service_sells_them_and_always_open_on_a_private_server() {
-    assert!(MultiNightGate::new(Some(&capabilities(true)), true).allowed);
+fn the_right_is_advanced_planning_where_the_service_sells_them_and_always_open_on_a_private_server()
+{
+    // "Advanced Planning" (`planner.mosaic`, held by every subscription)
+    // opens the plan's integrations and its final image, with or without
+    // "Advanced Sync+".
+    for progression in [true, false] {
+        let gate = MultiNightGate::new(Some(&capabilities_with(progression, true)), true);
+        assert_eq!((gate.allowed, gate.closed), (true, None));
+    }
     // A private server never restricts them, whatever its
     // capabilities say, known or not.
-    for capabilities in [Some(capabilities(true)), Some(capabilities(false)), None] {
+    for capabilities in [
+        Some(capabilities_with(true, true)),
+        Some(capabilities_with(false, false)),
+        None,
+    ] {
         let private = MultiNightGate::new(capabilities.as_ref(), false);
         assert_eq!((private.allowed, private.closed), (true, None));
+        assert!(private.progression);
     }
     // A service never heard: closed, "unknown".
     assert_eq!(
         MultiNightGate::unknown().closed,
         Some(MultiNightClosed::Unknown)
     );
+    assert!(!MultiNightGate::unknown().progression);
+    // Without "Advanced Planning": closed, whatever "Advanced Sync+" says.
     assert_eq!(
-        MultiNightGate::new(Some(&capabilities(false)), true).closed,
+        MultiNightGate::new(Some(&capabilities_with(true, false)), true).closed,
         Some(MultiNightClosed::NotInSubscription)
     );
     assert_eq!(
@@ -183,7 +197,21 @@ fn the_right_is_the_progression_where_the_service_sells_them_and_always_open_on_
 }
 
 #[test]
-fn attaching_follows_planification_avancee_not_synchronisation_avancee_plus() {
+fn the_intermediate_images_of_a_plan_stay_under_the_progression() {
+    // "Advanced Sync" (no progression): the final image, not the milestones.
+    let advanced = MultiNightGate::new(Some(&capabilities_with(false, true)), true);
+    assert!(advanced.allowed);
+    assert!(!advanced.progression);
+    // "Advanced Sync+" and "Max": both.
+    let plus = MultiNightGate::new(Some(&capabilities_with(true, true)), true);
+    assert!(plus.allowed && plus.progression);
+    // The progression alone never opens a plan the space may not combine.
+    let progression_only = MultiNightGate::new(Some(&capabilities_with(true, false)), true);
+    assert!(!progression_only.allowed && !progression_only.progression);
+}
+
+#[test]
+fn attaching_combining_and_sending_follow_the_same_right() {
     // The gestures on the plan itself are `planner.mosaic`'s.
     let planning_only = capabilities_with(false, true);
     assert!(AttachGate::new(Some(&planning_only), true).allowed);
@@ -193,9 +221,9 @@ fn attaching_follows_planification_avancee_not_synchronisation_avancee_plus() {
         AttachGate::new(Some(&sync_only), true).closed,
         Some(MultiNightClosed::NotInSubscription)
     );
-    // ...and Advanced Planning alone does not send integrations.
-    assert!(!MultiNightGate::new(Some(&planning_only), true).allowed);
-    assert!(MultiNightGate::new(Some(&sync_only), true).allowed);
+    // ...and the integrations follow the same right as the gestures.
+    assert!(MultiNightGate::new(Some(&planning_only), true).allowed);
+    assert!(!MultiNightGate::new(Some(&sync_only), true).allowed);
     // A private server never restricts them.
     let private = AttachGate::new(Some(&capabilities_with(false, false)), false);
     assert_eq!((private.allowed, private.closed), (true, None));
@@ -596,7 +624,7 @@ fn the_lines_leave_only_with_the_right_and_a_refusal_is_said_in_clear() {
 
     // Without the right: nothing is asked of the service.
     let service = FakeService::default();
-    let closed = MultiNightGate::new(Some(&capabilities(false)), true);
+    let closed = MultiNightGate::new(Some(&capabilities_with(true, false)), true);
     let sent = send_integrations(&service, "u", "t", &project, &lines, closed).unwrap();
     assert!(matches!(sent, IntegrationsSent::Closed { .. }));
     // Nor while the service was never heard.

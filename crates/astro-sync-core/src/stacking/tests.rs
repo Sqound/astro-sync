@@ -2603,6 +2603,19 @@ fn a_folder_of_raw_files_has_lights() {
 }
 
 #[test]
+fn a_folder_of_xisf_files_has_no_lights_because_the_stacking_ignores_them() {
+    let dir = TempDir::new("stacking-xisf-has-no-lights");
+    let night = raw_night(dir.path());
+    let lights = night.join("M31/lights");
+    fs::create_dir_all(&lights).unwrap();
+    fs::write(lights.join("a.xisf"), b"XISF0100").unwrap();
+    fs::write(lights.join("b.XISF"), b"XISF0100").unwrap();
+    assert!(!has_lights(&lights));
+    fs::write(lights.join("c.fit"), b"SIMPLE").unwrap();
+    assert!(has_lights(&lights));
+}
+
+#[test]
 fn the_gate_names_the_rule_that_refuses_a_job_in_the_order_the_run_applies_them() {
     let job = plan_stack(
         Path::new("/n"),

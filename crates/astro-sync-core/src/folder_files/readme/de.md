@@ -8,8 +8,8 @@ Dies ist der Arbeitsordner von Astro Sync. Er enthält deine astrofotografischen
 - In einer Nacht:
   - `logs/`: die NINA-, PHD2- und ASIAIR-Logs der Nacht;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` und `biases/`;
-  - ein Ordner pro Ziel (`M31`, `NGC 7000` …) mit `lights/` für die rohen FITS-Aufnahmen und `final/` für dein bearbeitetes Bild (TIFF, JPEG oder PNG);
-  - `stacked/` und `progression/`, die Astro Sync nur anlegt, wenn es selbst ein Bild erzeugt.
+  - ein Ordner pro Ziel (`M31`, `NGC 7000` …) mit `lights/` für die rohen Aufnahmen (FITS oder RAW-Dateien einer Kamera) und `final/` für dein bearbeitetes Bild (TIFF, JPEG oder PNG);
+  - `stacked/` und `progression/`, die Astro Sync nur anlegt, wenn es selbst ein Bild erzeugt. Die Bilder, die du vor dem Senden anpasst, werden in `stacked/adjusted/` abgelegt, neben der ursprünglichen Darstellung, nie darüber.
 - Dateien und Ordner, deren Name mit einem Punkt beginnt (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`), gehören Astro Sync: Sie bewahren die Identität einer Nacht oder eines Ziels und die Zwischenablage einer laufenden Aufgabe. Lass sie, wo sie sind.
 
 ## Die .md-Dateien im Hauptordner
@@ -26,4 +26,4 @@ Dies ist der Arbeitsordner von Astro Sync. Er enthält deine astrofotografischen
 
 ## Nichts wird an eine KI gesendet
 
-Astro Sync kontaktiert keinen KI-Dienst. „KI-Assistenten fragen“ und „Eine KI etwas fragen“ kopieren nur einen Text in deine Zwischenablage: Du gibst ihn dem Assistenten deiner Wahl, der diese Dateien mit seinem eigenen Zugriff auf deinen Computer liest. Die FITS-Aufnahmen und die rohen Logs verlassen deinen Computer nie; nur die Ergebnisse, die du senden möchtest, gelangen in deinen Astro-Portal-Bereich.
+Astro Sync kontaktiert keinen KI-Dienst. „KI-Assistenten fragen“ und „Eine KI etwas fragen“ kopieren nur einen Text in deine Zwischenablage: Du gibst ihn dem Assistenten deiner Wahl, der diese Dateien mit seinem eigenen Zugriff auf deinen Computer liest. Die Aufnahmen und die rohen Logs verlassen deinen Computer nie; nur die Ergebnisse, die du senden möchtest, gelangen in deinen Astro-Portal-Bereich.

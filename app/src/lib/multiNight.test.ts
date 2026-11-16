@@ -302,7 +302,7 @@ test("without the right everything is greyed and said, with « Voir les offres �
   );
   assert.equal(
     view.closedLine ?? "",
-    "Le plan multi-nuits dans Astro Sync est réservé à Synchronisation avancée+ : vos intégrations restent sur cet ordinateur, rien n’est combiné ni envoyé.",
+    "Le plan multi-nuits demande Planification avancée, comprise dans chaque abonnement : vos intégrations restent sur cet ordinateur, rien n’est combiné ni envoyé. Seules les images intermédiaires (ce qu’ajoute chaque nuit) sont réservées à Synchronisation avancée+.",
   );
   assert.equal(view.offers, true);
   assert.equal(view.pipelinesLine, null);
@@ -372,6 +372,11 @@ test("the summary says the lines of the plan, its image and the masters kept, an
     ],
   );
   assert.equal(open.check?.ok, true);
+  // Open with « Planification avancée » (every subscription): no offer named.
+  assert.equal(
+    open.check?.text,
+    "Plan multi-nuits IC 1805\u00a0: actif · une image du plan s’ajoute aux précédentes.",
+  );
   const closed = multiNightSummary(fr, "fr", {
     view: VIEW(RESERVED),
     masters: [],
@@ -383,7 +388,7 @@ test("the summary says the lines of the plan, its image and the masters kept, an
   assert.deepEqual(
     closed.sent.map((row) => plain(row.segs)),
     [
-      "Intégrations du plan multi-nuits IC 1805 : non envoyées (Synchronisation avancée+)",
+      "Intégrations du plan multi-nuits IC 1805 : non envoyées (Planification avancée)",
       "Image du plan multi-nuits IC 1805 : non fabriquée",
     ],
   );
@@ -427,7 +432,7 @@ test("a refusal of the service is said in the person's words, the lines sent are
   });
   assert.deepEqual(said.ok, []);
   assert.deepEqual(said.notes, [
-    "Plan multi-nuits IC 1805, refusé par le service : le plan multi-nuits dans Astro Sync est réservé à Synchronisation avancée+.",
+    "Plan multi-nuits IC 1805, refusé par le service : ce service réserve le plan multi-nuits à une offre que cet espace n’a pas.",
   ]);
   const sent = sentMultiNightLines(fr, "fr", {
     projects: [HEART],

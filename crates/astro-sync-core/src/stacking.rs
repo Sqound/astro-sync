@@ -1989,24 +1989,14 @@ fn remove_job_scratch(job: &StackJob) {
     let _ = fs::remove_file(job.frames_list());
 }
 
+/// Whether `lights` holds a frame the stacking reads: the same files as
+/// [`is_fits`], so a target made only of XISF files shows "no lights" at once.
 fn has_lights(lights: &Path) -> bool {
     walkdir::WalkDir::new(lights)
         .follow_links(true)
         .into_iter()
         .filter_map(Result::ok)
-        .any(|entry| {
-            entry.file_type().is_file()
-                && entry
-                    .path()
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .is_some_and(|e| {
-                        matches!(
-                            e.to_ascii_lowercase().as_str(),
-                            "fit" | "fits" | "fts" | "xisf"
-                        ) || crate::raw_header::is_raw_extension(e)
-                    })
-        })
+        .any(|entry| entry.file_type().is_file() && is_fits(entry.path()))
 }
 
 pub(crate) fn sha256_and_size(path: &Path) -> std::io::Result<(String, u64)> {

@@ -8,8 +8,8 @@ Esta es la carpeta de trabajo de Astro Sync. Contiene sus noches de astrofotogra
 - Dentro de una noche:
   - `logs/`: los registros de NINA, PHD2 y ASIAIR de la noche;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` y `biases/`;
-  - una carpeta por objetivo (`M31`, `NGC 7000`…), con `lights/` para las tomas FITS sin procesar y `final/` para su imagen procesada (TIFF, JPEG o PNG);
-  - `stacked/` y `progression/`, que Astro Sync solo crea cuando fabrica una imagen por su cuenta.
+  - una carpeta por objetivo (`M31`, `NGC 7000`…), con `lights/` para las tomas sin procesar (FITS o archivos RAW de cámara) y `final/` para su imagen procesada (TIFF, JPEG o PNG);
+  - `stacked/` y `progression/`, que Astro Sync solo crea cuando fabrica una imagen por su cuenta. Las imágenes que ajusta antes de enviarlas se escriben en `stacked/adjusted/`, junto al renderizado original, nunca encima.
 - Los archivos y carpetas cuyo nombre empieza por un punto (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) son de Astro Sync: conservan la identidad de una noche o de un objetivo y el trabajo temporal de una tarea en curso. Déjelos donde están.
 
 ## Los archivos .md de la raíz
@@ -26,4 +26,4 @@ Esta es la carpeta de trabajo de Astro Sync. Contiene sus noches de astrofotogra
 
 ## No se envía nada a una IA
 
-Astro Sync no contacta con ningún servicio de IA. «Preguntar a un asistente de IA» y «Hacer una pregunta a una IA» solo copian un texto en su portapapeles: usted se lo da al asistente que prefiera, que lee estos archivos con su propio acceso a su ordenador. Las tomas FITS y los registros sin procesar nunca salen de su ordenador; solo los resultados que usted elija enviar van a su espacio de Astro Portal.
+Astro Sync no contacta con ningún servicio de IA. «Preguntar a un asistente de IA» y «Hacer una pregunta a una IA» solo copian un texto en su portapapeles: usted se lo da al asistente que prefiera, que lee estos archivos con su propio acceso a su ordenador. Las tomas y los registros sin procesar nunca salen de su ordenador; solo los resultados que usted elija enviar van a su espacio de Astro Portal.

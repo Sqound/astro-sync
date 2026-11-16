@@ -49,8 +49,8 @@ refers to it by its title (`{links}` in `actions.search`).
 ## The multi-night plans
 
 `multi_night` is a section written after the rules only
-when the multi-night plans are open for the space (`analysis.progression` on the
-hosted service): `snapshots/ASSISTANT-IA.multi-night.md.txt`, the constant
+when the multi-night plans are open for the space (`planner.mosaic`, « Planification
+avancée », held by every subscription, on the hosted service): `snapshots/ASSISTANT-IA.multi-night.md.txt`, the constant
 `ASSISTANT_FILE_TEXT_MULTI_NIGHT`. Each of the two texts is Astro Sync's for the
 other, so the file follows the right as it comes and goes; a file the person
 changed is never overwritten.

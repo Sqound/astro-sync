@@ -48,11 +48,11 @@
       ]
     },
     "piloting": {
-      "description": "Additive: how the plan of this observation session is piloted — `mount` (the application points a mount), `smart_telescope` (the plan runs in a smart telescope), `assisted` (manual pointing assisted by a phone's plate solving, possibly with a satellite phone), `free` (the person drives the equipment; the plan is a reference). Null when not told. Written at the creation and changed afterwards by `PATCH /v1/sessions/{id}` (the mode of a night changed in « Nuit en cours »).",
+      "description": "Additive: how the plan of this observation session is piloted — `mount` (the application points a mount), `smart_telescope` (the plan runs in a smart telescope), `assisted` (manual pointing assisted by a phone's plate solving, possibly with a satellite phone), `free` (« Monture manuelle » without « Pointage avancé »: the person moves the instrument, the app helps with no pointing), `free_run` (« Exécution libre »: the app helps with nothing, the person drives the equipment, possibly a mount run by another application; the plan is only a reference). Null when not told. Written at the creation and changed afterwards by `PATCH /v1/sessions/{id}` (the mode of a night changed in « Nuit en cours »).",
       "anyOf": [
         {
           "type": "string",
-          "enum": ["mount", "smart_telescope", "assisted", "free"]
+          "enum": ["mount", "smart_telescope", "assisted", "free", "free_run"]
         },
         {
           "type": "null"
@@ -119,12 +119,12 @@
     },
     "pilotingRequest": {
       "type": "object",
-      "description": "PATCH /v1/sessions/{id}: the mode of a night changed in « Nuit en cours ». `piloting` is one of the four values and is required; the answer is the session `resource` with the new value. The same value again changes nothing.",
+      "description": "PATCH /v1/sessions/{id}: the mode of a night changed in « Nuit en cours ». `piloting` is one of the five values and is required; the answer is the session `resource` with the new value. The same value again changes nothing.",
       "required": ["piloting"],
       "properties": {
         "piloting": {
           "type": "string",
-          "enum": ["mount", "smart_telescope", "assisted", "free"]
+          "enum": ["mount", "smart_telescope", "assisted", "free", "free_run"]
         }
       },
       "additionalProperties": false

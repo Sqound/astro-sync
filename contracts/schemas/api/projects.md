@@ -140,11 +140,16 @@ attaches, detaches, creates and edits a multi-night plan (and writes the links
 on the items of its plans); the other writes (ordinary plans, media, places)
 and what belongs to a subscription stay refused.
 
-What stays under `analysis.progression` (« Synchronisation avancée+ ») is
-what Astro Sync sends to a plan: the integrations attached to it
-(`PUT /v1/projects/{projectId}/integrations`) and the image of the plan,
-which answer `403 multi_night_not_active` with `capability:
-"analysis.progression"` (see integration.schema.json).
+What Astro Sync sends to a plan, the integrations attached to it
+(`PUT /v1/projects/{projectId}/integrations`) and the final image of the
+plan (every night combined), reads the same `planner.mosaic` (« Planification
+avancée », held by every subscription): without it they answer
+`403 multi_night_not_active` with `capability: "planner.mosaic"` (see
+integration.schema.json). A service older than this rule names
+`analysis.progression` instead. Only the intermediate images of a plan (the
+progression: its image after each night) are « Synchronisation avancée+ »:
+Astro Sync makes them under `analysis.progression` and sends them as
+progression images of the plan's capture.
 
 ## The integrations follow the night
 

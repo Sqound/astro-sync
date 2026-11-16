@@ -269,7 +269,7 @@ fn whether_a_service_sells_the_multi_night_plans_is_asked_of_it_and_kept() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
-/// Synchronisation avancée+ on (`analysis.progression`).
+/// Planification avancée on (`planner.mosaic`), as every subscription holds it.
 fn sending() -> MultiNightGate {
     let capabilities: Capabilities = serde_json::from_str(
         r#"{"planner.multiple":true,"planner.mosaic":true,"pointing.solve":true,"sync.plan_limit":0,"gallery.private":true,"portal.invitations":true,"capture.variant_limit":12,"capture.count_limit":0,"capture.public":true,"analysis.logs":true,"analysis.progression":true,"storage.max_file_bytes":100,"storage.quota_bytes":1000,"history.retention_days":0}"#,

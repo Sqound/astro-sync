@@ -8,8 +8,8 @@ This is the working folder of Astro Sync. It holds your astrophotography nights 
 - Inside a night:
   - `logs/`: the NINA, PHD2 and ASIAIR logs of the night;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` and `biases/`;
-  - one folder per target (`M31`, `NGC 7000`…), with `lights/` for the raw FITS frames and `final/` for your processed image (TIFF, JPEG or PNG);
-  - `stacked/` and `progression/`, which Astro Sync creates only when it makes an image of its own.
+  - one folder per target (`M31`, `NGC 7000`…), with `lights/` for the raw frames (FITS or camera RAW files) and `final/` for your processed image (TIFF, JPEG or PNG);
+  - `stacked/` and `progression/`, which Astro Sync creates only when it makes an image of its own. The images you adjust before sending are written to `stacked/adjusted/`, beside the original render, never over it.
 - Files and folders whose name starts with a dot (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) are Astro Sync's: they keep the identity of a night or a target and the scratch work of a job in progress. Leave them where they are.
 
 ## The .md files at the root
@@ -26,4 +26,4 @@ This is the working folder of Astro Sync. It holds your astrophotography nights 
 
 ## Nothing is sent to an AI
 
-Astro Sync does not contact any AI service. "Ask an AI assistant" and "Ask an AI a question" only copy a text to your clipboard: you give it to the assistant of your choice, which reads these files with its own access to your computer. The FITS frames and the raw logs never leave your computer; only the results you choose to send go to your Astro Portal space.
+Astro Sync does not contact any AI service. "Ask an AI assistant" and "Ask an AI a question" only copy a text to your clipboard: you give it to the assistant of your choice, which reads these files with its own access to your computer. The frames and the raw logs never leave your computer; only the results you choose to send go to your Astro Portal space.

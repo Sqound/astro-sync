@@ -2976,13 +2976,16 @@ export type MultiNightClosed = "not_in_subscription" | "unknown";
 export interface MultiNightGate {
   allowed: boolean;
   closed: MultiNightClosed | null;
+  /** The intermediate images of the plan (its image after each night) are
+   * made too: `analysis.progression` as well (absent from an older core). */
+  progression?: boolean;
 }
 
 /**
  * `multi_night::AttachGate`: the right of the gestures on a plan itself --
  * attach, detach, create from a night -- is `planner.mosaic` (« Planification
- * avancée »); `MultiNightGate` stays `analysis.progression` (the integrations
- * and the image of the plan).
+ * avancée »), the same as `MultiNightGate`'s (the integrations and the final
+ * image of the plan).
  */
 export interface AttachGate {
   allowed: boolean;

@@ -281,6 +281,10 @@ pub enum Verdict {
     Local,
 }
 
+/// The code of an image refused because the capture it is added to is not in
+/// the space (any more): the service's own, `404 capture_not_found`.
+pub const CAPTURE_NOT_IN_SPACE: &str = "capture_not_found";
+
 /// The code of a file the queue names but that is no longer where it was: the
 /// interface says which file and which folder, and offers « Réessayer ».
 pub const SOURCE_FILE_MISSING: &str = "source_file_missing";
@@ -1622,6 +1626,96 @@ fn upload_entry_inner<T: UploadTransport>(
                     return already_sent(transport, queue, token, entry, &session, on_progress);
                 }
             }
+        }
+    }
+}
+
+/// What a sending found of the files its queue holds as already sent: the
+/// ones the space no longer has (a capture deleted from the portal) go back
+/// in the queue, once, so that « déjà envoyé » is never said of an image
+/// that is not there.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Vanished {
+    /// The digests put back in the queue, to be sent again.
+    pub requeued: Vec<String>,
+    /// The digests the service could not be asked about (the network, the
+    /// service): they keep their row as it was, and the next sending asks
+    /// again.
+    pub unchecked: Vec<String>,
+}
+
+/// Before a sending, asks the service about each file of `files` the queue
+/// holds as sent (`completed`), or refused for a capture that is not in the
+/// space (`capture_not_found`), through the check that writes nothing
+/// (`POST /v1/uploads/check`): only `present` keeps the row as it is. Any
+/// other answer (the bytes are not held, a variant whose capture is gone)
+/// puts the row back in the queue -- its sky annotations forgotten with it --
+/// so that the sending sends it again, the capture first and its variants
+/// after. One question per file, once per sending: nothing here loops.
+pub fn requeue_vanished<T: crate::precheck::PrecheckTransport>(
+    transport: &T,
+    portal_url: &str,
+    token: &str,
+    queue: &UploadQueue,
+    files: &[crate::upload_queue::ResultFile],
+) -> Result<Vanished, UploadError> {
+    use crate::gui_bridge::GuiBridgeError;
+    use crate::precheck::UploadCheck;
+    use crate::upload_queue::QueueState;
+
+    let files = crate::image_adjust::substitute_results(files);
+    let mut outcome = Vanished::default();
+    for file in &files {
+        let Some(entry) = queue.find_by_sha256(&file.sha256)? else {
+            continue;
+        };
+        let gone_for_good = entry.state == QueueState::Refused
+            && entry.last_error_code.as_deref() == Some(CAPTURE_NOT_IN_SPACE);
+        if entry.state != QueueState::Completed && !gone_for_good {
+            continue;
+        }
+        let mut metadata = build_metadata(&entry, &UploadTarget::default());
+        // A variant of the capture another image of the same sending
+        // creates: that image tells where it stands now.
+        let parent = entry
+            .target
+            .variant_of
+            .as_deref()
+            .and_then(|v| v.strip_prefix(VARIANT_OF_SHA256));
+        let gone = if let Some(parent) = parent {
+            match queue.find_by_sha256(parent)? {
+                Some(first) if outcome.requeued.contains(&first.sha256) => Some(true),
+                Some(first)
+                    if first.state == QueueState::Completed && first.capture_id.is_some() =>
+                {
+                    metadata.capture_id = first.capture_id;
+                    is_gone(transport.check_upload(portal_url, token, &metadata))
+                }
+                // Not sent, or not known: the upload says what it waits for.
+                _ => continue,
+            }
+        } else {
+            is_gone(transport.check_upload(portal_url, token, &metadata))
+        };
+        match gone {
+            Some(true) => {
+                queue.requeue_vanished(&entry.sha256)?;
+                outcome.requeued.push(entry.sha256.clone());
+            }
+            Some(false) => {}
+            None => outcome.unchecked.push(entry.sha256.clone()),
+        }
+    }
+    return Ok(outcome);
+
+    /// `Some(true)`: the space does not hold it; `Some(false)`: it does;
+    /// `None`: the service could not say.
+    fn is_gone(answer: Result<UploadCheck, GuiBridgeError>) -> Option<bool> {
+        match answer {
+            Ok(UploadCheck::Present { .. }) => Some(false),
+            Ok(_) => Some(true),
+            Err(GuiBridgeError::Refused { code, .. }) if code == "capture_not_found" => Some(true),
+            Err(_) => None,
         }
     }
 }

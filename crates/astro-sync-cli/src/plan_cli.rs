@@ -220,6 +220,7 @@ pub struct PlanImageArgs {
     /// Also make the progression of the plan: its image after each night (the first night, the
     /// first two, ... up to the plan's image), one JPEG each in `<plan>/progression/`, with the
     /// main render's pipeline. With --queue they leave as the history of the plan's capture.
+    /// These intermediate images need Advanced Sync+ on a service that sells it.
     #[arg(long)]
     pub progression: bool,
     /// Make the progression only, not the plan's images (the capture is already online:
@@ -289,7 +290,9 @@ fn sold_by(portal: &str) -> Option<bool> {
     multi_night::service_sells_multi_night(portal, WakePolicy::default()).ok()
 }
 
-/// The right of the multi-night plans: the space's capabilities on a
+/// The right of the multi-night plans (`planner.mosaic`, "Advanced
+/// planning", for the integrations and the final image; `analysis.progression`
+/// as well for the intermediate images): the space's capabilities on a
 /// service that sells them; always open on a private server.
 fn gate_of(
     transport: &HttpPortalGuiTransport,
@@ -304,7 +307,7 @@ fn gate_of(
 }
 
 /// The right of the gestures on a plan itself (attach, detach, create from
-/// a night): `planner.mosaic`, "Advanced planning".
+/// a night): `planner.mosaic`, "Advanced planning", as for the integrations.
 fn attach_gate_of(
     transport: &HttpPortalGuiTransport,
     portal: &str,
@@ -689,9 +692,20 @@ pub fn plan_image(args: &PlanImageArgs) -> Outcome {
             MultiNightGate {
                 allowed: true,
                 closed: None,
+                progression: true,
             },
             false,
         ));
+        // The intermediate images of the plan (its image after each night)
+        // are the progression's: « Synchronisation avancée » makes the final
+        // image, not them.
+        if !milestones.is_empty() && gate.allowed && !gate.progression {
+            return Err(fail(
+                "plan progression impossible: the intermediate images of a multi-night plan \
+                 (--progression) are in Advanced Sync+, the final image is not (run it without \
+                 --progression)",
+            ));
+        }
         let imager = PythonPlanImager {
             python: python_env::env_python(&data),
             script: context

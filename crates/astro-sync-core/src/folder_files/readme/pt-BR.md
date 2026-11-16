@@ -8,8 +8,8 @@ Esta é a pasta de trabalho do Astro Sync. Ela guarda as suas noites de astrofot
 - Dentro de uma noite:
   - `logs/`: os registros do NINA, do PHD2 e do ASIAIR da noite;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` e `biases/`;
-  - uma pasta por alvo (`M31`, `NGC 7000`…), com `lights/` para os quadros FITS brutos e `final/` para a sua imagem processada (TIFF, JPEG ou PNG);
-  - `stacked/` e `progression/`, que o Astro Sync só cria quando produz ele mesmo uma imagem.
+  - uma pasta por alvo (`M31`, `NGC 7000`…), com `lights/` para os quadros brutos (FITS ou arquivos RAW de câmera) e `final/` para a sua imagem processada (TIFF, JPEG ou PNG);
+  - `stacked/` e `progression/`, que o Astro Sync só cria quando produz ele mesmo uma imagem. As imagens que você ajusta antes de enviar são escritas em `stacked/adjusted/`, ao lado da renderização original, nunca por cima.
 - Os arquivos e pastas cujo nome começa com um ponto (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) são do Astro Sync: guardam a identidade de uma noite ou de um alvo e o trabalho temporário de uma tarefa em andamento. Deixe-os onde estão.
 
 ## Os arquivos .md na raiz
@@ -26,4 +26,4 @@ Esta é a pasta de trabalho do Astro Sync. Ela guarda as suas noites de astrofot
 
 ## Nada é enviado a uma IA
 
-O Astro Sync não contata nenhum serviço de IA. “Perguntar a um assistente de IA” e “Fazer uma pergunta a uma IA” apenas copiam um texto para a sua área de transferência: você o entrega ao assistente de sua escolha, que lê estes arquivos com o próprio acesso ao seu computador. Os quadros FITS e os registros brutos nunca saem do seu computador; só os resultados que você escolher enviar vão para o seu espaço do Astro Portal.
+O Astro Sync não contata nenhum serviço de IA. “Perguntar a um assistente de IA” e “Fazer uma pergunta a uma IA” apenas copiam um texto para a sua área de transferência: você o entrega ao assistente de sua escolha, que lê estes arquivos com o próprio acesso ao seu computador. Os quadros e os registros brutos nunca saem do seu computador; só os resultados que você escolher enviar vão para o seu espaço do Astro Portal.

@@ -1,5 +1,6 @@
 //! The multi-night plans in Astro Sync: a capability of the hosted service
-//! (`analysis.progression`), **always open on a private server** (the server
+//! (`planner.mosaic`, "Advanced Planning", which every subscription holds),
+//! **always open on a private server** (the server
 //! never restricts them; Astro Sync follows the server, which it asks,
 //! [`sells_multi_night`]).
 //!
@@ -30,14 +31,16 @@
 //!   read (`GET /v1/projects/{id}`) with the integrations the service
 //!   knows. Reading never needs a capability. Attaching, detaching and
 //!   creating from a night are in [`crate::multi_night_attach`].
-//! - **The right** ([`MultiNightGate`]): `analysis.progression` on a
-//!   service that restricts them (the hosted one, as it says itself); always
-//!   open on a private server. Without
-//!   it nothing is sent: the screens grey the lines and say why. It covers
-//!   what Astro Sync sends to a plan (the integrations, the plan's image).
-//!   The gestures on the plan itself -- attaching, detaching, creating from
-//!   a night -- have their own right, `planner.mosaic` ("Advanced
-//!   Planning"): [`AttachGate`].
+//! - **The right** ([`MultiNightGate`]): `planner.mosaic` on a service that
+//!   restricts them (the hosted one, as it says itself); always open on a
+//!   private server. Without it nothing is combined or sent: the screens
+//!   grey the lines and say why. It covers what Astro Sync makes and sends
+//!   for a plan (the integrations, the plan's final image, every night
+//!   combined). The intermediate images of the plan (its image after each
+//!   night: what each night adds) are the progression's and need
+//!   `analysis.progression` as well ([`MultiNightGate::progression`]). The
+//!   gestures on the plan itself -- attaching, detaching, creating from a
+//!   night -- read the same `planner.mosaic` ([`AttachGate`]).
 //! - **The sending** ([`send_integrations`]): `PUT /v1/projects/{id}/integrations`,
 //!   idempotent (night, target and family are the key); the lines of a night
 //!   and a target are sent **complete** (`replace`): the service drops the
@@ -673,9 +676,8 @@ pub fn service_sells_multi_night_kept(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MultiNightClosed {
-    /// The capability of the gate is not granted by the service that sells
-    /// them (`analysis.progression` for [`MultiNightGate`], `planner.mosaic`
-    /// for [`AttachGate`]): "See the offers".
+    /// The capability of the gate (`planner.mosaic`) is not granted by the
+    /// service that sells them: "See the offers".
     NotInSubscription,
     /// The capabilities, or whether the service sells them, are not known
     /// yet.
@@ -702,17 +704,27 @@ fn closed_reason(granted: Option<bool>, sold: bool) -> Option<MultiNightClosed> 
 pub struct MultiNightGate {
     pub allowed: bool,
     pub closed: Option<MultiNightClosed>,
+    /// Whether the intermediate images of the plan (its image after each
+    /// night: what each night adds) are made too.
+    #[serde(default)]
+    pub progression: bool,
 }
 
 impl MultiNightGate {
-    /// `analysis.progression` on a service that sells the multi-night plans
-    /// (`sold`, [`sells_multi_night`]); always open on a private server.
+    /// `planner.mosaic` on a service that sells the multi-night plans
+    /// (`sold`, [`sells_multi_night`]), and `analysis.progression` too for the
+    /// intermediate images; always open on a private server.
     #[must_use]
     pub fn new(capabilities: Option<&Capabilities>, sold: bool) -> Self {
-        let closed = closed_reason(capabilities.map(|c| c.analysis_progression), sold);
+        let closed = closed_reason(capabilities.map(|c| c.planner_mosaic), sold);
+        // The intermediate images: the progression's own right where the
+        // service sells it, always on a private server.
+        let progression =
+            closed.is_none() && (!sold || capabilities.is_some_and(|c| c.analysis_progression));
         Self {
             allowed: closed.is_none(),
             closed,
+            progression,
         }
     }
 
@@ -723,16 +735,16 @@ impl MultiNightGate {
         Self {
             allowed: false,
             closed: Some(MultiNightClosed::Unknown),
+            progression: false,
         }
     }
 }
 
 /// Whether Astro Sync attaches a night to a multi-night plan, detaches it,
 /// or creates a plan from it: these are gestures on the plan itself, so the
-/// right is `planner.mosaic` ("Advanced Planning"), not
-/// `analysis.progression`; always
-/// open on a private server. Same shape as [`MultiNightGate`] on the
-/// screens.
+/// right is `planner.mosaic` ("Advanced Planning"), the same as
+/// [`MultiNightGate`]'s; always open on a private server. Same shape as
+/// [`MultiNightGate`] on the screens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AttachGate {

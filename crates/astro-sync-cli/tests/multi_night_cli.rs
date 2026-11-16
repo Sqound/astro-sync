@@ -102,10 +102,8 @@ fn the_integrations_of_a_night_are_lines_and_a_private_server_receives_them() {
             .join("../astro-sync-core/tests/fixtures/online/space_storage.json"),
     )
     .unwrap();
-    let hosted_storage = storage.replace(
-        r#""analysis.progression": true"#,
-        r#""analysis.progression": false"#,
-    );
+    // A space without « Planification avancée » (the free account).
+    let hosted_storage = storage.replace(r#""planner.mosaic": true"#, r#""planner.mosaic": false"#);
     assert_ne!(hosted_storage, storage, "the fixture names the capability");
     // A private server: it says so itself — it pairs —,
     // and never restricts the multi-night plans.
@@ -185,8 +183,8 @@ fn the_integrations_of_a_night_are_lines_and_a_private_server_receives_them() {
     assert_eq!(service.app_hits("PUT", "/api/v1/projects"), 1);
 
     // A service that sells them (it creates a space for any address),
-    // without "Advanced Sync+": closed, nothing asked, said in
-    // French.
+    // without "Advanced Planning": closed, nothing asked, said in
+    // words.
     let hosted = FakeService::start(Wake::Instant, move |request| {
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/api/v1/service") => Reply::Json(
@@ -556,8 +554,9 @@ fn the_integrations_of_a_night_are_lines_and_a_private_server_receives_them() {
     assert!(!all.contains("space rights"), "{all}");
     let _ = ok;
 
-    // C1: on a service that sells them, without the right, it is refused in
-    // a sentence that says why, never with the name of a variant of the code.
+    // C1: on a service that sells them, without the right (« Planification
+    // avancée », `planner.mosaic`), it is refused in a sentence that says
+    // why, never with the name of a variant of the code.
     let two_nights = PROJECT.replace(
         r#""integrations":["#,
         r#""integrations":[{"id":"i-10","projectId":"p-heart","nightId":"n-10","targetId":"ic-1805","filter":"RGB","exposureSeconds":120,"gain":100,"binning":1,"temperatureC":null,"frameCount":120,"totalSeconds":14400,"eveningDate":"2026-08-10","sensor":null,"computerLabel":null,"installationId":null,"createdAt":"2026-08-10T10:00:00Z","updatedAt":"2026-08-10T10:00:00Z"},"#,
@@ -567,10 +566,18 @@ fn the_integrations_of_a_night_are_lines_and_a_private_server_receives_them() {
             .join("../astro-sync-core/tests/fixtures/online/space_storage.json"),
     )
     .unwrap()
+    .replace(r#""planner.mosaic": true"#, r#""planner.mosaic": false"#);
+    // « Synchronisation avancée »: the plan, without the progression.
+    let advanced = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../astro-sync-core/tests/fixtures/online/space_storage.json"),
+    )
+    .unwrap()
     .replace(
         r#""analysis.progression": true"#,
         r#""analysis.progression": false"#,
     );
+    let advanced_nights = two_nights.clone();
     let selling = FakeService::start(Wake::Instant, move |request| {
         match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/api/v1/service") => Reply::Json(
@@ -605,6 +612,55 @@ fn the_integrations_of_a_night_are_lines_and_a_private_server_receives_them() {
     assert!(!ok, "{all}");
     assert!(all.contains("outside the subscription"), "{all}");
     assert!(all.contains("plan image impossible"), "{all}");
+    assert!(!all.contains("NotInSubscription"), "{all}");
+
+    // « Synchronisation avancée » (no `analysis.progression`): the final
+    // image of the plan is open (here it stops only because the stacking is
+    // not installed), its intermediate images are not.
+    let advanced_service = FakeService::start(Wake::Instant, move |request| {
+        match (request.method.as_str(), request.path.as_str()) {
+            ("GET", "/api/v1/service") => Reply::Json(
+                200,
+                r#"{"service":"astro-portal","apiVersion":1,"version":"1.0.0","signIn":{"method":"email-code","spaceCreation":"open"}}"#
+                    .to_string(),
+            ),
+            ("GET", "/api/v1/projects/p-heart") => Reply::Json(200, advanced_nights.clone()),
+            ("GET", "/api/v1/space/storage") => Reply::Json(200, advanced.clone()),
+            _ => Reply::Json(
+                404,
+                r#"{"error":{"code":"not_found","message":"no"}}"#.to_string(),
+            ),
+        }
+    });
+    let plan_image = |progression: bool| {
+        let mut args = vec![
+            "plan-image".to_string(),
+            "--project".into(),
+            "p-heart".into(),
+            "--root".into(),
+            s(&root),
+            "--night".into(),
+            s(&twelfth),
+            "--data".into(),
+            s(&data),
+            "--portal".into(),
+            advanced_service.base_url(),
+            "--token".into(),
+            s(&token),
+            "--no-render".into(),
+        ];
+        if progression {
+            args.push("--progression".into());
+        }
+        let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        run(&refs)
+    };
+    let (_, _, all) = plan_image(false);
+    assert!(!all.contains("outside the subscription"), "{all}");
+    assert!(!all.contains("space rights"), "{all}");
+    let (ok, _, all) = plan_image(true);
+    assert!(!ok, "{all}");
+    assert!(all.contains("intermediate images"), "{all}");
     assert!(!all.contains("NotInSubscription"), "{all}");
 }
 

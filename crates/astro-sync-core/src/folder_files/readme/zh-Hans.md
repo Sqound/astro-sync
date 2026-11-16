@@ -8,8 +8,8 @@
 - 一夜的文件夹内：
   - `logs/`：当晚的 NINA、PHD2 和 ASIAIR 日志；
   - `calibration/`：`darks/`、`flats/`、`dark-flats/` 和 `biases/`；
-  - 每个目标一个文件夹（`M31`、`NGC 7000` 等），其中 `lights/` 存放原始 FITS 帧，`final/` 存放你处理好的图像（TIFF、JPEG 或 PNG）；
-  - `stacked/` 和 `progression/`：只有在 Astro Sync 自己生成图像时才会创建。
+  - 每个目标一个文件夹（`M31`、`NGC 7000` 等），其中 `lights/` 存放原始帧（FITS 或相机的 RAW 文件），`final/` 存放你处理好的图像（TIFF、JPEG 或 PNG）；
+  - `stacked/` 和 `progression/`：只有在 Astro Sync 自己生成图像时才会创建。你在发送前调整的图像会写入 `stacked/adjusted/`，放在原始渲染旁边，绝不覆盖它。
 - 名称以点开头的文件和文件夹（`.astro-sync-night.json`、`.astro-sync-target.json`、`.astro-sync-work/`）属于 Astro Sync：它们保存一夜或一个目标的身份信息，以及正在进行的任务的临时工作内容。请保持原样。
 
 ## 根目录中的 .md 文件
@@ -26,4 +26,4 @@
 
 ## 不会向 AI 发送任何内容
 
-Astro Sync 不会联系任何 AI 服务。“询问 AI 助手”和“向 AI 提问”只是把一段文字复制到你的剪贴板：由你把它交给自己选择的助手，助手再通过它自己对你电脑的访问权限读取这些文件。FITS 帧和原始日志绝不会离开你的电脑；只有你选择发送的结果才会进入你的 Astro Portal 空间。
+Astro Sync 不会联系任何 AI 服务。“询问 AI 助手”和“向 AI 提问”只是把一段文字复制到你的剪贴板：由你把它交给自己选择的助手，助手再通过它自己对你电脑的访问权限读取这些文件。帧和原始日志绝不会离开你的电脑；只有你选择发送的结果才会进入你的 Astro Portal 空间。

@@ -222,8 +222,9 @@ carries `combinedNightIds` (the nights it combines), `totalsByFilter`
 role. The project answers it as `planCapture` (the newest one) on
 `GET /v1/projects/{projectId}`, and the capture resource carries `projectId`
 and `plan`. It needs the multi-night plans of Astro Sync:
-`403 multi_night_not_active` (with `capability: "analysis.progression"`)
-without « Synchronisation avancée+ », in a subscription's read-only window,
+`403 multi_night_not_active` (with `capability: "planner.mosaic"`)
+without « Planification avancée » (held by every subscription), in a
+subscription's read-only window unless it is a one-time purchase still held,
 and **always on a private server**; `404 project_not_found` for a plan the
 space does not hold. The check answers the same refusals as errors (never as
 `refused`), and `accepted` with `adds: "capture"`. A resumable upload keeps

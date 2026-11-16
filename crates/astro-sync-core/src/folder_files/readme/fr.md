@@ -8,8 +8,8 @@ Voici le dossier de travail d’Astro Sync. Il contient vos nuits d’astrophoto
 - Dans une nuit :
   - `logs/` : les journaux NINA, PHD2 et ASIAIR de la nuit ;
   - `calibration/` : `darks/`, `flats/`, `dark-flats/` et `biases/` ;
-  - un dossier par cible (`M31`, `NGC 7000`…), avec `lights/` pour les poses FITS brutes et `final/` pour votre image traitée (TIFF, JPEG ou PNG) ;
-  - `stacked/` et `progression/`, qu’Astro Sync ne crée que lorsqu’il fabrique lui-même une image.
+  - un dossier par cible (`M31`, `NGC 7000`…), avec `lights/` pour les poses brutes (FITS ou RAW d’appareil photo) et `final/` pour votre image traitée (TIFF, JPEG ou PNG) ;
+  - `stacked/` et `progression/`, qu’Astro Sync ne crée que lorsqu’il fabrique lui-même une image. Les images que vous réglez avant de les envoyer sont écrites dans `stacked/adjusted/`, à côté du rendu d’origine, jamais dessus.
 - Les fichiers et dossiers dont le nom commence par un point (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) sont ceux d’Astro Sync : ils gardent l’identité d’une nuit ou d’une cible et le travail temporaire d’une tâche en cours. Laissez-les où ils sont.
 
 ## Les fichiers .md à la racine
@@ -26,4 +26,4 @@ Voici le dossier de travail d’Astro Sync. Il contient vos nuits d’astrophoto
 
 ## Rien n’est envoyé à une IA
 
-Astro Sync ne contacte aucun service d’IA. « Demander à un assistant IA » et « Poser une question à une IA » se contentent de copier un texte dans votre presse-papiers : vous le donnez à l’assistant de votre choix, qui lit ces fichiers avec son propre accès à votre ordinateur. Les poses FITS et les journaux bruts ne quittent jamais votre ordinateur ; seuls les résultats que vous choisissez d’envoyer vont dans votre espace Astro Portal.
+Astro Sync ne contacte aucun service d’IA. « Demander à un assistant IA » et « Poser une question à une IA » se contentent de copier un texte dans votre presse-papiers : vous le donnez à l’assistant de votre choix, qui lit ces fichiers avec son propre accès à votre ordinateur. Les poses et les journaux bruts ne quittent jamais votre ordinateur ; seuls les résultats que vous choisissez d’envoyer vont dans votre espace Astro Portal.

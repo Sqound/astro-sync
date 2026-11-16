@@ -8,8 +8,8 @@
 - 一夜的資料夾內：
   - `logs/`：當晚的 NINA、PHD2 和 ASIAIR 日誌；
   - `calibration/`：`darks/`、`flats/`、`dark-flats/` 和 `biases/`；
-  - 每個目標一個資料夾（`M31`、`NGC 7000` 等），其中 `lights/` 存放原始 FITS 影格，`final/` 存放你處理好的影像（TIFF、JPEG 或 PNG）；
-  - `stacked/` 和 `progression/`：只有在 Astro Sync 自己產生影像時才會建立。
+  - 每個目標一個資料夾（`M31`、`NGC 7000` 等），其中 `lights/` 存放原始影格（FITS 或相機的 RAW 檔案），`final/` 存放你處理好的影像（TIFF、JPEG 或 PNG）；
+  - `stacked/` 和 `progression/`：只有在 Astro Sync 自己產生影像時才會建立。你在傳送前調整的影像會寫入 `stacked/adjusted/`，放在原始算圖旁邊，絕不覆蓋它。
 - 名稱以點開頭的檔案和資料夾（`.astro-sync-night.json`、`.astro-sync-target.json`、`.astro-sync-work/`）屬於 Astro Sync：它們保存一夜或一個目標的身分資訊，以及進行中的工作的暫存內容。請保持原樣。
 
 ## 根目錄中的 .md 檔案
@@ -26,4 +26,4 @@
 
 ## 不會向 AI 傳送任何內容
 
-Astro Sync 不會聯繫任何 AI 服務。「詢問 AI 助理」和「向 AI 提問」只是把一段文字複製到你的剪貼簿：由你把它交給自己選擇的助理，助理再透過它自己對你電腦的存取權限讀取這些檔案。FITS 影格和原始日誌絕不會離開你的電腦；只有你選擇傳送的結果才會進入你的 Astro Portal 空間。
+Astro Sync 不會聯繫任何 AI 服務。「詢問 AI 助理」和「向 AI 提問」只是把一段文字複製到你的剪貼簿：由你把它交給自己選擇的助理，助理再透過它自己對你電腦的存取權限讀取這些檔案。影格和原始日誌絕不會離開你的電腦；只有你選擇傳送的結果才會進入你的 Astro Portal 空間。

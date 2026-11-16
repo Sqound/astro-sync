@@ -109,9 +109,10 @@ pub enum NotAResult {
 }
 
 const RESULT_EXTENSIONS: [&str; 5] = ["tif", "tiff", "jpg", "jpeg", "png"];
-const FRAME_EXTENSIONS: [&str; 9] = [
-    "fit", "fits", "fts", "xisf", "cr2", "cr3", "nef", "arw", "dng",
-];
+/// The frame formats other than camera RAW files, which
+/// [`crate::raw_header::is_raw_extension`] lists (Canon, Nikon, Sony, Adobe,
+/// Fujifilm, Pentax, Olympus and Panasonic).
+const FRAME_EXTENSIONS: [&str; 4] = ["fit", "fits", "fts", "xisf"];
 const LOG_EXTENSIONS: [&str; 3] = ["log", "txt", "csv"];
 
 /// Whether `path` is a result the queue may take, and which. The extension
@@ -124,7 +125,9 @@ pub fn result_kind_of(path: &Path) -> Result<ResultKind, NotAResult> {
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase())
         .unwrap_or_default();
-    if FRAME_EXTENSIONS.contains(&extension.as_str()) {
+    if FRAME_EXTENSIONS.contains(&extension.as_str())
+        || crate::raw_header::is_raw_extension(&extension)
+    {
         return Err(NotAResult::Frame);
     }
     if LOG_EXTENSIONS.contains(&extension.as_str()) {
@@ -1273,11 +1276,46 @@ impl UploadQueue {
         match self.find_by_sha256(sha256)? {
             Some(entry) if entry.state == QueueState::Completed => {
                 self.reset_for_restart(sha256)?;
+                self.forget_sky(sha256)?;
                 Ok(true)
             }
             Some(_) => Ok(false),
             None => Err(UploadQueueError::NotFound(sha256.to_string())),
         }
+    }
+
+    /// A row the space turned out not to hold any more (`completed` for a
+    /// capture deleted from the portal, or refused because the capture it is
+    /// added to is gone): back in the queue from the start, and what was kept
+    /// of its sky annotations forgotten -- they were those of a capture that
+    /// is not there. Returns whether the row was requeued.
+    pub fn requeue_vanished(&self, sha256: &str) -> Result<bool, UploadQueueError> {
+        let requeued = match self.find_by_sha256(sha256)? {
+            Some(entry)
+                if entry.state == QueueState::Completed
+                    || (entry.state == QueueState::Refused
+                        && entry.last_error_code.as_deref()
+                            == Some(crate::uploader::CAPTURE_NOT_IN_SPACE)) =>
+            {
+                self.reset_for_restart(sha256)?;
+                true
+            }
+            Some(_) => false,
+            None => return Err(UploadQueueError::NotFound(sha256.to_string())),
+        };
+        if requeued {
+            self.forget_sky(sha256)?;
+        }
+        Ok(requeued)
+    }
+
+    /// Forgets what was kept of the sky annotations of one image.
+    pub fn forget_sky(&self, sha256: &str) -> Result<(), UploadQueueError> {
+        self.connection.execute(
+            "DELETE FROM sky_annotation WHERE sha256 = ?1 AND space_id IS ?2",
+            params![sha256, self.space_id],
+        )?;
+        Ok(())
     }
 
     /// Every row of this space, oldest first -- the full picture `queue
@@ -1744,6 +1782,10 @@ mod tests {
         assert_eq!(kind("M31/final/m31.fits"), Err(NotAResult::Frame));
         assert_eq!(kind("M31/lights/l-0001.xisf"), Err(NotAResult::Frame));
         assert_eq!(kind("M31/lights/raw.CR2"), Err(NotAResult::Frame));
+        for name in ["raw.RAF", "raw.pef", "raw.ORF", "raw.rw2"] {
+            assert_eq!(kind(&format!("M31/lights/{name}")), Err(NotAResult::Frame));
+            assert_eq!(kind(&format!("M31/final/{name}")), Err(NotAResult::Frame));
+        }
         assert_eq!(kind("M31/lights/preview.jpg"), Err(NotAResult::InLights));
         assert_eq!(
             kind("calibration/flats/Ha/flat.png"),

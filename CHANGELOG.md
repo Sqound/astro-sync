@@ -3,6 +3,29 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.1 (2026-11-17)
+
+- An image whose capture was deleted from the portal is sent again. Before an
+  import is sent, Astro Sync asks the service which of the files it holds as
+  sent the space no longer has, and puts them back in the queue with their
+  variants. An image refused because its capture is gone now says so, in the
+  ten languages.
+- Multi-night plans: the final image of a plan, combined from its nights, is
+  made and sent with Advanced Planning. The intermediate images (the plan's
+  image after each night) still need Advanced Sync+, and the window, the
+  import and the command line (`plan-image --progression`) say so.
+- A target made only of XISF files no longer counts as having frames to stack:
+  XISF files are read, not stacked. Every camera RAW format that Astro Sync
+  reads is now taken as a frame by the queue.
+- The message about a skipped target names the targets step in the language of
+  the application.
+- The guides inside Astro Sync, the folder's guide and the README now describe
+  the stacking of camera RAW files, adjusting a finished image, the images to
+  send by series, the command line, the polished render and the option that
+  tidies frames into the working folder.
+- The installers are otherwise unchanged: the Windows installer is still
+  unsigned.
+
 ## 1.1.0 (2026-11-16)
 
 - Adjust a finished image before it is sent. The new screen opens from each

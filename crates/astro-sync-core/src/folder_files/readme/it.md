@@ -8,8 +8,8 @@ Questa è la cartella di lavoro di Astro Sync. Contiene le sue notti di astrofot
 - All’interno di una notte:
   - `logs/`: i log di NINA, PHD2 e ASIAIR della notte;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` e `biases/`;
-  - una cartella per oggetto (`M31`, `NGC 7000`…), con `lights/` per i fotogrammi FITS grezzi e `final/` per la sua immagine elaborata (TIFF, JPEG o PNG);
-  - `stacked/` e `progression/`, che Astro Sync crea solo quando produce da sé un’immagine.
+  - una cartella per oggetto (`M31`, `NGC 7000`…), con `lights/` per i fotogrammi grezzi (FITS o file RAW di fotocamera) e `final/` per la sua immagine elaborata (TIFF, JPEG o PNG);
+  - `stacked/` e `progression/`, che Astro Sync crea solo quando produce da sé un’immagine. Le immagini che regola prima di inviarle vengono scritte in `stacked/adjusted/`, accanto al rendering originale, mai sopra.
 - I file e le cartelle il cui nome inizia con un punto (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) sono di Astro Sync: conservano l’identità di una notte o di un oggetto e il lavoro temporaneo di un’operazione in corso. Li lasci dove sono.
 
 ## I file .md nella radice
@@ -26,4 +26,4 @@ Questa è la cartella di lavoro di Astro Sync. Contiene le sue notti di astrofot
 
 ## Nulla viene inviato a una IA
 
-Astro Sync non contatta nessun servizio di IA. «Chiedere a un assistente IA» e «Fare una domanda a un’IA» si limitano a copiare un testo negli appunti: lei lo dà all’assistente che preferisce, che legge questi file con il proprio accesso al suo computer. I fotogrammi FITS e i log grezzi non lasciano mai il suo computer; solo i risultati che sceglie di inviare vanno nel suo spazio Astro Portal.
+Astro Sync non contatta nessun servizio di IA. «Chiedere a un assistente IA» e «Fare una domanda a un’IA» si limitano a copiare un testo negli appunti: lei lo dà all’assistente che preferisce, che legge questi file con il proprio accesso al suo computer. I fotogrammi e i log grezzi non lasciano mai il suo computer; solo i risultati che sceglie di inviare vanno nel suo spazio Astro Portal.

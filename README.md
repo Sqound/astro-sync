@@ -8,17 +8,20 @@ package of each session, and sends it to your portal (your own private server
 or the hosted service) with resumable uploads. It does not watch the folders
 continuously: nothing is read or sent until you start an import. It also
 analyses the night on your computer: the quality and the guiding of each frame,
-and, optionally, a first stack of your FITS files.
+and, optionally, a first stack of your FITS or camera RAW files, whose renders you can adjust
+(black point, brightness, colour, smoothing, stars) before they are sent.
 
 ![The summary of a folder read by Astro Sync: the nights and targets it found, the frames attached to each night, and what it would create](docs/screenshots/readme-hero.jpg)
 
-_The result of reading a folder: the nights and targets found in the FITS
+_The result of reading a folder: the nights and targets found in the frame
 headers, shown before anything is created._
 
-**It never copies, moves, renames or deletes a source file**: every access to
-an associated folder is read-only. What it writes (its working folders, made of
-links to your frames and of its own results) lives in its own folder,
-`Documents/Astro Sync/` (created the first time the application starts).
+**On its own, it never copies, moves, renames or deletes one of your files**:
+it reads them. Tidying your frames into its working folder (copy, move or
+symbolic link) is an option you tick yourself, and a move deletes the original
+only once the copy has been checked by its SHA-256. What it writes (a folder per
+night, its own results, and the copies or links you asked for) lives in its own
+folder, `Documents/Astro Sync/` (created at the first signed-in launch).
 
 Astro Sync belongs to the [PlanAstro](https://www.planastro.space) family: the
 site presents the whole product, the hosted service and the applications.
@@ -36,7 +39,7 @@ file names carry no version:
 | Windows (x64)                      | `Astro-Sync_windows_x64-setup.exe`, the Windows installer, not yet signed  |
 | Linux (x64, Ubuntu 22.04 or newer) | `Astro-Sync_linux_x64.deb` and `Astro-Sync_linux_x64.AppImage`, not signed |
 
-The Windows installer of version 1.1.0 is not yet signed, so Windows may show a
+The Windows installer of version 1.1.1 is not yet signed, so Windows may show a
 SmartScreen warning: choose "More info", then "Run anyway".
 
 On Linux, install the `.deb` with `sudo apt install ./Astro-Sync_linux_x64.deb`
@@ -94,13 +97,13 @@ crates/astro-sync-core/  the library: association, scanning, session packages, u
 crates/astro-sync-cli/   the command line (`astro-sync`), over the same library
 app/                     the desktop application: Tauri 2 and a React/TypeScript interface
 app/src-tauri/           its Rust shell (a Cargo project of its own)
-stacking/                the optional stacking of FITS files (Python)
+stacking/                the optional stacking of FITS and RAW files (Python)
 contracts/               the portal's API contracts the tests replay (fixtures, schemas, locale registry)
 ```
 
 ## Stacking pipelines
 
-The optional stacking of a target’s FITS files lives in `stacking/`: a Python
+The optional stacking of a target’s FITS or camera RAW files lives in `stacking/`: a Python
 script drives Siril and writes only to `<target>/stacked/`, never into your
 source folders. The render pipelines (the shipped ones, and your own, kept in
 the application’s data folder) are declared in manifests: see
@@ -109,16 +112,19 @@ the application’s data folder) are declared in manifests: see
 
 ## Python and Siril (optional stacking)
 
-Everything above works without them. The stacking of FITS files is the only
-part that needs more: a **Python 3.12 to 3.14** environment and
+Everything above works without them. The stacking is the only
+part that needs more: a **Python 3.12 or 3.13** environment and
 [Siril](https://siril.org) (1.4 or later), which does the calibration and the
 registration. Astro Sync does not bundle either. The application creates the
 Python environment itself (Settings, "Dependencies": a virtual environment of
 pinned, hash-checked packages, about 300 MB, on your computer only), detects
 Siril and offers its download page (on Linux, the Siril of the distribution can
 be older than 1.4, as Ubuntu's 1.2: take it from siril.org); StarNet2 is an
-optional extra for some renders. Nothing is installed without your asking, and no FITS file leaves your
-computer. The details, versions and licences are in
+optional extra for some renders. GraXpert (the background and the noise of the
+polished render, which Siril handles when GraXpert is missing) and ASTAP (the
+sky solutions) are downloaded by the same page when you ask, each download
+checked by its SHA-256. Nothing is installed without your asking, and no frame
+leaves your computer. The details, versions and licences are in
 [`stacking/DEPENDENCIES.md`](stacking/DEPENDENCIES.md).
 
 ## Reporting a problem
@@ -133,7 +139,7 @@ computer. The details, versions and licences are in
 
 ## License
 
-Astro Sync is free software under the MIT license ([LICENSE](LICENSE)).
+Astro Sync is open source, under the MIT license ([LICENSE](LICENSE)).
 
 ## Contributing
 

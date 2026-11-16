@@ -2,9 +2,11 @@
 // Pure TypeScript, tested under `node --test`: what « Traitements » says of the
 // night's integration and of the image of the plan, what « Récapitulatif »
 // adds, the tag of « Nuits », the words of a refusal of the service. The
-// right is the stacking's (`analysis.progression`, « Synchronisation
-// avancée+ ») on a service that sells it; a private server never restricts
-// the multi-night plans: only a service never heard closes them.
+// right is the plan's own (`planner.mosaic`, « Planification avancée »,
+// included in every subscription) on a service that sells it; a private
+// server never restricts the multi-night plans: only a service never heard
+// closes them. Only the intermediate images of a plan (what each night adds)
+// are the progression's (`analysis.progression`, Rust side).
 
 import type { TranslateParams } from "../i18n/locale.ts";
 import type {

@@ -672,7 +672,24 @@ pub async fn detect_images_send<R: Runtime>(
                 }
             }
         }
-        Ok(paths::open_queue(&paths)?.enqueue_results(&files)?)
+        let queue = paths::open_queue(&paths)?;
+        // « Déjà envoyé » is said of an image the space still has: what the
+        // queue holds as sent and the space no longer holds (a capture
+        // deleted from the portal since) goes back in the queue first, asked
+        // once. Signed out, or a service that cannot be asked: the queue
+        // says what it knew, as before.
+        if let (Ok((portal_url, token)), Ok(service)) =
+            (require_portal_and_token(&app), transport(&app))
+        {
+            let _ = astro_sync_core::uploader::requeue_vanished(
+                &service,
+                &portal_url,
+                &token,
+                &queue,
+                &files,
+            );
+        }
+        Ok(queue.enqueue_results(&files)?)
     })
     .await
 }

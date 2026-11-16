@@ -125,9 +125,10 @@ fn sold_and_computer(paths: &AppPaths) -> (Option<bool>, Computer) {
     )
 }
 
-/// Whether the multi-night plans are open here (`analysis.progression` on a
-/// service that sells them, always on a private server): `ASSISTANT-IA.md`
-/// then carries their section.
+/// Whether the multi-night plans are open here (`planner.mosaic`,
+/// « Planification avancée », held by every subscription, on a service that
+/// sells them; always on a private server): `ASSISTANT-IA.md` then carries
+/// their section.
 pub(crate) fn multi_night_open(paths: &AppPaths) -> bool {
     gate_of(paths).is_ok_and(|(gate, _)| gate.allowed)
 }
@@ -143,8 +144,8 @@ fn gate_of(paths: &AppPaths) -> Result<(MultiNightGate, Computer), CommandError>
 }
 
 /// The right of the gestures on a plan itself (attach, detach, create from a
-/// night): `planner.mosaic`, « Planification avancée », where [`gate_of`]
-/// reads the integrations' `analysis.progression`.
+/// night): `planner.mosaic`, « Planification avancée », the same right as
+/// [`gate_of`]'s (the integrations and the final image of the plan).
 pub(crate) fn attach_gate_of(paths: &AppPaths) -> Result<AttachGate, CommandError> {
     let (sold, _) = sold_and_computer(paths);
     let capabilities = capabilities_cached(paths)?;
@@ -270,7 +271,7 @@ pub async fn night_integration_preview(
 }
 
 /// After the sending of a night: the lines of its masters for each
-/// multi-night plan, under the right (`analysis.progression`, the hosted
+/// multi-night plan, under the right (`planner.mosaic`, the hosted
 /// service). A refusal of the service is an outcome, never an error.
 #[tauri::command]
 pub async fn night_integrations_send<R: Runtime>(
@@ -573,6 +574,7 @@ fn make_plan_images<R: Runtime>(
     };
     let handle = app.clone();
     let job_refs: Vec<&plan_image::PlanImageJob> = jobs.iter().collect();
+    let progression_open = gate.progression;
     let gate = PlanImageGate {
         allowed: gate.allowed,
         tool_present: tools::tools_present(&rows).stacking_pipeline,
@@ -605,9 +607,12 @@ fn make_plan_images<R: Runtime>(
     }
     // The image of the plan after each night, with the pipeline of the main
     // image: the history of the capture. A progression that stops keeps the
-    // milestones made, and never fails the images.
+    // milestones made, and never fails the images. These intermediate images
+    // are the progression's (`analysis.progression`), never the final
+    // image's right alone.
     let mut milestones = Vec::new();
     let mut progression_failure = None;
+    let progression = progression && progression_open;
     if let (true, Some(main), Some(job)) = (progression, results.first(), jobs.first()) {
         let mut planned = plan_progression::plan_progression_jobs(
             &view.project,

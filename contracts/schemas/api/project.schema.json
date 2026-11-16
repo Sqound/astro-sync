@@ -592,7 +592,7 @@
     { "$ref": "#/$defs/nights" },
     {
       "type": "object",
-      "description": "A refusal. `409 project_conflict` carries the server's current `project`; `403 capability_required` names the `capability` the write needs. `403 multi_night_not_active` on the nights routes and on `POST /v1/projects` from existing nights names `planner.mosaic` (« Planification avancée »; the integrations of a plan and its image name `analysis.progression`, see integration.schema.json); `409 target_mismatch` and `404 session_not_found` / `plan_not_found` name the `sessionId` or the `planId` refused.",
+      "description": "A refusal. `409 project_conflict` carries the server's current `project`; `403 capability_required` names the `capability` the write needs. `403 multi_night_not_active` on the nights routes and on `POST /v1/projects` from existing nights names `planner.mosaic` (« Planification avancée »; the integrations of a plan and its final image name it too, see integration.schema.json); `409 target_mismatch` and `404 session_not_found` / `plan_not_found` name the `sessionId` or the `planId` refused.",
       "required": ["error"],
       "properties": {
         "error": { "$ref": "#/$defs/error" },

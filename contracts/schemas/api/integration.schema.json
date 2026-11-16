@@ -293,11 +293,11 @@
     },
     {
       "type": "object",
-      "description": "A refusal. `403 multi_night_not_active` (no `analysis.progression`, a subscription in its read-only window, or a private server, where the multi-night plans of Astro Sync never run) names the capability; `409 integration_outside_night` gives the night's own `eveningDate`; `409 integration_night_not_in_project` (a night that does not belong to the multi-night plan: the `PUT` writes only for the plan's own nights; carries `nightId`) is checked after the capability gate and before `integration_outside_night`; `404 project_not_found`, `404 session_not_found` (the night), `400 invalid_request`.",
+      "description": "A refusal. `403 multi_night_not_active` (no `planner.mosaic`, « Planification avancée », which every subscription holds; a subscription in its read-only window, or a private server, where the multi-night plans of Astro Sync never run) names the capability; `409 integration_outside_night` gives the night's own `eveningDate`; `409 integration_night_not_in_project` (a night that does not belong to the multi-night plan: the `PUT` writes only for the plan's own nights; carries `nightId`) is checked after the capability gate and before `integration_outside_night`; `404 project_not_found`, `404 session_not_found` (the night), `400 invalid_request`.",
       "required": ["error"],
       "properties": {
         "error": { "$ref": "#/$defs/error" },
-        "capability": { "const": "analysis.progression" },
+        "capability": { "enum": ["planner.mosaic", "analysis.progression"] },
         "nightId": { "$ref": "#/$defs/uuid" },
         "eveningDate": { "$ref": "#/$defs/eveningDate" }
       },

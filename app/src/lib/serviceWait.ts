@@ -76,6 +76,7 @@ export const REFUSAL_CODES: readonly string[] = [
   "file_capture_refused",
   "project_not_found",
   "variant_capture_refused",
+  "capture_not_found",
   "not_a_result",
   "analysis_empty",
 ];

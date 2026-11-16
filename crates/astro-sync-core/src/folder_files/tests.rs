@@ -22,6 +22,7 @@ fn the_ten_languages_have_a_readme_and_a_guide_name() {
             "GUIDE-ASTRO-SYNC.",
             ".modifie-",
             "stacked/",
+            "stacked/adjusted/",
             "progression/",
             ".astro-sync-work/",
             "logs/",

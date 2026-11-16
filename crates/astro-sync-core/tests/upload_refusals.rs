@@ -315,6 +315,7 @@ fn a_refusal_for_good_reaches_the_service_once_and_never_again() {
         ),
         (400, "invalid_request", "upload_refused"),
         (404, "plan_not_found", "upload_refused"),
+        (404, "capture_not_found", "capture_not_found"),
         (422, "a_code_of_a_newer_service", "upload_refused"),
     ] {
         let model = Arc::new(UploadModel::default());

@@ -44,7 +44,7 @@ import type { NightContext } from "./NightWizard";
  * plan offers « Rattacher à un plan multi-nuits » (a tertiary, alone in its
  * zone), a night in one says it and offers the case « Détacher de ce plan »
  * (in the destructive tint, nothing is deleted). Without the right
- * (`analysis.progression`) or on a private server the link is replaced by
+ * (`planner.mosaic`) or on a private server the link is replaced by
  * the sentence of « Traitements » and « Voir les offres ». A read that fails
  * says so with « Réessayer », and shows the last answer when there is one.
  *

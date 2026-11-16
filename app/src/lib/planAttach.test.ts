@@ -282,10 +282,11 @@ test("the words of a refusal of the service are said in clear, the plan's own ri
     attachRefusalWords(fr, "multi_night_not_active", ""),
     "le rattachement à un plan multi-nuits est réservé à Planification avancée.",
   );
-  // The integrations' refusal keeps « Synchronisation avancée+ ».
+  // The integrations' refusal names no offer: an older service still asks
+  // « Synchronisation avancée+ », a newer one « Planification avancée ».
   assert.equal(
     refusalWords(fr, "multi_night_not_active", ""),
-    "le plan multi-nuits dans Astro Sync est réservé à Synchronisation avancée+.",
+    "ce service réserve le plan multi-nuits à une offre que cet espace n’a pas.",
   );
   assert.equal(
     refusalWords(en, "target_mismatch", ""),
