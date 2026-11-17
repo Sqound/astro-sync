@@ -37,23 +37,30 @@ export function renderFormatText(
   );
 }
 
-/** The label of the box: « Joindre aussi les TIFF (pleine résolution, ≈ 47 Mo
- * chacun) » when the TIFF are known, else without their weight (the renders
- * are made at the sending). */
+/** The label of the box. One TIFF known: its own weight, « Joindre aussi le
+ * TIFF (pleine résolution, 47 Mo) ». Several: only their total is known, so
+ * the figure is an average and says so, « ≈ 47 Mo en moyenne » -- never
+ * « chacun », which would claim a weight for each file. None known (the
+ * renders are made at the sending): no weight. */
 export function joinTiffLabel(
   t: Translate,
   locale: string,
   fullResolution: { count: number; bytes: number } | null,
 ): string {
-  return fullResolution && fullResolution.count > 0
-    ? t("uploadFormat.joinTiffSized", {
-        size: formatSpaceSize(
-          t,
-          Math.round(fullResolution.bytes / fullResolution.count),
-          locale,
-        ),
-      })
-    : t("uploadFormat.joinTiff");
+  if (!fullResolution || fullResolution.count <= 0) {
+    return t("uploadFormat.joinTiff");
+  }
+  const size = formatSpaceSize(
+    t,
+    Math.round(fullResolution.bytes / fullResolution.count),
+    locale,
+  );
+  return t(
+    fullResolution.count === 1
+      ? "uploadFormat.joinTiffSizedOne"
+      : "uploadFormat.joinTiffSized",
+    { size },
+  );
 }
 
 /** « Sans les TIFF : 479 Mo, cela tient. » under a refusal for room, when the

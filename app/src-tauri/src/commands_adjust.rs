@@ -315,6 +315,40 @@ pub async fn image_adjust_stars<R: Runtime>(
     .await
 }
 
+/// The list of the stars the diffraction spikes are drawn from (position,
+/// flux, radius, colour, at the size of the whole image), as JSON. Measured
+/// once with the star layer; a layer separated before the list existed gets
+/// its list here, from the layer already there, without separating again.
+#[tauri::command]
+pub async fn image_adjust_spots<R: Runtime>(
+    app: AppHandle<R>,
+    path: String,
+) -> Result<serde_json::Value, CommandError> {
+    run_blocking(move || {
+        let paths = paths::resolve(&app)?;
+        let render = render_of(&path)?;
+        let work = work_of(&paths, &render);
+        let list = work.join("stars.json");
+        if !list.is_file() {
+            let mut args: Vec<String> = vec![
+                "spots".into(),
+                "--image".into(),
+                render.display().to_string(),
+                "--work".into(),
+                work.display().to_string(),
+            ];
+            if let Some(twin) = image_adjust::twin_of(&render) {
+                args.extend(["--tiff".into(), twin.display().to_string()]);
+            }
+            run_script(&app, &paths, &args)?;
+        }
+        let text = std::fs::read_to_string(&list)
+            .map_err(|error| CommandError::other(error.to_string()))?;
+        serde_json::from_str(&text).map_err(|error| CommandError::other(error.to_string()))
+    })
+    .await
+}
+
 /// The preview smoothed at `amount` %, as PNG bytes (NL-means, ≈ 1 s).
 #[tauri::command]
 pub async fn image_adjust_smooth<R: Runtime>(

@@ -185,6 +185,8 @@ fn values_out_of_range_are_brought_back_and_neutral_values_write_nothing() {
         colour: -2.0,
         smoothing: 140.0,
         stars: -300.0,
+        spikes: 400.0,
+        spikes_reach: f64::NAN,
     }
     .clamped();
     assert_eq!(wild.black_point, 20.0);
@@ -192,6 +194,8 @@ fn values_out_of_range_are_brought_back_and_neutral_values_write_nothing() {
     assert_eq!(wild.colour, 0.0);
     assert_eq!(wild.smoothing, 100.0);
     assert_eq!(wild.stars, -100.0);
+    assert_eq!(wild.spikes, 100.0);
+    assert_eq!(wild.spikes_reach, 50.0);
     assert!(AdjustValues::NEUTRAL.is_neutral());
     assert!(!values().is_neutral());
     assert!(!values().needs_stars());
@@ -1284,7 +1288,7 @@ fn a_record_of_before_has_no_turn() {
 
 #[test]
 fn a_saved_setting_never_carries_a_turn() {
-    // The five values only: the turn belongs to the image, not to a setting
+    // The values only: the turn belongs to the image, not to a setting
     // applied to other images.
     let json = serde_json::to_value(values()).unwrap();
     assert!(json.get("quarterTurns").is_none());
@@ -1294,4 +1298,80 @@ fn a_saved_setting_never_carries_a_turn() {
     })
     .unwrap();
     assert!(saved.to_string().find("quarterTurns").is_none());
+}
+
+fn with_spikes(strength: f64, reach: f64) -> AdjustValues {
+    AdjustValues {
+        spikes: strength,
+        spikes_reach: reach,
+        ..AdjustValues::NEUTRAL
+    }
+}
+
+#[test]
+fn the_spikes_are_neutral_at_zero_whatever_the_reach() {
+    assert!(AdjustValues::NEUTRAL.is_neutral());
+    assert_eq!(AdjustValues::NEUTRAL.spikes, 0.0);
+    assert_eq!(AdjustValues::NEUTRAL.spikes_reach, 50.0);
+    // The reach alone moves nothing: no spike, no change, and the same values.
+    assert!(with_spikes(0.0, 90.0).is_neutral());
+    assert_eq!(with_spikes(0.0, 90.0).clamped(), AdjustValues::NEUTRAL);
+    assert!(!with_spikes(5.0, 50.0).is_neutral());
+    assert_eq!(with_spikes(5.0, 10.0).clamped().spikes_reach, 10.0);
+}
+
+#[test]
+fn the_spikes_need_the_star_layer() {
+    assert!(with_spikes(40.0, 50.0).needs_stars());
+    assert!(!with_spikes(0.0, 50.0).needs_stars());
+    assert!(
+        AdjustValues {
+            stars: -20.0,
+            ..AdjustValues::NEUTRAL
+        }
+        .needs_stars()
+    );
+}
+
+#[test]
+fn a_record_of_before_the_spikes_reads_back_without_them() {
+    let dir = tempfile_dir();
+    let render = render_in(dir.path());
+    set(&render, values());
+    let path = record_path(&render).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    // Written with no `spikes` field at all, as the records of before are.
+    let mut json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let held = json["values"].as_object_mut().unwrap();
+    held.remove("spikes");
+    held.remove("spikesReach");
+    fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
+    let state = state(&render).expect("the record of before is still valid");
+    assert_eq!(state.values.spikes, 0.0);
+    assert_eq!(state.values.spikes_reach, 50.0);
+    assert_eq!(state.values.colour, 1.7);
+}
+
+#[test]
+fn the_spikes_are_written_into_the_record_and_into_a_saved_setting() {
+    let dir = tempfile_dir();
+    let render = render_in(dir.path());
+    let chosen = AdjustValues {
+        spikes: 60.0,
+        spikes_reach: 40.0,
+        ..values()
+    };
+    let written = set(&render, chosen);
+    assert_eq!(written.values.spikes, 60.0);
+    assert_eq!(written.values.spikes_reach, 40.0);
+    // What a later reader (the portal's mention) finds in the record.
+    let text = fs::read_to_string(record_path(&render).unwrap()).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["values"]["spikes"], 60.0);
+    assert_eq!(json["values"]["spikesReach"], 40.0);
+    let again = state(&render).unwrap();
+    assert_eq!(again.values, chosen);
+    let mut list = Vec::new();
+    save_named(&mut list, "Croix", chosen).unwrap();
+    assert_eq!(list[0].values, chosen);
 }

@@ -85,7 +85,13 @@ test("the Récapitulatif box shows no warning unticked, the warning ticked", () 
 });
 
 test("the Récapitulatif box says the weight of the TIFF only when it is known", () => {
-  assert.match(box(true, KNOWN), /pleine résolution, ≈\s43,5\sMo chacun/);
+  // One TIFF: its own weight. Several: an average, said as such.
+  assert.match(box(true, KNOWN), /le TIFF \(pleine résolution, 43,5\sMo\)/);
+  assert.match(
+    box(true, { count: 4, bytes: 4 * 45_700_000 }),
+    /les TIFF \(pleine résolution, ≈\s43,5\sMo en moyenne\)/,
+  );
+  assert.doesNotMatch(box(true, KNOWN), /chacun|≈/);
   assert.doesNotMatch(box(true, null), /≈/);
 });
 
@@ -96,7 +102,14 @@ test("« Envoi des rendus » warns only when PNG + TIFF is the starting value", 
   const both = field("both");
   assert.ok(both.includes("Le TIFF pèse sur votre quota"), both);
   assert.ok(both.includes('role="note"'));
-  assert.ok(both.includes("Valeur de départ"));
+  // What the setting does since the import's global box is gone: it starts
+  // the Récapitulatif's box only; in « Images à envoyer » the TIFF is a
+  // gesture of each card, unticked at first.
+  assert.ok(both.includes("Détermine si la case"), both);
+  assert.ok(both.includes("Récapitulatif d’une nuit"), both);
+  assert.match(both, /Images\sà\senvoyer/);
+  assert.ok(both.includes("image par image"), both);
+  assert.ok(!both.includes("Valeur de départ"), both);
 });
 
 test("the warning is one component, used by the three places and never copied", () => {

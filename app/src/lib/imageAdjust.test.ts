@@ -9,11 +9,15 @@ import {
   adjustPixels,
   adjustedLine,
   adjustedList,
+  canonicalValues,
   cleanValues,
   importText,
+  isChanged,
   isAdjustable,
   isNeutral,
+  reachText,
   rowAdjustment,
+  spikesGroupText,
   valueText,
   type AdjustValues,
 } from "./imageAdjust.ts";
@@ -217,7 +221,7 @@ test("a saved setting reads its values in the words of the planche", () => {
   );
   assert.equal(
     t("adjust.saved.values", { list: adjustedList(t, "fr", nebulae) }),
-    "Les cinq valeurs ci-dessous, sans l’image : point noir 8 %, luminosité +12, couleur × 1,7.",
+    "Les valeurs ci-dessous, sans l’image : point noir 8 %, luminosité +12, couleur × 1,7.",
   );
   assert.equal(
     adjustedList(t, "fr", { ...NEUTRAL, smoothing: 20, stars: -40 }),
@@ -348,4 +352,84 @@ test("the row of a set render's TIFF says the image set's TIFF, and the render's
   // on a TIFF row, and the TIFF row never takes the PNG's image set.
   assert.equal(rowAdjustment(tiffRow, { [png]: { ...set, tiff: null } }), null);
   assert.equal(rowAdjustment({ path: tif }, { [png]: set }), null);
+});
+
+const withSpikes = (spikes: number, spikesReach = 50): AdjustValues => ({
+  ...NEUTRAL,
+  spikes,
+  spikesReach,
+});
+
+test("the spikes are off by default, and the reach alone is not a change", () => {
+  assert.equal(NEUTRAL.spikes, 0);
+  assert.equal(NEUTRAL.spikesReach, 50);
+  assert.equal(isNeutral(withSpikes(0, 90)), true);
+  assert.equal(isChanged(withSpikes(0, 90), "spikesReach"), false);
+  assert.equal(isNeutral(withSpikes(5)), false);
+  assert.deepEqual(canonicalValues(withSpikes(0, 90)), { ...NEUTRAL });
+  assert.deepEqual(canonicalValues(withSpikes(20, 90)), withSpikes(20, 90));
+  // Read back from a record of before the spikes: neutral.
+  assert.deepEqual(cleanValues({ blackPoint: 8 }), {
+    ...NEUTRAL,
+    blackPoint: 8,
+  });
+  assert.equal(cleanValues({ spikes: 400, spikesReach: -3 }).spikes, 100);
+  assert.equal(cleanValues({ spikes: 40, spikesReach: -3 }).spikesReach, 0);
+});
+
+test("the spikes say what they are in the words of the planche, last in the line", () => {
+  assert.equal(valueText(t, "fr", "spikes", 0), "Sans");
+  assert.equal(valueText(t, "fr", "spikes", 60), "60 %");
+  assert.equal(spikesGroupText(t, "fr", withSpikes(0)), "Sans");
+  assert.equal(spikesGroupText(t, "fr", withSpikes(60)), "Ajoutées, 60 %");
+  assert.equal(reachText(t, "fr", 50, 63), "Brillantes · 63 étoiles");
+  assert.equal(reachText(t, "fr", 0, 1), "Les plus brillantes · 1 étoile");
+  assert.equal(
+    reachText(t, "fr", 100, 220),
+    "Jusqu’aux moyennes · 220 étoiles",
+  );
+  assert.equal(
+    adjustedList(t, "fr", { ...withSpikes(60, 20), stars: -10, blackPoint: 8 }),
+    "point noir 8 %, étoiles réduites 10 %, aigrettes ajoutées 60 %",
+  );
+  assert.equal(
+    adjustedLine(t, "fr", { ...withSpikes(60), stars: -10 }, 1),
+    t("adjust.applied", {
+      list: "tournée de 90° à droite, étoiles réduites 10 %, aigrettes ajoutées 60 %",
+    }),
+  );
+  // The reach alone is never a term of the line.
+  assert.equal(adjustedList(t, "fr", withSpikes(0, 90)), "Comme le rendu");
+});
+
+test("every language says the spikes, in the register of its file", () => {
+  const keys = [
+    "adjust.spikes.title",
+    "adjust.spikes.note",
+    "adjust.spikes.intro",
+    "adjust.spikes.group.added",
+    "adjust.spikes.strength.title",
+    "adjust.spikes.strength.help",
+    "adjust.spikes.reach.title",
+    "adjust.spikes.reach.help",
+    "adjust.spikes.reach.first",
+    "adjust.spikes.reach.brightest",
+    "adjust.spikes.reach.bright",
+    "adjust.spikes.reach.medium",
+    "adjust.spikes.reach.value",
+    "adjust.spikes.reach.count.one",
+    "adjust.spikes.reach.count.other",
+    "adjust.applied.spikes",
+  ];
+  for (const locale of SUPPORTED_LOCALES) {
+    const dict = JSON.parse(
+      readFileSync(new URL(`../i18n/${locale}.json`, import.meta.url), "utf8"),
+    ) as Record<string, string>;
+    for (const key of keys) {
+      assert.ok(dict[key], `${locale}: ${key}`);
+      assert.ok(!/[;；—]/.test(dict[key]), `${locale}: ${key} juxtaposes`);
+    }
+    // The help says plainly that the spikes are not in the data.
+    assert.ok(dict["adjust.spikes.intro"].length > 30, locale);
+  }
 });

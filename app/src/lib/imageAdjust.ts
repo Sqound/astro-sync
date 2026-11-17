@@ -1,4 +1,4 @@
-// « Régler l'image »: the five settings a person applies to a finished image
+// « Régler l'image »: the settings a person applies to a finished image
 // (never to the linear data), their words and the per-pixel arithmetic of the
 // preview. The window applies the settings itself on the 1080 px preview, in
 // the same order and with the same formulas as `stacking/image_adjust.py`,
@@ -6,10 +6,11 @@
 // the script's, on the preview too). Pure TypeScript, tested under `node
 // --test`.
 
+import { screenSpikes } from "./diffractionSpikes.ts";
 import { conjunction, pluralText } from "./written.ts";
 
-/** The five values; each at its neutral value leaves the image as the render
- * made it. */
+/** The values; each at its neutral value leaves the image as the render made
+ * it. */
 export interface AdjustValues {
   /** 0..20 %: a black level on the luminance (0: the render's). */
   blackPoint: number;
@@ -21,6 +22,12 @@ export interface AdjustValues {
   smoothing: number;
   /** -100..100 %: the star layer taken away (< 0) or added back (> 0). */
   stars: number;
+  /** 0..100 %: diffraction spikes added to the bright stars (0: none). Light
+   * that is not in the person's data. */
+  spikes: number;
+  /** 0..100: which stars get spikes, the brightest only (0) to the medium
+   * ones too (100). Says nothing while `spikes` is 0, and is then 50. */
+  spikesReach: number;
 }
 
 export type AdjustName = keyof AdjustValues;
@@ -31,6 +38,8 @@ export const NEUTRAL: Readonly<AdjustValues> = {
   colour: 1,
   smoothing: 0,
   stars: 0,
+  spikes: 0,
+  spikesReach: 50,
 };
 
 export interface AdjustSpec {
@@ -40,10 +49,14 @@ export interface AdjustSpec {
   step: number;
   titleKey: string;
   helpKey: string;
+  /** The setting is in a group of its own on the screen (« Aigrettes »),
+   * not in the list of the five. */
+  group?: "spikes";
 }
 
 /** The settings in the order of the screen (the study's): point noir,
- * luminosité, couleur, lissage, étoiles. */
+ * luminosité, couleur, lissage, étoiles, then the group « Aigrettes » (force,
+ * étoiles concernées). */
 export const ADJUST_SPECS: readonly AdjustSpec[] = [
   {
     name: "blackPoint",
@@ -85,6 +98,24 @@ export const ADJUST_SPECS: readonly AdjustSpec[] = [
     titleKey: "adjust.stars.title",
     helpKey: "adjust.stars.help",
   },
+  {
+    name: "spikes",
+    min: 0,
+    max: 100,
+    step: 5,
+    titleKey: "adjust.spikes.strength.title",
+    helpKey: "adjust.spikes.strength.help",
+    group: "spikes",
+  },
+  {
+    name: "spikesReach",
+    min: 0,
+    max: 100,
+    step: 5,
+    titleKey: "adjust.spikes.reach.title",
+    helpKey: "adjust.spikes.reach.help",
+    group: "spikes",
+  },
 ];
 
 /** A value brought into its range and onto its step. */
@@ -106,10 +137,19 @@ export function cleanValues(raw: Partial<Record<string, unknown>> | null) {
     if (typeof value === "number")
       out[spec.name] = clampValue(spec.name, value);
   }
-  return out;
+  return canonicalValues(out);
+}
+
+/** The values as they are written: with no spikes the reach says nothing, so
+ * it is the neutral one (two settings that draw the same image are equal). */
+export function canonicalValues(values: AdjustValues): AdjustValues {
+  return values.spikes === 0
+    ? { ...values, spikesReach: NEUTRAL.spikesReach }
+    : values;
 }
 
 export function isChanged(values: AdjustValues, name: AdjustName): boolean {
+  if (name === "spikesReach" && values.spikes === 0) return false;
   return values[name] !== NEUTRAL[name];
 }
 
@@ -138,11 +178,12 @@ export function valueText(
   name: AdjustName,
   value: number,
 ): string {
-  if (name === "smoothing") {
+  if (name === "smoothing" || name === "spikes") {
     return value === 0
       ? t("adjust.value.none")
       : t("adjust.value.percent", { value: decimal(locale, value, 0) });
   }
+  if (name === "spikesReach") return t(reachWordKey(value));
   if (value === NEUTRAL[name]) return t("adjust.value.asRender");
   switch (name) {
     case "blackPoint":
@@ -159,6 +200,41 @@ export function valueText(
         },
       );
   }
+}
+
+/** The word of a reach: the brightest stars only, bright ones, down to the
+ * medium ones. */
+export function reachWordKey(reach: number): string {
+  if (reach < 25) return "adjust.spikes.reach.brightest";
+  if (reach < 75) return "adjust.spikes.reach.bright";
+  return "adjust.spikes.reach.medium";
+}
+
+/** « Brillantes · 63 étoiles »: the word of the reach and how many stars it
+ * lets through. */
+export function reachText(
+  t: Translate,
+  locale: string,
+  reach: number,
+  count: number,
+): string {
+  return t("adjust.spikes.reach.value", {
+    word: t(reachWordKey(reach)),
+    count: pluralText(t, locale, "adjust.spikes.reach.count", count),
+  });
+}
+
+/** The value of the folded group: « Sans » or « Ajoutées 60 % ». */
+export function spikesGroupText(
+  t: Translate,
+  locale: string,
+  values: AdjustValues,
+): string {
+  return values.spikes === 0
+    ? t("adjust.value.none")
+    : t("adjust.spikes.group.added", {
+        value: valueText(t, locale, "spikes", values.spikes),
+      });
 }
 
 /** « Réglée : point noir 8 %, luminosité +12, couleur × 1,7 »: the settings
@@ -192,18 +268,21 @@ export function adjustedList(
   quarterTurns = 0,
 ): string {
   const turn = TURN_WORDS[((quarterTurns % 4) + 4) % 4];
-  const moved = ADJUST_SPECS.filter((spec) => isChanged(values, spec.name)).map(
-    (spec) =>
-      spec.name === "stars"
-        ? t(
-            values.stars < 0
-              ? "adjust.applied.starsLess"
-              : "adjust.applied.starsMore",
-            { value: decimal(locale, Math.abs(values.stars), 0) },
-          )
-        : t(`adjust.applied.${spec.name}`, {
-            value: valueText(t, locale, spec.name, values[spec.name]),
-          }),
+  // The reach is not a term of its own: it only says which stars the spikes
+  // go to.
+  const moved = ADJUST_SPECS.filter(
+    (spec) => spec.name !== "spikesReach" && isChanged(values, spec.name),
+  ).map((spec) =>
+    spec.name === "stars"
+      ? t(
+          values.stars < 0
+            ? "adjust.applied.starsLess"
+            : "adjust.applied.starsMore",
+          { value: decimal(locale, Math.abs(values.stars), 0) },
+        )
+      : t(`adjust.applied.${spec.name}`, {
+          value: valueText(t, locale, spec.name, values[spec.name]),
+        }),
   );
   const parts = turn ? [t(turn), ...moved] : moved;
   return parts.length > 0
@@ -279,7 +358,9 @@ const LB = 0.0722;
  * preview, or the preview smoothed by the script), `stars` (the star layer
  * previewed, or `null`), `mask` (where the signal is, the colour's weight, one
  * byte per pixel in its red channel), all RGBA of the same size. Writes `out`.
- * A setting at its neutral value is skipped, as the script does.
+ * A setting at its neutral value is skipped, as the script does. `spikes`: the
+ * light of the diffraction spikes (`spikeLayer`), screened over the result;
+ * `null`: none.
  */
 export function adjustPixels(
   base: ArrayLike<number>,
@@ -287,6 +368,7 @@ export function adjustPixels(
   mask: ArrayLike<number>,
   values: AdjustValues,
   out: { [index: number]: number; length: number },
+  spikes: Float32Array | null = null,
 ): void {
   const k = values.stars / 100;
   const doStars = values.stars !== 0 && stars !== null;
@@ -309,6 +391,8 @@ export function adjustPixels(
       factor,
       mask[i] / 255,
     );
+    // The spikes' light, last of all (`spikeLayer`: one pixel is three floats).
+    if (spikes) screenSpikes(pixel, spikes, (i / 4) * 3);
     out[i] = Math.round(pixel[0] * 255);
     out[i + 1] = Math.round(pixel[1] * 255);
     out[i + 2] = Math.round(pixel[2] * 255);

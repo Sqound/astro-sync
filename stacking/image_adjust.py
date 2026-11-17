@@ -1,4 +1,4 @@
-"""« Régler l'image »: five settings a person applies to a finished image, never to the linear data.
+"""« Régler l'image »: six settings a person applies to a finished image, never to the linear data.
 
 The settings, in the order they are applied:
 
@@ -7,9 +7,11 @@ The settings, in the order they are applied:
 ``blackPoint``  0..20 %: a black level on the luminance, as a share of the full scale (0: the render's).
 ``brightness``  -50..50: a power on the luminance, the blacks and the whites kept (0: the render's).
 ``colour``      0..3: a factor on the chroma of the signal, the sky left neutral (1: the render's).
+``spikes``      0..100 %: diffraction spikes added to the bright stars, last of all (0: none).  ``spikesReach``
+                (0..100, 50 when ``spikes`` is 0) says which stars get them.  Not in the person's data: added light.
 
 A setting at its neutral value is not applied at all, so an image with every setting neutral comes out
-unchanged to the bit.  Every operation but the smoothing is one per pixel: the window applies them itself on
+unchanged to the bit.  Every operation but the smoothing and the spikes' search for the stars is one per pixel: the window applies them itself on
 the preview (``app/src/lib/imageAdjust.ts``, the same formulas), and this script on the whole image when the
 person saves.  The masks the colour needs are computed here once per scale (``prepare`` for the preview,
 ``save`` for the whole image), from the image as the render left it.
@@ -17,7 +19,9 @@ person saves.  The masks the colour needs are computed here once per scale (``pr
 Commands, each answering one JSON object on its standard output:
 
     prepare --image <png> --work <dir>                      the 1080 px preview and its colour mask
-    stars   --image <png> --work <dir> --starnet <exe> [--tiff <tif>]   the star layer (StarNet2), whole and previewed
+    stars   --image <png> --work <dir> --starnet <exe> [--tiff <tif>]   the star layer (StarNet2), whole and previewed,
+                                                            and the list of the stars (``stars.json``)
+    spots   --image <png> --work <dir> [--tiff <tif>]       the list of the stars from a star layer already there
     smooth  --work <dir> --amount <0..100>                  the preview smoothed
     save    --image <png> --work <dir> --values <json> --out <png> [--tiff <tif> --out-tiff <tif>] [--turns <0..3>]
                                                             the whole image, set, then turned by quarter turns
@@ -52,13 +56,16 @@ from PIL import Image
 Image.MAX_IMAGE_PIXELS = None
 
 PREVIEW_WIDTH = 1080
-NEUTRAL = {"smoothing": 0.0, "stars": 0.0, "blackPoint": 0.0, "brightness": 0.0, "colour": 1.0}
+NEUTRAL = {"smoothing": 0.0, "stars": 0.0, "blackPoint": 0.0, "brightness": 0.0, "colour": 1.0, "spikes": 0.0,
+           "spikesReach": 50.0}
 RANGES = {
     "smoothing": (0.0, 100.0),
     "stars": (-100.0, 100.0),
     "blackPoint": (0.0, 20.0),
     "brightness": (-50.0, 50.0),
     "colour": (0.0, 3.0),
+    "spikes": (0.0, 100.0),
+    "spikesReach": (0.0, 100.0),
 }
 # The strength of the smoothing at 100 %, in widths of the sky's noise (the study found that 1.1 already waxes).
 SMOOTHING_FULL = 2.0
@@ -73,7 +80,8 @@ class AdjustError(Exception):
 
 
 def clean_values(values: dict) -> dict[str, float]:
-    """The five values, each a number in its range; a missing one is neutral."""
+    """The values, each a number in its range; a missing one is neutral.  With no spikes, the reach is the neutral
+    one: it says nothing."""
     out = {}
     for name, neutral in NEUTRAL.items():
         raw = values.get(name, neutral)
@@ -81,6 +89,8 @@ def clean_values(values: dict) -> dict[str, float]:
             raise AdjustError("bad_values", f"{name} is not a number")
         low, high = RANGES[name]
         out[name] = float(min(max(raw, low), high))
+    if out["spikes"] == 0:
+        out["spikesReach"] = NEUTRAL["spikesReach"]
     return out
 
 
@@ -173,8 +183,22 @@ def smoothing(img: np.ndarray, percent: float) -> np.ndarray:
     return np.clip(out, 0, 1).astype(np.float32)
 
 
-def apply(img: np.ndarray, values: dict, layer: np.ndarray | None, weight: np.ndarray | None) -> np.ndarray:
-    """The five settings on ``img`` (float RGB in 0..1), in order; ``weight`` is computed when not given."""
+def spikes(img: np.ndarray, v: dict, spots: dict | None, scale: float) -> np.ndarray:
+    """The diffraction spikes added in screen mode.  ``spots``: the stars of the whole image (``stars.json``);
+    ``scale``: this image's long side over the whole image's (the preview: < 1)."""
+    if v["spikes"] == 0 or v["stars"] <= -100:  # none asked, or the stars (and their spikes) all taken away
+        return img
+    if spots is None:
+        raise AdjustError("stars_missing", "the list of the stars is not there (StarNet2)")
+    import diffraction_spikes as D
+
+    light = D.spike_layer(img.shape[:2], spots, v["spikes"], v["spikesReach"], scale, 1.0 + v["stars"] / 100.0)
+    return D.with_spikes(img, light)
+
+
+def apply(img: np.ndarray, values: dict, layer: np.ndarray | None, weight: np.ndarray | None,
+          spots: dict | None = None, scale: float = 1.0) -> np.ndarray:
+    """The settings on ``img`` (float RGB in 0..1), in order; ``weight`` is computed when not given."""
     v = clean_values(values)
     out = smoothing(img, v["smoothing"])
     out = stars(out, v["stars"], layer)
@@ -182,7 +206,7 @@ def apply(img: np.ndarray, values: dict, layer: np.ndarray | None, weight: np.nd
     out = brightness(out, v["brightness"])
     if v["colour"] != 1:
         out = colour(out, v["colour"], colour_weight(img) if weight is None else weight)
-    return out
+    return spikes(out, v, spots, scale)
 
 
 def read_image(path: Path) -> tuple[np.ndarray, int]:
@@ -334,10 +358,46 @@ def separate_stars(image: Path, work: Path, starnet: Path, tiff: Path | None = N
     except (OSError, subprocess.CalledProcessError) as error:
         raise AdjustError("starnet_failed", f"StarNet2 failed: {error}") from error
     tifffile.imwrite(work / "stars.tif", np.round(layer * 65535).astype(np.uint16), photometric="rgb")
+    write_spots(work, img)
     info = json.loads((work / "info.json").read_text(encoding="utf-8"))
     preview = shrink(layer, info["previewWidth"], info["previewHeight"])
     write_png(preview, work / "stars.png")
     return {"state": "ready", "seconds": round(time.time() - t0, 3)}
+
+
+def spots_file(work: Path) -> Path:
+    return work / "stars.json"
+
+
+def write_spots(work: Path, img: np.ndarray) -> dict:
+    """The list of the stars (position, flux, radius, colour), measured once from the star layer as it is written and
+    from the render ``img`` (the brightest stars keep their core there), at full size.  The preview and the saving
+    read this same list."""
+    import diffraction_spikes as D
+
+    stars = D.find_stars(load_layer(work), img)
+    D.write_stars(stars, spots_file(work))
+    return stars
+
+
+def read_spots(work: Path, source: np.ndarray | None = None) -> dict:
+    """The list of the stars.  A render whose star layer was separated before the list existed has none: it is
+    measured from that layer (``source``: the render's pixels) without separating again."""
+    import diffraction_spikes as D
+
+    path = spots_file(work)
+    if not path.is_file():
+        if not (work / "stars.tif").is_file() or source is None:
+            raise AdjustError("stars_missing", "the star layer is not there")
+        return write_spots(work, source)
+    return D.read_stars(path)
+
+
+def spots_command(image: Path, work: Path, tiff: Path | None) -> dict:
+    t0 = time.time()
+    if not spots_file(work).is_file():
+        read_spots(work, read_tiff(tiff) if tiff is not None else read_image(image)[0])
+    return {"path": str(spots_file(work)), "seconds": round(time.time() - t0, 3)}
 
 
 def smooth_preview(work: Path, amount: float) -> dict:
@@ -374,8 +434,11 @@ def save(image: Path, work: Path, values: dict, out: Path, tiff: Path | None = N
     v = clean_values(values)
     img, bits = read_image(image)
     layer = load_layer(work) if v["stars"] != 0 else None
+    # The spikes need the list of the stars; none at all when they are off, or when the stars are all taken away.
+    wants_spikes = v["spikes"] > 0 and v["stars"] > -100
     if tiff is None:
-        result = turn_of(apply(img, v, layer, None), turns)
+        spots = read_spots(work, img) if wants_spikes else None
+        result = turn_of(apply(img, v, layer, None, spots), turns)
         write_png(result, out, bits)
         return {"path": str(out), "width": result.shape[1], "height": result.shape[0],
                 "seconds": round(time.time() - t0, 3)}
@@ -384,7 +447,8 @@ def save(image: Path, work: Path, values: dict, out: Path, tiff: Path | None = N
         raise AdjustError("twin_mismatch", f"{tiff.name} is not the same image as {image.name}")
     if layer is not None and layer.shape != full.shape:
         raise AdjustError("stars_missing", "the star layer is not the size of the image")
-    levels = turn_of(to_bytes(apply(full, v, layer, None), 16), turns)
+    spots = read_spots(work, full) if wants_spikes else None
+    levels = turn_of(to_bytes(apply(full, v, layer, None, spots), 16), turns)
     write_tiff(levels, out_tiff)
     path = out.parent
     path.mkdir(parents=True, exist_ok=True)
@@ -416,6 +480,10 @@ def main(argv: list[str]) -> int:
     s.add_argument("--work", type=Path, required=True)
     s.add_argument("--starnet", type=Path, required=True)
     s.add_argument("--tiff", type=Path)
+    n = sub.add_parser("spots")
+    n.add_argument("--image", type=Path, required=True)
+    n.add_argument("--work", type=Path, required=True)
+    n.add_argument("--tiff", type=Path)
     m = sub.add_parser("smooth")
     m.add_argument("--work", type=Path, required=True)
     m.add_argument("--amount", type=float, required=True)
@@ -434,6 +502,8 @@ def main(argv: list[str]) -> int:
             answer = prepare(args.image, args.work)
         elif args.command == "stars":
             answer = separate_stars(args.image, args.work, args.starnet, args.tiff)
+        elif args.command == "spots":
+            answer = spots_command(args.image, args.work, args.tiff)
         elif args.command == "smooth":
             answer = smooth_preview(args.work, args.amount)
         else:

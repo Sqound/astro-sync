@@ -3,6 +3,23 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.3 (2026-11-18)
+
+- Diffraction spikes can be added to the bright stars as an optional effect in
+  the image editor. It is a folded group under « Stars », off by default, with
+  a strength and a choice of how many stars receive spikes. The preview shows
+  them, they are written into the saved image (PNG and TIFF, and turned with
+  it), and an image saved with the effect off is identical to the original
+  render.
+- A copy of an image can be saved for sharing, with an optional band under the
+  image (name of the target, exposure and night) and the Astro Sync mark. Both
+  can be switched off. The copy is a PNG written where you choose, without any
+  metadata. It is never sent, and the original render and what is sent to your
+  space do not change.
+- The TIFF size labels tell the truth: one TIFF shows its own size, several
+  show an average, and the setting of the night's summary says what it
+  controls.
+
 ## 1.1.2 (2026-11-17)
 
 - Every image of a night imported again is sent, its variants included. A

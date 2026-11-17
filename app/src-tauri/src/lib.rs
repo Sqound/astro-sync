@@ -10,6 +10,7 @@ mod commands_multi_night;
 mod commands_night;
 mod commands_poses;
 mod commands_processing;
+mod commands_share;
 mod commands_sky;
 mod commands_targets;
 #[cfg(test)]
@@ -197,6 +198,7 @@ pub fn run() {
             commands_adjust::image_adjust_open,
             commands_adjust::image_adjust_layer,
             commands_adjust::image_adjust_stars,
+            commands_adjust::image_adjust_spots,
             commands_adjust::image_adjust_smooth,
             commands_adjust::image_adjust_save,
             commands_adjust::image_adjust_state,
@@ -207,6 +209,8 @@ pub fn run() {
             commands_adjust::image_adjust_saved_remove,
             commands_adjust::image_adjust_saved_export,
             commands_adjust::image_adjust_saved_import,
+            commands_share::share_copy_choose,
+            commands_share::share_copy_write,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

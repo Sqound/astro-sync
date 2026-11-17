@@ -134,14 +134,17 @@ test("the screen turns with the portal's two buttons, writes the turn with the i
   assert.match(screen, /adjust\.rotate\.left/);
   assert.match(screen, /adjust\.rotate\.right/);
   assert.match(screen, /adjust\.rotate\.reset/);
-  assert.match(screen, /imageAdjustSave\(path, values, turns\)/);
+  assert.match(
+    screen,
+    /imageAdjustSave\(path, canonicalValues\(values\), turns\)/,
+  );
   // « Rien n'a changé » only when no setting moved AND the image is not turned.
   assert.match(screen, /\(neutral && turns === 0\)/);
   // The image set already saved reopens with its turn.
   assert.match(screen, /cleanTurns\(answer\.state\.quarterTurns\)/);
 });
 
-test("the saved settings carry five values, never a turn", () => {
+test("the saved settings carry their values, never a turn", () => {
   const bridge = readFileSync(new URL("./bridge.ts", import.meta.url), "utf8");
   const start = bridge.indexOf("export interface SavedAdjustment");
   const body = bridge.slice(start, bridge.indexOf("}", start));

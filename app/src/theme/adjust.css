@@ -1,5 +1,5 @@
 /* « Régler l'image »: two columns -- the image, at the largest size the window
-   leaves it and never cropped, and the panel of the five settings, which
+   leaves it and never cropped, and the panel of the settings, which
    scrolls by itself with its foot always in sight. The page leaves the fixed
    column of 47.5 rem the other screens have (only this one). Under 48 rem of
    window the panel goes under the image, which keeps 40 % of the height. */
@@ -458,4 +458,75 @@
 
 .as-adjust__saved-foot {
   padding-top: var(--as-space-xs);
+}
+
+/* « Aigrettes »: the group folded under « Étoiles », its line a button (chevron,
+   title, « effet ajouté », then « Sans » or « Ajoutées, 60 % » at the far
+   end); open, its sentence and its two sliders on the same grid as the others,
+   a gap of the sliders' own between them. */
+.as-adjust__group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-column: 1 / -1;
+  gap: var(--as-space-sm);
+  min-width: 0;
+  padding-top: var(--as-space-sm);
+  border-top: 1px solid var(--as-color-border);
+}
+
+.as-adjust__group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-xs) var(--as-space-sm);
+  width: 100%;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.as-adjust__group-head:focus-visible {
+  outline: 2px solid var(--as-color-primary-text);
+  outline-offset: 2px;
+}
+
+.as-adjust__group-chevron {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.as-adjust__group-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.as-adjust__group-note {
+  margin: 0;
+}
+
+.as-adjust__group-value {
+  margin-left: auto;
+}
+
+.as-adjust__group-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-md);
+  min-width: 0;
+}
+
+.as-adjust__note.is-quiet {
+  color: var(--as-color-muted-text);
+}
+
+/* A setting that cannot move yet (the stars not separated, no force chosen):
+   its title and value stand back, as the greyed track does. */
+.as-adjust__slider.is-disabled .as-adjust__slider-title,
+.as-adjust__slider.is-disabled .as-adjust__value {
+  opacity: 0.55;
 }

@@ -1,8 +1,11 @@
-//! « Régler l'image »: the five settings a person applies to a finished
+//! « Régler l'image »: the settings a person applies to a finished
 //! render (never to the linear data), what they leave on disk, and what
 //! leaves in its place.
 //!
-//! - [`AdjustValues`]: point noir, luminosité, couleur, lissage, étoiles.
+//! - [`AdjustValues`]: point noir, luminosité, couleur, lissage, étoiles,
+//!   aigrettes (strength and reach: light added, not in the person's data;
+//!   the record of the values is where a later reader finds that an image
+//!   set carries them: `spikes > 0`).
 //!   The arithmetic is `stacking/image_adjust.py`'s (the whole image) and
 //!   the window's (the preview); this module never touches pixels.
 //! - The image set is written **beside** the render, never over it:
@@ -121,7 +124,7 @@ fn io(path: &Path) -> impl FnOnce(std::io::Error) -> AdjustError + '_ {
     }
 }
 
-/// The five values; each at its neutral value leaves the render as it is.
+/// The values; each at its neutral value leaves the render as it is.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AdjustValues {
@@ -135,6 +138,12 @@ pub struct AdjustValues {
     pub smoothing: f64,
     /// -100..100 %: the star layer taken away or added back.
     pub stars: f64,
+    /// 0..100 %: diffraction spikes added on the bright stars (0: none). Light
+    /// that is not in the person's data.
+    pub spikes: f64,
+    /// 0..100: which stars get spikes, the brightest only (0) to the medium
+    /// ones too (100). Says nothing while `spikes` is 0, and is then 50.
+    pub spikes_reach: f64,
 }
 
 // The values are always brought into their range ([`AdjustValues::clamped`]):
@@ -154,6 +163,8 @@ impl AdjustValues {
         colour: 1.0,
         smoothing: 0.0,
         stars: 0.0,
+        spikes: 0.0,
+        spikes_reach: 50.0,
     };
 
     /// Each value in its range; a value that is not a number is neutral.
@@ -166,12 +177,21 @@ impl AdjustValues {
                 neutral
             }
         };
+        let spikes = keep(self.spikes, 0.0, 0.0, 100.0);
         Self {
             black_point: keep(self.black_point, 0.0, 0.0, 20.0),
             brightness: keep(self.brightness, 0.0, -50.0, 50.0),
             colour: keep(self.colour, 1.0, 0.0, 3.0),
             smoothing: keep(self.smoothing, 0.0, 0.0, 100.0),
             stars: keep(self.stars, 0.0, -100.0, 100.0),
+            spikes,
+            // With no spikes the reach says nothing: two settings that draw
+            // the same image are equal.
+            spikes_reach: if spikes == 0.0 {
+                Self::NEUTRAL.spikes_reach
+            } else {
+                keep(self.spikes_reach, 50.0, 0.0, 100.0)
+            },
         }
     }
 
@@ -181,10 +201,12 @@ impl AdjustValues {
         self.clamped() == Self::NEUTRAL
     }
 
-    /// Whether the star layer is needed (StarNet2).
+    /// Whether the star layer is needed (StarNet2): the stars setting reads it,
+    /// and the spikes read the list of the stars measured from it.
     #[must_use]
     pub fn needs_stars(&self) -> bool {
-        self.clamped().stars != 0.0
+        let values = self.clamped();
+        values.stars != 0.0 || values.spikes != 0.0
     }
 }
 

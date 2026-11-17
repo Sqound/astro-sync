@@ -183,8 +183,13 @@ test("the stacking to come says what it will send: PNG, or PNG + TIFF when the b
 
 test("the box says the weight of one TIFF when the TIFF are known, and why it is a choice, in the ten languages", () => {
   assert.equal(
-    joinTiffLabel(fr, "fr", { count: 4, bytes: 188 * MB }),
-    "Joindre aussi les TIFF (pleine résolution, ≈ 47 Mo chacun)",
+    joinTiffLabel(fr, "fr", { count: 4, bytes: 188 * MB }).replace(/\s/g, " "),
+    "Joindre aussi les TIFF (pleine résolution, ≈ 47 Mo en moyenne)",
+  );
+  // One TIFF: its own weight, not an average of anything.
+  assert.equal(
+    joinTiffLabel(fr, "fr", { count: 1, bytes: 47 * MB }).replace(/\s/g, " "),
+    "Joindre aussi le TIFF (pleine résolution, 47 Mo)",
   );
   assert.equal(
     joinTiffLabel(fr, "fr", null),
@@ -209,9 +214,27 @@ test("the box says the weight of one TIFF when the TIFF are known, and why it is
     ]) {
       assert.notEqual(t(key), key, `${locale}: ${key}`);
     }
-    const sized = joinTiffLabel(t, locale, { count: 1, bytes: 47 * MB });
+    const sized = joinTiffLabel(t, locale, { count: 4, bytes: 188 * MB });
     assert.match(sized, /47/, `${locale}: ${sized}`);
     assert.match(sized, /TIFF/, `${locale}: ${sized}`);
+    // « each » is never said of a weight that is an average.
+    for (const each of [
+      /chacun/,
+      /each/,
+      /pro Datei/,
+      /cada uno/,
+      /ciascuno/,
+      /каждый/,
+      /每个/,
+      /每個/,
+      /1 枚あたり/,
+      /\bcada\b/,
+    ]) {
+      assert.doesNotMatch(sized, each, `${locale}: ${sized}`);
+    }
+    const one = joinTiffLabel(t, locale, { count: 1, bytes: 47 * MB });
+    assert.match(one, /47/, `${locale}: ${one}`);
+    assert.doesNotMatch(one, /≈|約|约|en moyenne/, `${locale}: ${one}`);
     const without = t("uploadFormat.withoutTiff", { size: "479 Mo" });
     assert.ok(without.includes("479 Mo"), `${locale}: ${without}`);
   }

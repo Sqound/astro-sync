@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { Icon } from "../../components/Icon";
+import { ShareSheet } from "../../components/ShareSheet";
 import { TiffWarning } from "../../components/TiffWarning";
 import { useI18n } from "../../i18n";
 import {
@@ -141,6 +142,7 @@ export function SummaryImages({
   pipelineName,
   onToggle,
   onAdjust,
+  nightDatesOf,
   adjustKey = 0,
 }: {
   rows: readonly SummaryImage[];
@@ -150,6 +152,9 @@ export function SummaryImages({
   onToggle: (key: string) => void;
   /** « Régler l'image » on a row (absent: no button). */
   onAdjust?: (row: SummaryImage, render: string) => void;
+  /** The evening dates of a target's nights, for the band of « Exporter
+   * pour partager ». */
+  nightDatesOf?: (targetId: string) => readonly string[];
   /** Changes when an image was set or brought back: the rows read again. */
   adjustKey?: number;
 }) {
@@ -160,6 +165,12 @@ export function SummaryImages({
     {},
   );
   const [reverted, setReverted] = useState(0);
+  // The row whose « Exporter pour partager » sheet is open, with the image
+  // the card shows.
+  const [sharing, setSharing] = useState<{
+    row: SummaryImage;
+    shown: string;
+  } | null>(null);
   const adjustable = onAdjust
     ? rows.filter((row) => row.role !== "file" && isAdjustable(row))
     : [];
@@ -256,176 +267,200 @@ export function SummaryImages({
     return items;
   };
   return (
-    <ul className="as-treat__images">
-      {rows.flatMap((row) => {
-        // The TIFF of a render is the second box of its PNG's card.
-        if (row.fullResolution && pngRowOf(row, rows)) return [];
-        const head = seriesHead(row) ?? [];
-        if (row.role === "file") {
+    <>
+      <ul className="as-treat__images">
+        {rows.flatMap((row) => {
+          // The TIFF of a render is the second box of its PNG's card.
+          if (row.fullResolution && pngRowOf(row, rows)) return [];
+          const head = seriesHead(row) ?? [];
+          if (row.role === "file") {
+            return [
+              ...head,
+              <LinearLine
+                key={row.key}
+                row={row}
+                rows={rows}
+                ticked={ticked}
+                room={room}
+                pipelineName={pipelineName}
+                onToggle={onToggle}
+              />,
+            ];
+          }
+          // The render's card and the card of its TIFF in full resolution
+          // both say the file of the image set that leaves in their place.
+          const set = onAdjust ? rowAdjustment(row, adjusted) : null;
+          const tiffRow =
+            rows.find(
+              (other) =>
+                other.fullResolution &&
+                other.targetId === row.targetId &&
+                other.twinOf === row.path,
+            ) ?? null;
+          const tiffSet =
+            onAdjust && tiffRow ? rowAdjustment(tiffRow, adjusted) : null;
+          const view = summaryImageView(
+            t,
+            locale,
+            set ? { ...row, size: set.size } : row,
+            pipelineName,
+          );
+          const tiffView = tiffRow
+            ? summaryImageView(
+                t,
+                locale,
+                tiffSet ? { ...tiffRow, size: tiffSet.size } : tiffRow,
+                pipelineName,
+              )
+            : null;
+          const shown = set ? set.path : row.path;
+          const on = ticked.includes(row.key);
+          const open = canTickImage(row, rows, ticked, room);
+          const tiffOn = !!tiffRow && ticked.includes(tiffRow.key);
+          const tiffOpen =
+            !!tiffRow && canTickImage(tiffRow, rows, ticked, room);
+          const waitsForPng =
+            !!tiffRow && !tiffOn && tiffWaitsForPng(tiffRow, rows, ticked);
+          const name = row.path.split(/[\\/]/).pop() ?? row.path;
+          const classes = [
+            "as-treat__image",
+            row.role === "variant" ? "is-variant" : "",
+            open ? "" : "is-full",
+          ]
+            .filter(Boolean)
+            .join(" ");
           return [
             ...head,
-            <LinearLine
-              key={row.key}
-              row={row}
-              rows={rows}
-              ticked={ticked}
-              room={room}
-              pipelineName={pipelineName}
-              onToggle={onToggle}
-            />,
-          ];
-        }
-        // The render's card and the card of its TIFF in full resolution
-        // both say the file of the image set that leaves in their place.
-        const set = onAdjust ? rowAdjustment(row, adjusted) : null;
-        const tiffRow =
-          rows.find(
-            (other) =>
-              other.fullResolution &&
-              other.targetId === row.targetId &&
-              other.twinOf === row.path,
-          ) ?? null;
-        const tiffSet =
-          onAdjust && tiffRow ? rowAdjustment(tiffRow, adjusted) : null;
-        const view = summaryImageView(
-          t,
-          locale,
-          set ? { ...row, size: set.size } : row,
-          pipelineName,
-        );
-        const tiffView = tiffRow
-          ? summaryImageView(
-              t,
-              locale,
-              tiffSet ? { ...tiffRow, size: tiffSet.size } : tiffRow,
-              pipelineName,
-            )
-          : null;
-        const shown = set ? set.path : row.path;
-        const on = ticked.includes(row.key);
-        const open = canTickImage(row, rows, ticked, room);
-        const tiffOn = !!tiffRow && ticked.includes(tiffRow.key);
-        const tiffOpen = !!tiffRow && canTickImage(tiffRow, rows, ticked, room);
-        const waitsForPng =
-          !!tiffRow && !tiffOn && tiffWaitsForPng(tiffRow, rows, ticked);
-        const name = row.path.split(/[\\/]/).pop() ?? row.path;
-        const classes = [
-          "as-treat__image",
-          row.role === "variant" ? "is-variant" : "",
-          open ? "" : "is-full",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return [
-          ...head,
-          <li key={row.key} className={classes} data-role={row.role}>
-            <Thumb
-              path={shown}
-              name={name}
-              cacheKey={set ? `${shown}#${set.sha256}` : undefined}
-            />
-            <div className="as-treat__links">
-              <p className="as-send__title">
-                <strong>{view.title}</strong>
+            <li key={row.key} className={classes} data-role={row.role}>
+              <Thumb
+                path={shown}
+                name={name}
+                cacheKey={set ? `${shown}#${set.sha256}` : undefined}
+              />
+              <div className="as-treat__links">
+                <p className="as-send__title">
+                  <strong>{view.title}</strong>
+                  {set && (
+                    <>
+                      {" "}
+                      <span className={badgeClassName("outline-gold")}>
+                        {t("adjust.badge.adjusted")}
+                      </span>
+                    </>
+                  )}
+                  {t("detect.join")}
+                  {view.render}
+                </p>
                 {set && (
-                  <>
-                    {" "}
-                    <span className={badgeClassName("outline-gold")}>
-                      {t("adjust.badge.adjusted")}
-                    </span>
-                  </>
-                )}
-                {t("detect.join")}
-                {view.render}
-              </p>
-              {set && (
-                <span className="as-treat__meta as-treat__adjusted">
-                  {adjustedLine(t, locale, set.values, set.quarterTurns)}
-                </span>
-              )}
-              {view.blocked ? (
-                <span className="as-treat__meta as-treat__why">
-                  {view.blocked}
-                </span>
-              ) : (
-                !open && (
-                  <span className="as-treat__meta">
-                    {t("detect.send.full")}
+                  <span className="as-treat__meta as-treat__adjusted">
+                    {adjustedLine(t, locale, set.values, set.quarterTurns)}
                   </span>
-                )
-              )}
-              <fieldset className="as-send__formats">
-                <legend className="as-treat__meta">
-                  {t("detect.send.toSend")}
-                </legend>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={!open}
-                    onChange={() => onToggle(row.key)}
-                  />
-                  <span>{view.meta}</span>
-                </label>
-                {tiffRow && tiffView && (
-                  <>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={tiffOn}
-                        disabled={!tiffOpen}
-                        onChange={() => onToggle(tiffRow.key)}
-                      />
-                      <span>{tiffView.meta}</span>
-                      {tiffView.blocked && (
-                        <span className="as-treat__meta as-treat__why">
-                          {tiffView.blocked}
-                        </span>
-                      )}
-                      {waitsForPng && !tiffView.blocked && (
-                        <span className="as-treat__meta">
-                          {t("detect.send.tiffNeedsPng")}
-                        </span>
-                      )}
-                    </label>
-                    {tiffOn && <TiffWarning />}
-                  </>
                 )}
-              </fieldset>
-              {/* « Régler l'image »: never on « Sans traitement » nor on a
+                {view.blocked ? (
+                  <span className="as-treat__meta as-treat__why">
+                    {view.blocked}
+                  </span>
+                ) : (
+                  !open && (
+                    <span className="as-treat__meta">
+                      {t("detect.send.full")}
+                    </span>
+                  )
+                )}
+                <fieldset className="as-send__formats">
+                  <legend className="as-treat__meta">
+                    {t("detect.send.toSend")}
+                  </legend>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={!open}
+                      onChange={() => onToggle(row.key)}
+                    />
+                    <span>{view.meta}</span>
+                  </label>
+                  {tiffRow && tiffView && (
+                    <>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={tiffOn}
+                          disabled={!tiffOpen}
+                          onChange={() => onToggle(tiffRow.key)}
+                        />
+                        <span>{tiffView.meta}</span>
+                        {tiffView.blocked && (
+                          <span className="as-treat__meta as-treat__why">
+                            {tiffView.blocked}
+                          </span>
+                        )}
+                        {waitsForPng && !tiffView.blocked && (
+                          <span className="as-treat__meta">
+                            {t("detect.send.tiffNeedsPng")}
+                          </span>
+                        )}
+                      </label>
+                      {tiffOn && <TiffWarning />}
+                    </>
+                  )}
+                </fieldset>
+                {/* « Régler l'image »: never on « Sans traitement » nor on a
                   TIFF. Once set: « Régler à nouveau » and « Revenir au
                   rendu d'origine ». */}
-              {onAdjust && isAdjustable(row) && (
-                <div className="as-treat__adjust-actions">
-                  <button
-                    type="button"
-                    className={`${buttonClassName("tertiary")} as-treat__adjust`}
-                    onClick={() => onAdjust(row, view.render)}
-                  >
-                    <Icon name="sliders" className="as-button__icon" />
-                    {t(set ? "adjust.again" : "adjust.open")}
-                  </button>
-                  {set && (
+                {onAdjust && isAdjustable(row) && (
+                  <div className="as-treat__adjust-actions">
                     <button
                       type="button"
-                      className={`${buttonClassName("link")} as-treat__revert`}
-                      onClick={() =>
-                        void imageAdjustRevert(row.path)
-                          .catch(() => {})
-                          .then(() => setReverted((n) => n + 1))
-                      }
+                      className={`${buttonClassName("tertiary")} as-treat__adjust`}
+                      onClick={() => onAdjust(row, view.render)}
                     >
-                      {t("adjust.revert")}
+                      <Icon name="sliders" className="as-button__icon" />
+                      {t(set ? "adjust.again" : "adjust.open")}
                     </button>
-                  )}
+                    {set && (
+                      <button
+                        type="button"
+                        className={`${buttonClassName("link")} as-treat__revert`}
+                        onClick={() =>
+                          void imageAdjustRevert(row.path)
+                            .catch(() => {})
+                            .then(() => setReverted((n) => n + 1))
+                        }
+                      >
+                        {t("adjust.revert")}
+                      </button>
+                    )}
+                  </div>
+                )}
+                <FilePlace path={shown} />
+                <div className="as-treat__share">
+                  <button
+                    type="button"
+                    className={buttonClassName("tertiary")}
+                    onClick={() => setSharing({ row, shown })}
+                  >
+                    <Icon name="external" className="as-button__icon" />
+                    {t("share.open")}
+                  </button>
+                  <span className={helpTextClassName}>
+                    {t("share.openNote")}
+                  </span>
                 </div>
-              )}
-              <FilePlace path={shown} />
-            </div>
-          </li>,
-        ];
-      })}
-    </ul>
+              </div>
+            </li>,
+          ];
+        })}
+      </ul>
+      {sharing && (
+        <ShareSheet
+          row={sharing.row}
+          shown={sharing.shown}
+          nightDates={nightDatesOf?.(sharing.row.targetId) ?? []}
+          onClose={() => setSharing(null)}
+        />
+      )}
+    </>
   );
 }
 

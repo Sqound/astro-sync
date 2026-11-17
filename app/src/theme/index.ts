@@ -18,3 +18,4 @@ import "./incidents.css";
 import "./uploads.css";
 import "./processing.css";
 import "./adjust.css";
+import "./share.css";

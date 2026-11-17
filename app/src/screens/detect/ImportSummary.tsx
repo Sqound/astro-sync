@@ -28,6 +28,7 @@ import {
   imageRoom,
   summaryImages,
   tickedImageCount,
+  treatmentCards,
   type SummaryImage,
 } from "../../lib/detectTreatments";
 import { formatError } from "../../lib/format";
@@ -184,6 +185,7 @@ export function ImportSummary({
   const rows = resultRows(proposal, created.outcome);
   const skipped = skippedRows(proposal, created.outcome);
   const images = summaryImages(state.made, state.storage);
+  const cards = treatmentCards(proposal, created.outcome);
   const room = imageRoom(state.storage);
   const roomText = room
     ? pluralText(t, locale, "detect.treat.room", room.remaining, {
@@ -444,6 +446,11 @@ export function ImportSummary({
           pipelineName={pipelineName}
           onToggle={imp.toggleImage}
           onAdjust={state.sending || state.sent !== null ? undefined : onAdjust}
+          nightDatesOf={(targetId) =>
+            cards
+              .find((card) => card.targetId === targetId)
+              ?.nights.map((night) => night.eveningDate) ?? []
+          }
           adjustKey={adjustKey}
         />
         {room && (

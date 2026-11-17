@@ -185,6 +185,7 @@ pub mod raw_header;
 pub mod refusal;
 pub mod render_files;
 pub mod scanner;
+pub mod share_copy;
 pub mod series;
 pub mod service_wait;
 pub mod session_detection;

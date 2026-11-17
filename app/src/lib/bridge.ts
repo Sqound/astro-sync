@@ -26,6 +26,7 @@ import { planFromCore, planToCore, type CorePlan } from "./imagePlans";
 import { contrastToCore, type Contrast } from "./contrast";
 import type { Colour, SoftStars } from "./finish";
 import type { AdjustValues } from "./imageAdjust";
+import type { SpikeStars } from "./diffractionSpikes";
 
 /** Every command's `Err` payload (`app/src-tauri/src/error.rs`). `code` is
  * the stable key the UI looks up in `errors.<code>` of the active locale;
@@ -4233,6 +4234,12 @@ export function imageAdjustStars(
   return invoke("image_adjust_stars", { path });
 }
 
+/** The list of the stars the diffraction spikes are drawn from, measured once
+ * with the star layer (at the size of the whole image). */
+export function imageAdjustSpots(path: string): Promise<SpikeStars> {
+  return invoke<SpikeStars>("image_adjust_spots", { path });
+}
+
 /** The preview smoothed at `amount` % (≈ 1 s), as PNG bytes. */
 export async function imageAdjustSmooth(
   path: string,
@@ -4256,6 +4263,28 @@ export function imageAdjustSave(
     path,
     values,
     quarterTurns,
+  });
+}
+
+/** « Exporter pour partager »: the place of the copy, asked before anything
+ * is drawn; `null`: dismissed. */
+export function shareCopyChoose(fileName: string): Promise<string | null> {
+  return invoke<string | null>("share_copy_choose", { fileName });
+}
+
+/** Writes the copy (a PNG) at `path`. The core removes every metadata and
+ * refuses the image `source` itself: the copy never replaces what it comes
+ * from. */
+export function shareCopyWrite(
+  path: string,
+  source: string,
+  png: ArrayBuffer,
+): Promise<void> {
+  return invoke<void>("share_copy_write", png, {
+    headers: {
+      "x-share-path": encodeURIComponent(path),
+      "x-share-source": encodeURIComponent(source),
+    },
   });
 }
 
