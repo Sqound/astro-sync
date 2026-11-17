@@ -1159,6 +1159,85 @@ fn capture_created_by(
     }
 }
 
+/// Whether the service refused the create step because the capture it names
+/// is not in the space (`404 capture_not_found`).
+fn names_a_missing_capture(error: &UploadError) -> bool {
+    matches!(error, UploadError::Refused { status: 404, code, .. } if code == CAPTURE_NOT_IN_SPACE)
+}
+
+/// The capture an image of `entry` goes to now that `gone`, the one its row
+/// named, left the space -- or `None` when this computer cannot tell, and the
+/// refusal stands:
+///
+/// 1. found: the main image of the same night, target and series was sent
+///    since to another capture (a new import of the night). The row names
+///    that image from now on. Not for an image set in « Régler l'image »
+///    that takes the place of its render (`placement`).
+/// 2. made again: the image that created `gone` was sent from this queue
+///    and its file still holds the same bytes. It is sent again first (a new
+///    capture), and the row names it.
+///
+/// Anything else (the main image never left this computer, or its file
+/// changed since) is not guessed.
+fn capture_found_again<T: UploadTransport>(
+    transport: &T,
+    queue: &UploadQueue,
+    token: &str,
+    entry: &QueueEntry,
+    target: &UploadTarget,
+    gone: &str,
+) -> Result<Option<String>, UploadError> {
+    // An image that takes the place of a main image (`placement`) only ever
+    // replaces the one it was made from: never another capture's.
+    if entry.target.placement.is_none()
+        && let Some(main) = queue.main_image_sent_beside(entry, gone)?
+    {
+        queue.set_variant_of(
+            &entry.sha256,
+            &format!("{VARIANT_OF_SHA256}{}", main.sha256),
+        )?;
+        return Ok(main.capture_id);
+    }
+    let named = entry
+        .target
+        .variant_of
+        .as_deref()
+        .and_then(|v| v.strip_prefix(VARIANT_OF_SHA256));
+    let main = match named {
+        Some(sha256) => queue.find_by_sha256(sha256)?,
+        None => queue.main_image_of(gone)?,
+    };
+    let Some(main) = main.filter(|main| {
+        main.sha256 != entry.sha256
+            && main.state == crate::upload_queue::QueueState::Completed
+            && main.capture_id.as_deref() == Some(gone)
+    }) else {
+        return Ok(None);
+    };
+    let unchanged = crate::scanner::file_sha256(&main.source_path)
+        .is_ok_and(|digest| digest.eq_ignore_ascii_case(&main.sha256));
+    if !unchanged {
+        return Ok(None);
+    }
+    queue.requeue_vanished(&main.sha256)?;
+    let Some(main) = queue.find_by_sha256(&main.sha256)? else {
+        return Ok(None);
+    };
+    match upload_entry(transport, queue, token, &main, target, |_, _| {}) {
+        Ok(sent) => {
+            queue.set_variant_of(
+                &entry.sha256,
+                &format!("{VARIANT_OF_SHA256}{}", main.sha256),
+            )?;
+            Ok(Some(sent.capture_id))
+        }
+        // The main image refused, or failed, for good: the refusal of this
+        // image stands (the main image's row says why).
+        Err(error) if error.is_terminal() => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
 /// Gets an authoritative session for `entry`: reconciles an existing
 /// `upload_id` through `status` (never assumes it is still at the offset
 /// last written locally), or creates a fresh one. A session whose id has
@@ -1539,7 +1618,24 @@ fn upload_entry_inner<T: UploadTransport>(
     {
         metadata.capture_id = Some(capture_created_by(queue, first, entry.kind)?);
     }
-    let mut session = reconcile_or_create(transport, queue, token, entry, &metadata)?;
+    let mut session = match reconcile_or_create(transport, queue, token, entry, &metadata) {
+        // The capture this image is added to left the space: the one it
+        // belongs to now is found, or made again, and the image tries once
+        // more there -- never refused for a capture this computer can mend.
+        Err(error) if names_a_missing_capture(&error) => {
+            let Some(gone) = metadata.capture_id.clone() else {
+                return Err(error);
+            };
+            let Some(capture_id) =
+                capture_found_again(transport, queue, token, entry, target, &gone)?
+            else {
+                return Err(error);
+            };
+            metadata.capture_id = Some(capture_id);
+            reconcile_or_create(transport, queue, token, entry, &metadata)?
+        }
+        other => other?,
+    };
 
     if session.completed {
         return already_sent(transport, queue, token, entry, &session, on_progress);
@@ -1644,10 +1740,11 @@ pub struct Vanished {
     pub unchecked: Vec<String>,
 }
 
-/// Before a sending, asks the service about each file of `files` the queue
-/// holds as sent (`completed`), or refused for a capture that is not in the
-/// space (`capture_not_found`), through the check that writes nothing
-/// (`POST /v1/uploads/check`): only `present` keeps the row as it is. Any
+/// Before a sending, puts back in the queue each file of `files` the queue
+/// holds as refused in a way an import tries again
+/// ([`crate::upload_queue::retried_by_an_import`]), and asks the service
+/// about each file it holds as sent (`completed`), through the check that
+/// writes nothing (`POST /v1/uploads/check`): only `present` keeps the row as it is. Any
 /// other answer (the bytes are not held, a variant whose capture is gone)
 /// puts the row back in the queue -- its sky annotations forgotten with it --
 /// so that the sending sends it again, the capture first and its variants
@@ -1669,9 +1766,15 @@ pub fn requeue_vanished<T: crate::precheck::PrecheckTransport>(
         let Some(entry) = queue.find_by_sha256(&file.sha256)? else {
             continue;
         };
-        let gone_for_good = entry.state == QueueState::Refused
-            && entry.last_error_code.as_deref() == Some(CAPTURE_NOT_IN_SPACE);
-        if entry.state != QueueState::Completed && !gone_for_good {
+        // Refused because its capture had left the space, or for a reason
+        // this version could not read: the import tries it again, once,
+        // without a question (the upload says if the space holds it).
+        if crate::upload_queue::retried_by_an_import(&entry) {
+            queue.requeue_vanished(&entry.sha256)?;
+            outcome.requeued.push(entry.sha256.clone());
+            continue;
+        }
+        if entry.state != QueueState::Completed {
             continue;
         }
         let mut metadata = build_metadata(&entry, &UploadTarget::default());
@@ -4058,5 +4161,191 @@ mod tests {
         .unwrap_err();
         assert!(matches!(error, UploadError::Refused { status: 409, .. }));
         assert_eq!(transport.created.borrow().len(), 2);
+    }
+
+    /// A night folder with one render per `(name, bytes)`, each with the
+    /// digest of its bytes, as rows of the night `session-1`, target `m45`.
+    fn night_renders(
+        renders: &[(&str, &[u8])],
+    ) -> (
+        UploadQueue,
+        Vec<crate::upload_queue::ResultFile>,
+        crate::test_support::TempDir,
+    ) {
+        use crate::upload_queue::{EntryTarget, ResultFile, ResultKind};
+        let root = crate::test_support::TempDir::new("uploader-missing-capture");
+        let stacked = root.path().join("M45/stacked");
+        fs::create_dir_all(&stacked).unwrap();
+        let files = renders
+            .iter()
+            .map(|(name, bytes)| {
+                let path = stacked.join(format!("{name}.png"));
+                fs::write(&path, bytes).unwrap();
+                ResultFile {
+                    sha256: crate::scanner::file_sha256(&path).unwrap(),
+                    path,
+                    size: bytes.len() as u64,
+                    kind: ResultKind::Stacked,
+                    target: EntryTarget {
+                        session_id: Some("session-1".into()),
+                        target_ids: vec!["m45".into()],
+                        ..EntryTarget::default()
+                    },
+                }
+            })
+            .collect();
+        let queue = UploadQueue::open(&root.path().join("queue.sqlite")).unwrap();
+        (queue, files, root)
+    }
+
+    fn a_whole_upload_to(transport: &FakeTransport, id: &str, size: u64, capture_id: &str) {
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(Ok(session(id, 0, size, size, false)));
+        transport
+            .puts
+            .borrow_mut()
+            .push_back(Ok(PutOutcome::Advanced(session(
+                id, size, size, size, false,
+            ))));
+        transport
+            .finalizes
+            .borrow_mut()
+            .push_back(finalized_on(capture_id));
+    }
+
+    fn capture_not_found() -> Result<UploadSession, UploadError> {
+        Err(UploadError::refusal(
+            404,
+            CAPTURE_NOT_IN_SPACE,
+            "The capture was not found.",
+        ))
+    }
+
+    /// The HOO palette of 17/11: its row still named the natural render of
+    /// an older import (`capture-old`, deleted since), while today's natural
+    /// render had just made `capture-new`. The service answers « capture not
+    /// found »: the image goes to the capture of today's natural render, once,
+    /// instead of being refused.
+    #[test]
+    fn a_variant_whose_capture_left_goes_to_the_capture_its_night_has_now() {
+        let (queue, mut files, _root) = night_renders(&[
+            ("natural-old", b"old natural".as_slice()),
+            ("natural-new", b"new natural".as_slice()),
+            ("hoo", b"hoo palette".as_slice()),
+        ]);
+        let (old, new) = (files[0].sha256.clone(), files[1].sha256.clone());
+        files[2].target.variant_of = Some(format!("{VARIANT_OF_SHA256}{old}"));
+        queue.enqueue_results(&files).unwrap();
+        queue.mark_completed(&old, "capture-old").unwrap();
+        queue.mark_completed(&new, "capture-new").unwrap();
+        let hoo = queue.find_by_sha256(&files[2].sha256).unwrap().unwrap();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(capture_not_found());
+        a_whole_upload_to(&transport, "up-hoo", files[2].size, "capture-new");
+
+        let outcome = upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &hoo,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(outcome.capture_id, "capture-new");
+        let created = transport.created.borrow();
+        assert_eq!(created.len(), 2, "one more try, never a loop");
+        assert_eq!(created[0].capture_id.as_deref(), Some("capture-old"));
+        assert_eq!(created[1].capture_id.as_deref(), Some("capture-new"));
+        let stored = queue.find_by_sha256(&hoo.sha256).unwrap().unwrap();
+        assert_eq!(stored.state, crate::upload_queue::QueueState::Completed);
+        assert_eq!(
+            stored.target.variant_of,
+            Some(format!("{VARIANT_OF_SHA256}{new}"))
+        );
+    }
+
+    /// No newer main image: the image that created the capture is still on
+    /// the computer with the same bytes, so it is sent again first (a new
+    /// capture), and the variant goes there.
+    #[test]
+    fn a_variant_whose_capture_left_makes_it_again_from_its_main_image() {
+        let (queue, mut files, _root) = night_renders(&[
+            ("natural", b"natural".as_slice()),
+            ("hoo", b"hoo palette".as_slice()),
+        ]);
+        let main = files[0].sha256.clone();
+        files[1].target.variant_of = Some("capture-old".into());
+        queue.enqueue_results(&files).unwrap();
+        queue.mark_completed(&main, "capture-old").unwrap();
+        let hoo = queue.find_by_sha256(&files[1].sha256).unwrap().unwrap();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(capture_not_found());
+        a_whole_upload_to(&transport, "up-main", files[0].size, "capture-again");
+        a_whole_upload_to(&transport, "up-hoo", files[1].size, "capture-again");
+
+        let outcome = upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &hoo,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(outcome.capture_id, "capture-again");
+        let created = transport.created.borrow();
+        assert_eq!(created.len(), 3);
+        assert_eq!(created[1].sha256, main, "the main image first");
+        assert_eq!(created[1].capture_id, None);
+        assert_eq!(created[2].capture_id.as_deref(), Some("capture-again"));
+        let stored = queue.find_by_sha256(&main).unwrap().unwrap();
+        assert_eq!(stored.capture_id.as_deref(), Some("capture-again"));
+    }
+
+    /// The main image changed on the computer since it was sent: nothing is
+    /// guessed, the refusal stands, once.
+    #[test]
+    fn a_variant_whose_main_image_changed_since_is_refused_once() {
+        let (queue, mut files, root) = night_renders(&[
+            ("natural", b"natural".as_slice()),
+            ("hoo", b"hoo palette".as_slice()),
+        ]);
+        let main = files[0].sha256.clone();
+        files[1].target.variant_of = Some(format!("{VARIANT_OF_SHA256}{main}"));
+        queue.enqueue_results(&files).unwrap();
+        queue.mark_completed(&main, "capture-old").unwrap();
+        fs::write(root.path().join("M45/stacked/natural.png"), b"made again").unwrap();
+        let hoo = queue.find_by_sha256(&files[1].sha256).unwrap().unwrap();
+        let transport = FakeTransport::default();
+        transport
+            .creates
+            .borrow_mut()
+            .push_back(capture_not_found());
+
+        let error = upload_entry(
+            &transport,
+            &queue,
+            "test-token",
+            &hoo,
+            &UploadTarget::default(),
+            |_, _| {},
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code(), CAPTURE_NOT_IN_SPACE);
+        assert_eq!(transport.created.borrow().len(), 1);
+        let stored = queue.find_by_sha256(&hoo.sha256).unwrap().unwrap();
+        assert_eq!(stored.state, crate::upload_queue::QueueState::Refused);
     }
 }

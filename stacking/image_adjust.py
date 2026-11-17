@@ -19,13 +19,20 @@ Commands, each answering one JSON object on its standard output:
     prepare --image <png> --work <dir>                      the 1080 px preview and its colour mask
     stars   --image <png> --work <dir> --starnet <exe> [--tiff <tif>]   the star layer (StarNet2), whole and previewed
     smooth  --work <dir> --amount <0..100>                  the preview smoothed
-    save    --image <png> --work <dir> --values <json> --out <png> [--tiff <tif> --out-tiff <tif>]   the whole image, set
+    save    --image <png> --work <dir> --values <json> --out <png> [--tiff <tif> --out-tiff <tif>] [--turns <0..3>]
+                                                            the whole image, set, then turned by quarter turns
 
 A render the stacker wrote twice (``<name>.png``, 8-bit, and its twin ``<name>.tif``, 16-bit, the same pixels) is
 set from its TIFF when ``--tiff`` names it: the star layer is separated from the 16-bit data, the settings are applied
 to it once, and both files of the image set are written from that one result -- the TIFF in 16 bits, the PNG as its
 8-bit reduction (each level divided by 257 and rounded: exact, never a second computation).  The PNG and the TIFF of
 an image set are always the same image.
+
+``--turns`` turns the finished image by that many quarter turns clockwise (0..3), written turned: the pixels are only
+moved (``numpy.rot90``), never recomputed, so a turn loses nothing and the PNG is still the exact 8-bit reduction of
+the TIFF.  Every setting commutes with a quarter turn (per-pixel operations, isotropic filters), so the settings are
+applied on the image as it was and the result is turned once, at the end.  The image set carries no sky solution: the
+solution of an image is computed on the file that is sent, after the turn (``sky_solution`` in the core).
 """
 
 from __future__ import annotations
@@ -82,9 +89,21 @@ def lum(img: np.ndarray) -> np.ndarray:
 
 
 def normalise(out: np.ndarray) -> np.ndarray:
-    """Negative channels to 0, a pixel whose brightest channel passes 1 scaled back (its hue kept)."""
+    """Negative channels to 0, a pixel whose brightest channel passes 1 brought towards white at its luminance.
+
+    Its hue and its luminance are kept, and it is never darkened: dividing it by its brightest channel darkened the
+    coloured halo of a bright star under the white core it surrounds (a dark ring).  A pixel within 0..1 is not
+    touched.
+    """
     out = np.clip(out, 0, None)
-    return np.clip(out / np.maximum(out.max(axis=-1, keepdims=True), 1.0), 0, 1)
+    top = out.max(axis=-1)
+    over = top > 1.0
+    if over.any():
+        out = out.copy()
+        level = np.clip(lum(out[over]), 0, 1)[..., None]
+        room = np.clip((1.0 - level) / np.maximum(top[over][..., None] - level, 1e-6), 0, 1)
+        out[over] = level + room * (out[over] - level)
+    return np.clip(out, 0, 1)
 
 
 def with_luminance(img: np.ndarray, before: np.ndarray, after: np.ndarray) -> np.ndarray:
@@ -229,6 +248,14 @@ def write_tiff(levels: np.ndarray, path: Path) -> None:
         raise
 
 
+def turn_of(array: np.ndarray, turns: int) -> np.ndarray:
+    """``array`` (height × width × channels) turned ``turns`` quarter turns clockwise; pixels moved, none computed."""
+    turns = turns % 4
+    if turns == 0:
+        return array
+    return np.ascontiguousarray(np.rot90(array, k=-turns, axes=(0, 1)))
+
+
 def eight_bit_of(levels: np.ndarray) -> np.ndarray:
     """The 8-bit reduction of 16-bit levels: each divided by 257 (65535 = 255 x 257) and rounded.  257 is odd, so a
     quotient never falls on a half: the reduction is exact, with no tie to break."""
@@ -332,10 +359,12 @@ def load_layer(work: Path) -> np.ndarray | None:
 
 
 def save(image: Path, work: Path, values: dict, out: Path, tiff: Path | None = None,
-         out_tiff: Path | None = None) -> dict:
+         out_tiff: Path | None = None, turns: int = 0) -> dict:
     """The whole image set.  With ``tiff`` (the render's 16-bit twin) and ``out_tiff``: computed once from the TIFF,
     written as a 16-bit TIFF and as the PNG that is its exact 8-bit reduction."""
     t0 = time.time()
+    if turns not in (0, 1, 2, 3):
+        raise AdjustError("bad_arguments", "--turns is a number of quarter turns, 0 to 3")
     if (tiff is None) != (out_tiff is None):
         raise AdjustError("bad_arguments", "--tiff and --out-tiff go together")
     if out.resolve() == image.resolve() or (tiff is not None and out_tiff.resolve() in (tiff.resolve(), image.resolve())):
@@ -346,16 +375,16 @@ def save(image: Path, work: Path, values: dict, out: Path, tiff: Path | None = N
     img, bits = read_image(image)
     layer = load_layer(work) if v["stars"] != 0 else None
     if tiff is None:
-        result = apply(img, v, layer, None)
+        result = turn_of(apply(img, v, layer, None), turns)
         write_png(result, out, bits)
-        return {"path": str(out), "width": img.shape[1], "height": img.shape[0],
+        return {"path": str(out), "width": result.shape[1], "height": result.shape[0],
                 "seconds": round(time.time() - t0, 3)}
     full = read_tiff(tiff)
     if full.shape != img.shape:
         raise AdjustError("twin_mismatch", f"{tiff.name} is not the same image as {image.name}")
     if layer is not None and layer.shape != full.shape:
         raise AdjustError("stars_missing", "the star layer is not the size of the image")
-    levels = to_bytes(apply(full, v, layer, None), 16)
+    levels = turn_of(to_bytes(apply(full, v, layer, None), 16), turns)
     write_tiff(levels, out_tiff)
     path = out.parent
     path.mkdir(parents=True, exist_ok=True)
@@ -372,7 +401,7 @@ def save(image: Path, work: Path, values: dict, out: Path, tiff: Path | None = N
     except BaseException:
         Path(temp).unlink(missing_ok=True)
         raise
-    return {"path": str(out), "tiff": str(out_tiff), "width": img.shape[1], "height": img.shape[0],
+    return {"path": str(out), "tiff": str(out_tiff), "width": levels.shape[1], "height": levels.shape[0],
             "seconds": round(time.time() - t0, 3)}
 
 
@@ -397,6 +426,7 @@ def main(argv: list[str]) -> int:
     w.add_argument("--out", type=Path, required=True)
     w.add_argument("--tiff", type=Path)
     w.add_argument("--out-tiff", type=Path)
+    w.add_argument("--turns", type=int, default=0)
     args = parser.parse_args(argv)
     try:
         if args.command == "prepare":
@@ -407,7 +437,8 @@ def main(argv: list[str]) -> int:
         elif args.command == "smooth":
             answer = smooth_preview(args.work, args.amount)
         else:
-            answer = save(args.image, args.work, json.loads(args.values), args.out, args.tiff, args.out_tiff)
+            answer = save(args.image, args.work, json.loads(args.values), args.out, args.tiff, args.out_tiff,
+                          args.turns)
     except AdjustError as error:
         print(json.dumps({"error": error.code, "message": str(error)}))
         return 2

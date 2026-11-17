@@ -353,18 +353,22 @@ pub async fn image_adjust_smooth<R: Runtime>(
 /// record. From now on it leaves in place of the render. A render with a TIFF
 /// twin is set from that 16-bit TIFF: the image set is written as a TIFF and
 /// as the PNG that is its 8-bit reduction, and its TIFF leaves in place of
-/// the twin when the person joins the TIFF.
+/// the twin when the person joins the TIFF. `quarter_turns` (0..3, clockwise)
+/// is written into the image set: the pixels are turned, the render never. A
+/// turn alone, with every setting at the render's, is a change worth writing.
 #[tauri::command]
 pub async fn image_adjust_save<R: Runtime>(
     app: AppHandle<R>,
     path: String,
     values: AdjustValues,
+    quarter_turns: Option<u8>,
 ) -> Result<AdjustState, CommandError> {
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
         let render = render_of(&path)?;
         let values = values.clamped();
-        if values.is_neutral() {
+        let turns = image_adjust::clamp_turns(quarter_turns.unwrap_or(0));
+        if values.is_neutral() && turns == 0 {
             return Err(CommandError::new(
                 "adjust_unchanged",
                 "every setting is the render's: nothing to write",
@@ -383,6 +387,8 @@ pub async fn image_adjust_save<R: Runtime>(
             serde_json::to_string(&values).unwrap_or_default(),
             "--out".into(),
             out.display().to_string(),
+            "--turns".into(),
+            turns.to_string(),
         ];
         let out_tiff = image_adjust::adjusted_tiff_path(&render);
         match (image_adjust::twin_of(&render), &out_tiff) {
@@ -399,7 +405,7 @@ pub async fn image_adjust_save<R: Runtime>(
             _ => {}
         }
         run_script(&app, &paths, &args)?;
-        image_adjust::write_record(&render, values)
+        image_adjust::write_record_turned(&render, values, turns)
             .map_err(|error| CommandError::new("adjust_failed", error.to_string()))
     })
     .await

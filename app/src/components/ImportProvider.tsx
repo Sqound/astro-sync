@@ -141,8 +141,6 @@ export interface ImportApi {
   /** « Continuer sans traitement » / « Continuer avec les images faites ». */
   skipTreatments: () => void;
   toggleImage: (key: string) => void;
-  /** « Joindre aussi les TIFF »: the TIFF rows ticked or unticked. */
-  joinTiff: (on: boolean) => void;
   /** A choice on the list of incidents of a session (a tick, an edit, a line
    * added by hand): kept in the store, written by the primary. */
   changeIncidents: (sessionId: string, action: DraftAction) => void;
@@ -729,12 +727,10 @@ export function ImportProvider({ children }: { children: ReactNode }) {
           for (const off of unlisten) off();
         }
         if (!live()) return;
-        // The place left decides which images open ticked; « Envoi des
-        // rendus » of Réglages whether their TIFF are.
+        // The place left decides which images open ticked. A TIFF never
+        // does: it is a choice made image by image.
         await refreshStorage();
-        const kept = await localSettingsGet().catch(() => null);
         if (!live()) return;
-        dispatch({ type: "joinTiff", on: kept?.rendersUpload === "both" });
         dispatch({
           type: "treatDone",
           made: results,
@@ -898,7 +894,6 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       stopTreatments,
       skipTreatments: () => dispatch({ type: "skip" }),
       toggleImage: (key) => dispatch({ type: "toggleImage", key }),
-      joinTiff: (on) => dispatch({ type: "joinTiff", on }),
       changeIncidents: (sessionId, action) =>
         dispatch({ type: "incidents", sessionId, action }),
       tickTidy: (on) => dispatch({ type: "tidyTick", on }),

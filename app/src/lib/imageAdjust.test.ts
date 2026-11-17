@@ -130,6 +130,20 @@ test("the preview's formulas give what the script computes on the same pixels", 
   assert.ok(worst < 1e-4, `largest difference ${worst}`);
 });
 
+test("a bright coloured pixel lifted past 1 is never darkened (no ring around a star)", () => {
+  const lum = (p: number[]) => 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
+  // The blue halo of a bright star: brightness +50 (gamma 0.5) and colour × 3
+  // push its blue past 1; its luminance follows the curve, its hue stays.
+  const halo = [0.55, 0.6, 1.0];
+  const lifted = [...halo];
+  adjustPixel(lifted, 0, 0, 0, 0, 0, 0.5, 1, 1);
+  assert.ok(Math.abs(lum(lifted) - lum(halo) ** 0.5) < 1e-6, `${lifted}`);
+  const stronger = [...halo];
+  adjustPixel(stronger, 0, 0, 0, 0, 0, 1, 3, 1);
+  assert.ok(Math.abs(lum(stronger) - lum(halo)) < 1e-6, `${stronger}`);
+  assert.ok(stronger[2] >= stronger[1], `the halo stays blue: ${stronger}`);
+});
+
 test("the values under the sliders and the line of an image set read as designed", () => {
   assert.equal(valueText(t, "fr", "blackPoint", 0), "Comme le rendu");
   assert.equal(valueText(t, "fr", "blackPoint", 8), "8 %");
@@ -246,7 +260,7 @@ test("the words of the saved settings are the planche's, in the ten languages", 
     "adjust.saved.removeKeeps":
       "Les images déjà réglées avec lui ne changent pas.",
     "adjust.saved.listHelp":
-      "Choisir un réglage le montre sur l’aperçu ; rien n’est enregistré tant que vous n’enregistrez pas l’image.",
+      "Choisir un réglage le montre sur l’aperçu. Rien n’est enregistré tant que vous n’enregistrez pas l’image.",
     "adjust.saved.export": "Exporter…",
     "adjust.saved.import": "Importer…",
   };
@@ -320,10 +334,12 @@ test("the row of a set render's TIFF says the image set's TIFF, and the render's
     sha256: "png-set",
     size: 101,
     values,
+    quarterTurns: 0,
   });
   assert.deepEqual(rowAdjustment(tiffRow, { [png]: set }), {
     ...set.tiff,
     values,
+    quarterTurns: 0,
   });
   // Brought back to the render (no image set): both rows are the render's.
   assert.equal(rowAdjustment({ path: png }, { [png]: null }), null);

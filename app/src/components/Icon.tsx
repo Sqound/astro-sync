@@ -109,6 +109,21 @@ const PATHS = {
   pencil: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
   // « Poser une question à une IA » (a speech bubble).
   chat: <path d="M5 5h14v10h-8l-4 4v-4H5zM9 9h6M9 12h4" />,
+  // « Pivoter à droite » / « Pivoter à gauche »: an arc of 240° continued by
+  // an arrowhead on its tangent, the same drawing as the portal's; the left
+  // one is its mirror about the vertical axis.
+  rotateRight: (
+    <>
+      <path d="M3.512 16.758A9 9 0 1 1 19.1 16.758L16.8 20.742" />
+      <path d="M21.694 18.46L16.8 20.742L16.329 15.362" />
+    </>
+  ),
+  rotateLeft: (
+    <g transform="matrix(-1 0 0 1 24 0)">
+      <path d="M3.512 16.758A9 9 0 1 1 19.1 16.758L16.8 20.742" />
+      <path d="M21.694 18.46L16.8 20.742L16.329 15.362" />
+    </g>
+  ),
   trash: <path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 11v6M14 11v6" />,
 } as const;
 

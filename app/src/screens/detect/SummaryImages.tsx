@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { Icon } from "../../components/Icon";
+import { TiffWarning } from "../../components/TiffWarning";
 import { useI18n } from "../../i18n";
 import {
   imageAdjustRevert,
@@ -16,8 +18,10 @@ import {
 } from "../../lib/imageAdjust";
 import {
   canTickImage,
+  pngRowOf,
   seriesKeyOfRow,
   seriesOfRow,
+  tiffWaitsForPng,
   type SummaryImage,
 } from "../../lib/detectTreatments";
 import {
@@ -119,10 +123,16 @@ function revealKey(): string {
 }
 
 /**
- * The rows of « Images à envoyer »: each target's capture and, beneath it, its
- * variants -- every image the treatments made --, each with its box, its
- * thumbnail, its path (a link that opens the file) and « Afficher dans le
- * Finder ». A row the space cannot take says why and its box is disabled.
+ * « Images à envoyer »: one card per image -- each target's capture and, after
+ * it, its variants, every image the treatments made. A card holds the picture
+ * (never a button: « Régler l'image » is the one way into the editor), the
+ * title, what the image set says once it was set, « À envoyer » with a box for
+ * the PNG and a box for its TIFF in full resolution (unticked unless chosen,
+ * with a warning when ticked, and only once the PNG is), the two actions of
+ * the editor, and the file's place on one grey line with « Afficher dans le
+ * Finder ». The linear file of « Sans traitement » is a lighter line under the
+ * cards of its target. A card the space cannot take says why and its boxes are
+ * disabled.
  */
 export function SummaryImages({
   rows,
@@ -201,10 +211,13 @@ export function SummaryImages({
     const entry = list.find((item) => item.key === key);
     if (entry && !headed.has(`${row.targetId}\u0000${entry.key}`)) {
       headed.add(`${row.targetId}\u0000${entry.key}`);
+      // The series' box ticks and unticks the PNG of its images; the TIFF
+      // of each is its own box, and goes with its PNG.
       const members = rows.filter(
         (other) =>
           other.targetId === row.targetId &&
           other.role !== "file" &&
+          !other.fullResolution &&
           seriesKeyOfRow(other) === entry.key,
       );
       const all = members.every((other) => ticked.includes(other.key));
@@ -244,130 +257,253 @@ export function SummaryImages({
   };
   return (
     <ul className="as-treat__images">
-      {rows.flatMap((row) => [
-        ...(seriesHead(row) ?? []),
-        (() => {
-          // The render's row and the row of its TIFF in full resolution
-          // both say the file of the image set that leaves in their place.
-          const set = onAdjust ? rowAdjustment(row, adjusted) : null;
-          const view = summaryImageView(
-            t,
-            locale,
-            set ? { ...row, size: set.size } : row,
-            pipelineName,
-          );
-          const shown = set ? set.path : row.path;
-          const on = ticked.includes(row.key);
-          const open = canTickImage(row, rows, ticked, room);
-          const name = row.path.split(/[\\/]/).pop() ?? row.path;
-          const classes = [
-            "as-treat__image",
-            row.role === "variant" ? "is-variant" : "",
-            row.role === "file" ? "is-file" : "",
-            open ? "" : "is-full",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return (
-            <li key={row.key} className={classes} data-role={row.role}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={on}
-                  disabled={!open}
-                  onChange={() => onToggle(row.key)}
-                />
-                <span>
-                  <strong>{view.title}</strong>
-                  {set && (
-                    <>
-                      {" "}
-                      <span className={badgeClassName("outline-gold")}>
-                        {t("adjust.badge.adjusted")}
-                      </span>
-                    </>
-                  )}
-                  {t("detect.join")}
-                  {view.render}
-                  <span className="as-treat__meta">{view.meta}</span>
-                  {set && (
-                    <span className="as-treat__meta as-treat__adjusted">
-                      {adjustedLine(t, locale, set.values)}
+      {rows.flatMap((row) => {
+        // The TIFF of a render is the second box of its PNG's card.
+        if (row.fullResolution && pngRowOf(row, rows)) return [];
+        const head = seriesHead(row) ?? [];
+        if (row.role === "file") {
+          return [
+            ...head,
+            <LinearLine
+              key={row.key}
+              row={row}
+              rows={rows}
+              ticked={ticked}
+              room={room}
+              pipelineName={pipelineName}
+              onToggle={onToggle}
+            />,
+          ];
+        }
+        // The render's card and the card of its TIFF in full resolution
+        // both say the file of the image set that leaves in their place.
+        const set = onAdjust ? rowAdjustment(row, adjusted) : null;
+        const tiffRow =
+          rows.find(
+            (other) =>
+              other.fullResolution &&
+              other.targetId === row.targetId &&
+              other.twinOf === row.path,
+          ) ?? null;
+        const tiffSet =
+          onAdjust && tiffRow ? rowAdjustment(tiffRow, adjusted) : null;
+        const view = summaryImageView(
+          t,
+          locale,
+          set ? { ...row, size: set.size } : row,
+          pipelineName,
+        );
+        const tiffView = tiffRow
+          ? summaryImageView(
+              t,
+              locale,
+              tiffSet ? { ...tiffRow, size: tiffSet.size } : tiffRow,
+              pipelineName,
+            )
+          : null;
+        const shown = set ? set.path : row.path;
+        const on = ticked.includes(row.key);
+        const open = canTickImage(row, rows, ticked, room);
+        const tiffOn = !!tiffRow && ticked.includes(tiffRow.key);
+        const tiffOpen = !!tiffRow && canTickImage(tiffRow, rows, ticked, room);
+        const waitsForPng =
+          !!tiffRow && !tiffOn && tiffWaitsForPng(tiffRow, rows, ticked);
+        const name = row.path.split(/[\\/]/).pop() ?? row.path;
+        const classes = [
+          "as-treat__image",
+          row.role === "variant" ? "is-variant" : "",
+          open ? "" : "is-full",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return [
+          ...head,
+          <li key={row.key} className={classes} data-role={row.role}>
+            <Thumb
+              path={shown}
+              name={name}
+              cacheKey={set ? `${shown}#${set.sha256}` : undefined}
+            />
+            <div className="as-treat__links">
+              <p className="as-send__title">
+                <strong>{view.title}</strong>
+                {set && (
+                  <>
+                    {" "}
+                    <span className={badgeClassName("outline-gold")}>
+                      {t("adjust.badge.adjusted")}
                     </span>
-                  )}
-                  {view.sentence && (
-                    <span className="as-treat__meta">{view.sentence}</span>
-                  )}
-                  {view.blocked ? (
-                    <span className="as-treat__meta as-treat__why">
-                      {view.blocked}
-                    </span>
-                  ) : (
-                    !open && (
-                      <span className="as-treat__meta">
-                        {t("detect.send.full")}
-                      </span>
-                    )
-                  )}
-                </span>
-              </label>
-              <div className="as-treat__file">
-                {row.role !== "file" && (
-                  <Thumb
-                    path={shown}
-                    name={name}
-                    cacheKey={set ? `${shown}#${set.sha256}` : undefined}
-                  />
+                  </>
                 )}
-                <div className="as-treat__links">
-                  <button
-                    type="button"
-                    className={`${buttonClassName("link")} as-treat__path`}
-                    title={t("detect.send.openTitle")}
-                    onClick={() => void resultFileOpen(shown).catch(() => {})}
-                  >
-                    {shown}
-                  </button>
-                  <button
-                    type="button"
-                    className={buttonClassName("link")}
-                    onClick={() => void resultFileReveal(shown).catch(() => {})}
-                  >
-                    {t(revealKey())}
-                  </button>
-                  {/* « Régler l'image »: never on « Sans traitement » nor
-                      on a TIFF. Once set: « Régler à nouveau » and «
-                      Revenir au rendu d'origine ». */}
-                  {onAdjust && isAdjustable(row) && row.role !== "file" && (
-                    <div className="as-treat__adjust-actions">
-                      <button
-                        type="button"
-                        className={`${buttonClassName("tertiary")} as-treat__adjust`}
-                        onClick={() => onAdjust(row, view.render)}
-                      >
-                        {t(set ? "adjust.again" : "adjust.open")}
-                      </button>
-                      {set && (
-                        <button
-                          type="button"
-                          className={`${buttonClassName("link")} as-treat__revert`}
-                          onClick={() =>
-                            void imageAdjustRevert(row.path)
-                              .catch(() => {})
-                              .then(() => setReverted((n) => n + 1))
-                          }
-                        >
-                          {t("adjust.revert")}
-                        </button>
+                {t("detect.join")}
+                {view.render}
+              </p>
+              {set && (
+                <span className="as-treat__meta as-treat__adjusted">
+                  {adjustedLine(t, locale, set.values, set.quarterTurns)}
+                </span>
+              )}
+              {view.blocked ? (
+                <span className="as-treat__meta as-treat__why">
+                  {view.blocked}
+                </span>
+              ) : (
+                !open && (
+                  <span className="as-treat__meta">
+                    {t("detect.send.full")}
+                  </span>
+                )
+              )}
+              <fieldset className="as-send__formats">
+                <legend className="as-treat__meta">
+                  {t("detect.send.toSend")}
+                </legend>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!open}
+                    onChange={() => onToggle(row.key)}
+                  />
+                  <span>{view.meta}</span>
+                </label>
+                {tiffRow && tiffView && (
+                  <>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={tiffOn}
+                        disabled={!tiffOpen}
+                        onChange={() => onToggle(tiffRow.key)}
+                      />
+                      <span>{tiffView.meta}</span>
+                      {tiffView.blocked && (
+                        <span className="as-treat__meta as-treat__why">
+                          {tiffView.blocked}
+                        </span>
                       )}
-                    </div>
+                      {waitsForPng && !tiffView.blocked && (
+                        <span className="as-treat__meta">
+                          {t("detect.send.tiffNeedsPng")}
+                        </span>
+                      )}
+                    </label>
+                    {tiffOn && <TiffWarning />}
+                  </>
+                )}
+              </fieldset>
+              {/* « Régler l'image »: never on « Sans traitement » nor on a
+                  TIFF. Once set: « Régler à nouveau » and « Revenir au
+                  rendu d'origine ». */}
+              {onAdjust && isAdjustable(row) && (
+                <div className="as-treat__adjust-actions">
+                  <button
+                    type="button"
+                    className={`${buttonClassName("tertiary")} as-treat__adjust`}
+                    onClick={() => onAdjust(row, view.render)}
+                  >
+                    <Icon name="sliders" className="as-button__icon" />
+                    {t(set ? "adjust.again" : "adjust.open")}
+                  </button>
+                  {set && (
+                    <button
+                      type="button"
+                      className={`${buttonClassName("link")} as-treat__revert`}
+                      onClick={() =>
+                        void imageAdjustRevert(row.path)
+                          .catch(() => {})
+                          .then(() => setReverted((n) => n + 1))
+                      }
+                    >
+                      {t("adjust.revert")}
+                    </button>
                   )}
                 </div>
-              </div>
-            </li>
-          );
-        })(),
-      ])}
+              )}
+              <FilePlace path={shown} />
+            </div>
+          </li>,
+        ];
+      })}
     </ul>
+  );
+}
+
+/** The place of a file on one grey line, cut short (the whole path is its
+ * tooltip), that opens it; « Afficher dans le Finder » beside it. */
+function FilePlace({ path }: { path: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="as-send__where">
+      <button
+        type="button"
+        className="as-send__path"
+        title={path}
+        aria-label={`${t("detect.send.openTitle")} : ${path}`}
+        onClick={() => void resultFileOpen(path).catch(() => {})}
+      >
+        {path}
+      </button>
+      <button
+        type="button"
+        className={buttonClassName("link")}
+        onClick={() => void resultFileReveal(path).catch(() => {})}
+      >
+        {t(revealKey())}
+      </button>
+    </div>
+  );
+}
+
+/** « Sans traitement »: the linear file, a light line under the cards of its
+ * target -- a TIFF to download, never an image of the capture. */
+function LinearLine({
+  row,
+  rows,
+  ticked,
+  room,
+  pipelineName,
+  onToggle,
+}: {
+  row: SummaryImage;
+  rows: readonly SummaryImage[];
+  ticked: readonly string[];
+  room: { remaining: number } | null;
+  pipelineName: (id: string) => string;
+  onToggle: (key: string) => void;
+}) {
+  const { t, locale } = useI18n();
+  const view = summaryImageView(t, locale, row, pipelineName);
+  const on = ticked.includes(row.key);
+  const open = canTickImage(row, rows, ticked, room);
+  return (
+    <li
+      className={
+        open ? "as-treat__image is-file" : "as-treat__image is-file is-full"
+      }
+      data-role="file"
+    >
+      <label>
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={!open}
+          onChange={() => onToggle(row.key)}
+        />
+        <span>
+          <strong>{view.title}</strong>
+          {t("detect.join")}
+          {view.render}
+          <span className="as-treat__meta">{view.meta}</span>
+          {view.sentence && (
+            <span className="as-treat__meta">{view.sentence}</span>
+          )}
+          {view.blocked && (
+            <span className="as-treat__meta as-treat__why">{view.blocked}</span>
+          )}
+          {on && <TiffWarning as="span" />}
+        </span>
+      </label>
+    </li>
   );
 }

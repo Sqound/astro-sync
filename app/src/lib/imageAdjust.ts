@@ -167,9 +167,20 @@ export function adjustedLine(
   t: Translate,
   locale: string,
   values: AdjustValues,
+  quarterTurns = 0,
 ): string {
-  return t("adjust.applied", { list: adjustedList(t, locale, values) });
+  return t("adjust.applied", {
+    list: adjustedList(t, locale, values, quarterTurns),
+  });
 }
+
+/** The words of a turned image set in its line, by quarter turns clockwise. */
+const TURN_WORDS: readonly (string | null)[] = [
+  null,
+  "adjust.applied.turn.right",
+  "adjust.applied.turn.half",
+  "adjust.applied.turn.left",
+];
 
 /** « point noir 8 %, luminosité +12, couleur × 1,7 »: the settings moved, in
  * the order of the screen (the line of a saved setting, the help of its
@@ -178,8 +189,10 @@ export function adjustedList(
   t: Translate,
   locale: string,
   values: AdjustValues,
+  quarterTurns = 0,
 ): string {
-  const parts = ADJUST_SPECS.filter((spec) => isChanged(values, spec.name)).map(
+  const turn = TURN_WORDS[((quarterTurns % 4) + 4) % 4];
+  const moved = ADJUST_SPECS.filter((spec) => isChanged(values, spec.name)).map(
     (spec) =>
       spec.name === "stars"
         ? t(
@@ -192,6 +205,7 @@ export function adjustedList(
             value: valueText(t, locale, spec.name, values[spec.name]),
           }),
   );
+  const parts = turn ? [t(turn), ...moved] : moved;
   return parts.length > 0
     ? parts.join(t("adjust.applied.join"))
     : t("adjust.value.asRender");
@@ -219,6 +233,8 @@ export interface AdjustedFile {
  * and its TIFF when the render has a TIFF in full resolution. */
 export interface AdjustedSet extends AdjustedFile {
   values: AdjustValues;
+  /** The quarter turns, clockwise, written into the image set. */
+  quarterTurns?: number;
   tiff?: AdjustedFile | null;
 }
 
@@ -229,14 +245,26 @@ export interface AdjustedSet extends AdjustedFile {
 export function rowAdjustment(
   row: { path: string; fullResolution?: boolean; twinOf?: string },
   sets: Readonly<Record<string, AdjustedSet | null | undefined>>,
-): (AdjustedFile & { values: AdjustValues }) | null {
+): (AdjustedFile & { values: AdjustValues; quarterTurns: number }) | null {
   if (row.fullResolution) {
     const set = row.twinOf ? sets[row.twinOf] : null;
-    return set?.tiff ? { ...set.tiff, values: set.values } : null;
+    return set?.tiff
+      ? {
+          ...set.tiff,
+          values: set.values,
+          quarterTurns: set.quarterTurns ?? 0,
+        }
+      : null;
   }
   const set = sets[row.path];
   return set
-    ? { path: set.path, sha256: set.sha256, size: set.size, values: set.values }
+    ? {
+        path: set.path,
+        sha256: set.sha256,
+        size: set.size,
+        values: set.values,
+        quarterTurns: set.quarterTurns ?? 0,
+      }
     : null;
 }
 
@@ -288,14 +316,28 @@ export function adjustPixels(
   }
 }
 
+/** Negative channels to 0; a pixel whose brightest channel passes 1 brought
+ * towards white at its luminance, never darkened (dividing it by that channel
+ * darkened the coloured halo of a bright star under its white core: a dark
+ * ring). `image_adjust.py`'s `normalise`. */
 function normalise(p: number[]): void {
   p[0] = Math.max(0, p[0]);
   p[1] = Math.max(0, p[1]);
   p[2] = Math.max(0, p[2]);
-  const top = Math.max(p[0], p[1], p[2], 1);
-  p[0] = Math.min(1, p[0] / top);
-  p[1] = Math.min(1, p[1] / top);
-  p[2] = Math.min(1, p[2] / top);
+  const top = Math.max(p[0], p[1], p[2]);
+  if (top > 1) {
+    const level = Math.min(1, Math.max(0, LR * p[0] + LG * p[1] + LB * p[2]));
+    const room = Math.min(
+      1,
+      Math.max(0, (1 - level) / Math.max(top - level, 1e-6)),
+    );
+    p[0] = level + room * (p[0] - level);
+    p[1] = level + room * (p[1] - level);
+    p[2] = level + room * (p[2] - level);
+  }
+  p[0] = Math.min(1, p[0]);
+  p[1] = Math.min(1, p[1]);
+  p[2] = Math.min(1, p[2]);
 }
 
 function withLuminance(p: number[], before: number, after: number): void {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { RendersUploadField } from "../components/RendersUploadField";
 import { Icon } from "../components/Icon";
 import { useBuildInfo } from "../components/BuildVersion";
 import { InfoLine } from "../components/InfoLine";
@@ -381,23 +382,11 @@ function GeneralTab({
 
       <section className="as-zone">
         <h2 className="as-zone__title">{t("settings.rendersUpload.title")}</h2>
-        <div className={fieldGroupClassName}>
-          <select
-            className={fieldClassName}
-            aria-label={t("settings.rendersUpload.title")}
-            value={local?.rendersUpload ?? "png"}
-            disabled={!local}
-            onChange={(event) =>
-              void changeRendersUpload(event.target.value as RendersUpload)
-            }
-          >
-            <option value="png">{t("settings.rendersUpload.png")}</option>
-            <option value="both">{t("settings.rendersUpload.both")}</option>
-          </select>
-          <p className={helpTextClassName}>
-            {t("settings.rendersUpload.line")}
-          </p>
-        </div>
+        <RendersUploadField
+          value={local?.rendersUpload ?? "png"}
+          disabled={!local}
+          onChange={(renders) => void changeRendersUpload(renders)}
+        />
       </section>
 
       <section className="as-zone">

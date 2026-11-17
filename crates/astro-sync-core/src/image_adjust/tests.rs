@@ -1233,3 +1233,65 @@ fn a_render_and_its_tiff_sent_through_this_queue_then_set_replace_both() {
 fn tempfile_dir() -> crate::test_support::TempDir {
     crate::test_support::TempDir::new("image-adjust")
 }
+
+/* ------------------------------ Quarter turns ----------------------------- */
+
+#[test]
+fn a_turned_image_set_reopens_with_its_turns() {
+    let dir = tempfile_dir();
+    let render = render_in(dir.path());
+    let adjusted = adjusted_path(&render).unwrap();
+    fs::create_dir_all(adjusted.parent().unwrap()).unwrap();
+    fs::write(&adjusted, b"turned").unwrap();
+    fs::write(adjusted_tiff_path(&render).unwrap(), b"turned, in 16 bits").unwrap();
+    let written = write_record_turned(&render, AdjustValues::NEUTRAL, 3).unwrap();
+    assert_eq!(written.quarter_turns, 3);
+    // A turn alone is a valid image set: it leaves in place of the render.
+    let reopened = state(&render).unwrap();
+    assert_eq!(reopened.quarter_turns, 3);
+    assert!(reopened.values.is_neutral());
+    assert_eq!(sent_file(&render).unwrap().sha256, written.sha256);
+}
+
+#[test]
+fn the_turns_are_brought_into_a_quarter_turn_count() {
+    assert_eq!(clamp_turns(0), 0);
+    assert_eq!(clamp_turns(4), 0);
+    assert_eq!(clamp_turns(7), 3);
+    let dir = tempfile_dir();
+    let render = render_in(dir.path());
+    let written = set(&render, values());
+    assert_eq!(written.quarter_turns, 0);
+    let again = write_record_turned(&render, values(), 6).unwrap();
+    assert_eq!(again.quarter_turns, 2);
+}
+
+#[test]
+fn a_record_of_before_has_no_turn() {
+    let dir = tempfile_dir();
+    let render = render_in(dir.path());
+    set(&render, values());
+    let path = record_path(&render).unwrap();
+    let text = fs::read_to_string(&path).unwrap();
+    // The record of before the turns: no `quarterTurns` field at all.
+    assert!(!text.contains("quarterTurns"));
+    assert_eq!(state(&render).unwrap().quarter_turns, 0);
+    let mut record: AdjustRecord = serde_json::from_str(&text).unwrap();
+    record.quarter_turns = 1;
+    fs::write(&path, serde_json::to_string(&record).unwrap()).unwrap();
+    assert_eq!(state(&render).unwrap().quarter_turns, 1);
+}
+
+#[test]
+fn a_saved_setting_never_carries_a_turn() {
+    // The five values only: the turn belongs to the image, not to a setting
+    // applied to other images.
+    let json = serde_json::to_value(values()).unwrap();
+    assert!(json.get("quarterTurns").is_none());
+    let saved = serde_json::to_value(SavedAdjustment {
+        name: "Nebulae".to_string(),
+        values: values(),
+    })
+    .unwrap();
+    assert!(saved.to_string().find("quarterTurns").is_none());
+}

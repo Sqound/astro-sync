@@ -836,7 +836,9 @@ def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: 
     which engine did the work and why, rather than losing the whole stacking.
     Once StarNet2 has split the stars, ``renders.polished_layers`` makes the
     render's own layers; ``band`` (``capture_band``) decides its colour: only a
-    capture known to be broadband loses the green of its nebula.
+    capture known to be broadband loses the green of its nebula.  The ``native`` one cleans StarNet2's split
+    (``renders.natural_split``) and returns a third item, the light of the stars the sensor clipped
+    (``renders.clipped_star_light``, None without one) that every render of it gives back.
 
     The preparation shows the master with a display -- a black point per channel and a stretch scale, and for
     the polished one the curve of its render (``curve``: ``black``, ``top``, ``midtones``, ``gains``) -- that it
@@ -859,11 +861,13 @@ def prepared_layers(args: argparse.Namespace, kind: str, master: Path, starnet: 
         scale = float(imposed["scale"]) if imposed.get("scale") is not None else renders.stretch_scale(linear)
         return renders.polished_layers(linear, native, nebula, scale, band, imposed=imposed, measured=measured, done=done)
     imposed = imposed or {}
+    light: list = []
     native = renders.prepare_native(
         master, args.gradient_degree, args.black_percentile, args.deconv_fwhm,
-        imposed.get("scale"), imposed.get("black"), measured,
+        imposed.get("scale"), imposed.get("black"), measured, light,
     )
-    return renders.star_layer(native, work, args.name, starnet, render_log)
+    nebula, stars = renders.natural_split(*renders.star_layer(native, work, args.name, starnet, render_log))
+    return nebula, stars, light[0] if light else None
 
 
 DUALBAND_WORDS = (
@@ -993,8 +997,10 @@ def render_outputs(args: argparse.Namespace, plan: Plan, report: Reporter, runne
     for pipeline in plan.pipelines:
         finish = finish_of(args, pipeline.id)
         kind = "native" if pipeline.script_path is not None else renders.preparation_of(pipeline.render_function)
-        nebula, stars = layers[kind]
+        nebula, stars, *light = layers[kind]
         image = render_pipeline(pipeline, nebula, stars, trusted_scripts(args.trusted))
+        if light:
+            image = renders.with_clipped_star_light(image, light[0])
         stem = f"{args.name}_{pipeline.id}"
         for path in renders.save(image, out, stem, jpeg=False, formats=tuple(pipeline.outputs)):
             outputs.append(write_output(report, pipeline.id, path))

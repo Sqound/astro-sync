@@ -194,6 +194,12 @@ impl AdjustValues {
 pub struct AdjustRecord {
     pub version: u32,
     pub values: AdjustValues,
+    /// The quarter turns, clockwise (0..3), the image set was written with:
+    /// its pixels are turned, never the render's. Not one of the five
+    /// values: a turn belongs to the image, so the saved settings applied to
+    /// other images never carry it. Absent from a record of before (0).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarter_turns: u8,
     /// The image set's file name, in the same folder as the record.
     pub adjusted: String,
     pub adjusted_sha256: String,
@@ -228,6 +234,16 @@ pub struct AdjustRecord {
     pub original_tiff_sha256: Option<String>,
 }
 
+fn is_zero(value: &u8) -> bool {
+    *value == 0
+}
+
+/// A number of quarter turns brought into 0..3.
+#[must_use]
+pub fn clamp_turns(turns: u8) -> u8 {
+    turns % 4
+}
+
 /// One file of an image set: where it is, its digest and size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -242,6 +258,10 @@ pub struct AdjustedFile {
 #[serde(rename_all = "camelCase")]
 pub struct AdjustState {
     pub values: AdjustValues,
+    /// The quarter turns, clockwise, written into the image set (0 when it
+    /// is not turned).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub quarter_turns: u8,
     pub path: PathBuf,
     pub sha256: String,
     pub size: u64,
@@ -412,6 +432,7 @@ pub fn state(render: &Path) -> Option<AdjustState> {
     };
     Some(AdjustState {
         values: record.values.clamped(),
+        quarter_turns: clamp_turns(record.quarter_turns),
         path,
         sha256: record.adjusted_sha256,
         size: record.adjusted_size,
@@ -441,6 +462,17 @@ pub fn sent_twin(path: &Path) -> Option<(AdjustedFile, AdjustState)> {
 /// A render with a twin whose image set has no TIFF is refused: the TIFF
 /// that would leave would not be the image set's.
 pub fn write_record(render: &Path, values: AdjustValues) -> Result<AdjustState, AdjustError> {
+    write_record_turned(render, values, 0)
+}
+
+/// [`write_record`] for an image set the script wrote turned by
+/// `quarter_turns` quarter turns clockwise.
+pub fn write_record_turned(
+    render: &Path,
+    values: AdjustValues,
+    quarter_turns: u8,
+) -> Result<AdjustState, AdjustError> {
+    let quarter_turns = clamp_turns(quarter_turns);
     if !is_render_png(render) {
         return Err(AdjustError::NotARender(render.to_path_buf()));
     }
@@ -472,6 +504,7 @@ pub fn write_record(render: &Path, values: AdjustValues) -> Result<AdjustState, 
     let record = AdjustRecord {
         version: RECORD_VERSION,
         values: values.clamped(),
+        quarter_turns,
         adjusted: adjusted
             .file_name()
             .and_then(|n| n.to_str())
@@ -501,6 +534,7 @@ pub fn write_record(render: &Path, values: AdjustValues) -> Result<AdjustState, 
     fs::rename(&part, &record_file).map_err(io(&record_file))?;
     Ok(AdjustState {
         values: record.values,
+        quarter_turns,
         path: adjusted,
         sha256,
         size,

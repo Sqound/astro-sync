@@ -6,6 +6,7 @@ import { SUPPORTED_LOCALES, createTranslator } from "../i18n/locale.ts";
 import type { BulkCreateOutcome, Proposal, SpaceStorage } from "./bridge";
 import {
   canTickImage,
+  sendOrder,
   sendPrimary,
   summaryImages,
   tickedImageCount,
@@ -870,7 +871,7 @@ test("« Images à envoyer »: the capture comes from the longest series, and a 
   );
 });
 
-test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows listed unticked under their PNG; « Joindre aussi les TIFF » ticks and unticks them", () => {
+test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows unticked, a TIFF is ticked image by image and only once its PNG is", () => {
   const results = [...pngAndTiff("dualband-correction"), ...pngAndTiff("raw")];
   const rows = summaryImages(results, storage());
   // The natural PNG is the capture, each TIFF right under its PNG.
@@ -888,42 +889,59 @@ test("« Images à envoyer »: the PNG rows open ticked, the TIFF rows listed un
     "raw.png",
     "dualband-correction.png",
   ]);
-  // « Envoi des rendus : PNG + TIFF »: everything ticked from the start.
-  assert.equal(preTickedImages(rows, null, true).length, 4);
 
-  // The reducer: the box is read with the settings before the run ends.
   const done = play(
     [
       { type: "storage", storage: storage() },
       { type: "treatStart", target: "NGC 7000" },
-      { type: "joinTiff", on: false },
       { type: "treatDone", made: results, errors: [] },
     ],
     play(planned),
   );
+  // Whatever Réglages says, no TIFF opens ticked.
   assert.deepEqual(done.ticked.map(name), [
     "raw.png",
     "dualband-correction.png",
   ]);
-  const joined = importReducer(done, { type: "joinTiff", on: true });
-  assert.equal(joined.joinTiff, true);
-  assert.equal(joined.ticked.length, 4);
-  // A PNG unticked by hand stays unticked when the TIFF go.
-  const without = importReducer(
-    importReducer(joined, {
-      type: "toggleImage",
-      key: rows.find((row) => row.path.endsWith("dualband-correction.png"))!
-        .key,
-    }),
-    { type: "joinTiff", on: false },
+  const keyOf = (file: string) =>
+    rows.find((row) => row.path.endsWith(file))!.key;
+  // The TIFF of a ticked PNG is ticked by its own box.
+  const withTiff = importReducer(done, {
+    type: "toggleImage",
+    key: keyOf("raw.tif"),
+  });
+  assert.deepEqual(withTiff.ticked.map(name), [
+    "raw.png",
+    "dualband-correction.png",
+    "raw.tif",
+  ]);
+  // The TIFF goes with its PNG: unticking the PNG unticks the TIFF.
+  const pngOff = importReducer(withTiff, {
+    type: "toggleImage",
+    key: keyOf("raw.png"),
+  });
+  assert.deepEqual(pngOff.ticked.map(name), ["dualband-correction.png"]);
+  // A TIFF whose PNG is not ticked cannot be ticked: no TIFF without its PNG.
+  const refused = importReducer(pngOff, {
+    type: "toggleImage",
+    key: keyOf("raw.tif"),
+  });
+  assert.deepEqual(refused.ticked, pngOff.ticked);
+  assert.equal(canTickImage(rows[1], rows, pngOff.ticked, null), false);
+  // And the engine's order never sends one alone, whatever is in `ticked`.
+  const alone = sendOrder(rows, [keyOf("raw.tif")]);
+  assert.deepEqual(alone, []);
+  const together = sendOrder(rows, [keyOf("raw.png"), keyOf("raw.tif")]);
+  assert.deepEqual(
+    together.map(({ row }) => name(row.key)),
+    ["raw.png", "raw.tif"],
   );
-  assert.deepEqual(without.ticked.map(name), ["raw.png"]);
 });
 
 // « Sans traitement » is a file attached to the capture of its target, not an
-// image of it: listed under the images, unticked, ticked with « Joindre aussi
-// les TIFF », never counted among the images, and without an image ticked it
-// goes too (the service attaches it to a capture, it never creates one).
+// image of it: listed under the images, unticked, ticked by a choice, never
+// counted among the images, and without an image ticked it goes too (the
+// service attaches it to a capture, it never creates one).
 const withLinear = (): Made[] => [
   ...pngAndTiff("raw"),
   {
@@ -946,11 +964,6 @@ test("the linear file is listed after the images of its target, unticked, and a 
   const name = (key: string) => key.split("/").pop();
   // Never pre-ticked, like every TIFF.
   assert.deepEqual(preTickedImages(rows, null).map(name), ["raw.png"]);
-  assert.deepEqual(preTickedImages(rows, null, true).map(name), [
-    "raw.png",
-    "raw.tif",
-    "linear.tif",
-  ]);
   // A space that keeps no variant still takes the file: it is no variant.
   const noVariants = summaryImages(withLinear(), {
     ...storage(),
@@ -962,17 +975,21 @@ test("the linear file is listed after the images of its target, unticked, and a 
 test("the linear file opens only once an image of its target is ticked, and leaves with the last one", () => {
   const results = withLinear();
   const rows = summaryImages(results, storage());
-  const [capture, , file] = rows;
+  const [capture, tiff, file] = rows;
   assert.equal(canTickImage(file, rows, [], null), false);
   assert.equal(canTickImage(file, rows, [capture.key], null), true);
-  const played = play(
+  const opened = play(
     [
       { type: "storage", storage: storage() },
       { type: "treatStart", target: "IC 1805" },
-      { type: "joinTiff", on: true },
       { type: "treatDone", made: results, errors: [] },
     ],
     play(planned),
+  );
+  assert.deepEqual(opened.ticked, [capture.key]);
+  const played = [tiff.key, file.key].reduce(
+    (state, key) => importReducer(state, { type: "toggleImage", key }),
+    opened,
   );
   assert.ok(played.ticked.includes(file.key));
   // The file is not counted among the images queued.
@@ -981,17 +998,12 @@ test("the linear file opens only once an image of its target is ticked, and leav
     kind: "send",
     count: 2,
   });
-  // Untick the PNG and its TIFF: the file goes with them.
-  const first = importReducer(played, {
+  // Untick the PNG: its TIFF goes with it, and the file with them.
+  const last = importReducer(played, {
     type: "toggleImage",
     key: capture.key,
   });
-  assert.ok(first.ticked.includes(file.key));
-  const last = importReducer(first, { type: "toggleImage", key: rows[1].key });
-  assert.equal(last.ticked.includes(file.key), false);
-  // Unticking « Joindre aussi les TIFF » takes it off too.
-  const off = importReducer(played, { type: "joinTiff", on: false });
-  assert.equal(off.ticked.includes(file.key), false);
+  assert.deepEqual(last.ticked, []);
 });
 
 test("the detection says what it is doing: the space's data first, then the files counted to the end, then the sessions of the dates found -- never a « 0 found » that does not move", async () => {

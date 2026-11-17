@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { Icon } from "../../components/Icon";
 import { useImport } from "../../components/ImportProvider";
 import { InfoLine } from "../../components/InfoLine";
-import { JoinTiffBox } from "../../components/JoinTiffBox";
 import { Notice } from "../../components/Notice";
 import { PaymentFailedNotice } from "../../components/PaymentFailedNotice";
 import { useSnackbar } from "../../components/Snackbar";
@@ -27,7 +26,6 @@ import {
 } from "../../lib/detectResult";
 import {
   imageRoom,
-  isTiffChoice,
   summaryImages,
   tickedImageCount,
   type SummaryImage,
@@ -432,21 +430,6 @@ export function ImportSummary({
           }
           details={<p>{t("detect.send.details")}</p>}
         />
-        {/* « Joindre aussi les TIFF »: the same box as the night's
-            « Récapitulatif », over the list, when a render has a TIFF. */}
-        {images.some(isTiffChoice) && (
-          <JoinTiffBox
-            checked={state.joinTiff}
-            disabled={state.sending}
-            fullResolution={{
-              count: images.filter(isTiffChoice).length,
-              bytes: images
-                .filter(isTiffChoice)
-                .reduce((sum, row) => sum + row.size, 0),
-            }}
-            onChange={imp.joinTiff}
-          />
-        )}
         {images.length === 0 && (
           <p className={helpTextClassName}>
             {state.treated

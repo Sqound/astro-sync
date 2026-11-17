@@ -273,12 +273,10 @@ test("the row of a TIFF leaves as the render's TIFF, a variant of the capture it
     (sends[1].send as { variantOfSha256?: string }).variantOfSha256,
     png,
   );
-  // The TIFF alone ticked: it leaves as the capture, its own bytes.
+  // The TIFF alone ticked: a TIFF never leaves without its PNG, so nothing
+  // is sent.
   const alone = importSends(rows, made, [rows[1].key]);
-  assert.deepEqual(
-    alone.map(({ send, variant }) => [renderOf(send).path, variant]),
-    [["/stacked/raw.tif", false]],
-  );
+  assert.deepEqual(alone, []);
 });
 
 test("the linear file is attached to the capture of the image it follows, and is neither a variant nor an image", () => {

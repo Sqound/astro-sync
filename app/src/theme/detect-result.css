@@ -153,9 +153,16 @@
   accent-color: var(--as-color-gold-accent);
 }
 
+/* « Images à envoyer »: one card per image, the picture on the left, the
+   words and the boxes on the right; every card has the same columns. */
 .as-treat__image {
-  border-top: 1px solid var(--as-color-border);
-  padding: var(--as-space-sm) 0;
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--as-space-md);
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-md);
 }
 
 /* A target with several series of poses: the banner that says why, then
@@ -195,39 +202,26 @@
   font-size: 0.8125rem;
 }
 
-/* A variant stands beneath its capture; every image shows a thumbnail, its
-   path (a link that opens it) and « Afficher dans le Finder ». */
-.as-treat__image.is-variant {
-  margin-left: var(--as-space-lg);
-  border-top-style: dashed;
-}
-
-/* The linear file stands beneath the images of its target, like a variant: a
-   file attached to the capture, with no thumbnail. */
+/* The linear file is a light line under the cards of its target: a file
+   attached to the capture, with no picture. */
 .as-treat__image.is-file {
-  margin-left: var(--as-space-lg);
-  border-top-style: dashed;
+  display: block;
+  border: 0;
+  border-top: 1px dashed var(--as-color-border);
+  border-radius: 0;
+  padding: var(--as-space-sm) 0;
 }
 
 .as-treat__why {
   color: var(--as-color-warning);
 }
 
-.as-treat__file {
-  display: flex;
-  align-items: center;
-  gap: var(--as-space-md);
-  margin-top: var(--as-space-xs);
-  padding-left: calc(var(--as-space-lg) + var(--as-space-sm));
-}
-
 .as-treat__thumb {
-  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 7.5rem;
-  height: 5rem;
+  width: 9rem;
+  height: 12rem;
   overflow: hidden;
   border: 1px solid var(--as-color-border);
   border-radius: var(--as-radius-sm);
@@ -249,11 +243,84 @@
   justify-items: start;
 }
 
-.as-treat__path {
-  max-width: 100%;
+.as-send__title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* « À envoyer »: a box for the PNG, a box for its TIFF. */
+.as-send__formats {
+  justify-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.as-send__formats legend {
+  padding: 0;
+}
+
+.as-send__formats label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--as-space-xs) var(--as-space-sm);
+}
+
+.as-send__formats input {
+  accent-color: var(--as-color-gold-accent);
+}
+
+.as-send__warning {
+  margin: 0;
+  padding-left: var(--as-space-lg);
+}
+
+/* The place of the file: one grey line cut short, « Afficher dans le Finder »
+   beside it. */
+.as-send__where {
+  justify-self: stretch;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--as-space-md);
+  min-width: 0;
+}
+
+.as-send__path {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--as-color-muted-text);
+  font: inherit;
   font-size: 0.8125rem;
   text-align: left;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.as-send__path:hover,
+.as-send__path:focus-visible {
+  text-decoration: underline;
+}
+
+@media (max-width: 48rem) {
+  .as-treat__image {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .as-treat__thumb {
+    width: 100%;
+    height: 10rem;
+  }
 }
 
 .as-treat__running {

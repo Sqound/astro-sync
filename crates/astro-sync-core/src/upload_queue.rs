@@ -329,6 +329,22 @@ pub struct QueueEntry {
     pub target: EntryTarget,
 }
 
+/// Whether a new import of the night sends this refused file again, once: the
+/// capture it was added to had left the space (`capture_not_found`), or the
+/// service refused it with a reason this version could not read
+/// (`upload_refused`: the code an older Astro Sync gave a missing capture,
+/// or a refusal a newer version, or a service mended since, may not repeat).
+/// A refusal whose reason stands is said again by the service, at that one
+/// try: nothing here loops.
+#[must_use]
+pub fn retried_by_an_import(entry: &QueueEntry) -> bool {
+    entry.state == QueueState::Refused
+        && matches!(
+            entry.last_error_code.as_deref(),
+            Some(crate::uploader::CAPTURE_NOT_IN_SPACE | "upload_refused")
+        )
+}
+
 fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<QueueEntry> {
     let size: i64 = row.get("size")?;
     let offset: i64 = row.get("offset")?;
@@ -840,20 +856,108 @@ impl UploadQueue {
             // A caller may still name a folder that was renamed since the
             // image was made (the provisional folder of a plan): the row is
             // written with the file's place now.
-            let inserted = match self.moved_source(&file.path)? {
-                Some(path) => self.insert(&ResultFile {
+            let file = match self.moved_source(&file.path)? {
+                Some(path) => ResultFile {
                     path,
                     ..file.clone()
-                })?,
-                None => self.insert(file)?,
+                },
+                None => file.clone(),
             };
-            if inserted {
+            if self.insert(&file)? {
                 outcome.inserted += 1;
             } else {
+                self.queue_again_as_given(&file)?;
                 self.count_known(&file.sha256, &mut outcome)?;
             }
         }
         Ok(outcome)
+    }
+
+    /// A file this space's queue already holds, waiting and not started (no
+    /// session, no byte sent: one put back in the queue by
+    /// [`crate::uploader::requeue_vanished`], or one an earlier gesture
+    /// queued): its row takes what **this** gesture says of it -- its night,
+    /// its targets, the capture it is a variant of -- and its place after
+    /// the files queued before it by this gesture. Without it, a row kept the
+    /// attribution of the import that first queued it, days before: a
+    /// variant then named the main image of that old import, whose capture
+    /// was deleted since, and was refused (`404 capture_not_found`) at every
+    /// new import; and a variant queued before the image that creates its
+    /// capture waited for it and stopped the sending. Every other row (sent,
+    /// started, held, set aside) is left as it is.
+    fn queue_again_as_given(&self, file: &ResultFile) -> Result<bool, UploadQueueError> {
+        let Some(entry) = self.find_by_sha256(&file.sha256)? else {
+            return Ok(false);
+        };
+        if entry.state != QueueState::Queued || entry.upload_id.is_some() || entry.offset != 0 {
+            return Ok(false);
+        }
+        self.connection
+            .execute("DELETE FROM upload_queue WHERE id = ?1", params![entry.id])?;
+        self.insert(file)
+    }
+
+    /// The row `sha256` is now a variant of what `variant_of` names (a
+    /// capture's identifier, or `sha256:<digest>` of the image that creates
+    /// it): the capture its upload found again after the one it named left
+    /// the space.
+    pub fn set_variant_of(&self, sha256: &str, variant_of: &str) -> Result<(), UploadQueueError> {
+        let changed = self.connection.execute(
+            "UPDATE upload_queue SET variant_of = ?2, updated_at = ?3
+             WHERE sha256 = ?1 AND space_id IS ?4",
+            params![sha256, variant_of, now_iso8601_utc(), self.space_id],
+        )?;
+        if changed == 0 {
+            return Err(UploadQueueError::NotFound(sha256.to_string()));
+        }
+        Ok(())
+    }
+
+    /// The image last sent from this queue as the **main** image of a capture
+    /// of the night and target of `entry`, for the same series, to a capture
+    /// other than `gone`: the capture a new import of the night made, which a
+    /// variant still naming the capture of an older import belongs to now.
+    pub fn main_image_sent_beside(
+        &self,
+        entry: &QueueEntry,
+        gone: &str,
+    ) -> Result<Option<QueueEntry>, UploadQueueError> {
+        let Some(session_id) = entry.target.session_id.as_deref() else {
+            return Ok(None);
+        };
+        let series = |row: &QueueEntry| {
+            row.target
+                .metadata
+                .as_ref()
+                .and_then(|proposals| proposals.series.clone())
+        };
+        Ok(self
+            .list()?
+            .into_iter()
+            .filter(|row| {
+                row.sha256 != entry.sha256
+                    && row.state == QueueState::Completed
+                    && row.target.variant_of.is_none()
+                    && matches!(row.kind, ResultKind::Stacked | ResultKind::Final)
+                    && row.target.session_id.as_deref() == Some(session_id)
+                    && row.target.target_ids == entry.target.target_ids
+                    && series(row) == series(entry)
+                    && row
+                        .capture_id
+                        .as_deref()
+                        .is_some_and(|capture| capture != gone)
+            })
+            .max_by(|a, b| a.updated_at.cmp(&b.updated_at).then(a.id.cmp(&b.id))))
+    }
+
+    /// The image sent from this queue as the main image of the capture
+    /// `capture_id` (the one that created it).
+    pub fn main_image_of(&self, capture_id: &str) -> Result<Option<QueueEntry>, UploadQueueError> {
+        Ok(self.list()?.into_iter().find(|row| {
+            row.state == QueueState::Completed
+                && row.target.variant_of.is_none()
+                && row.capture_id.as_deref() == Some(capture_id)
+        }))
     }
 
     fn insert(&self, file: &ResultFile) -> Result<bool, UploadQueueError> {
@@ -1285,18 +1389,13 @@ impl UploadQueue {
     }
 
     /// A row the space turned out not to hold any more (`completed` for a
-    /// capture deleted from the portal, or refused because the capture it is
-    /// added to is gone): back in the queue from the start, and what was kept
+    /// capture deleted from the portal, or refused in a way a new import
+    /// tries again: [`retried_by_an_import`]): back in the queue from the start, and what was kept
     /// of its sky annotations forgotten -- they were those of a capture that
     /// is not there. Returns whether the row was requeued.
     pub fn requeue_vanished(&self, sha256: &str) -> Result<bool, UploadQueueError> {
         let requeued = match self.find_by_sha256(sha256)? {
-            Some(entry)
-                if entry.state == QueueState::Completed
-                    || (entry.state == QueueState::Refused
-                        && entry.last_error_code.as_deref()
-                            == Some(crate::uploader::CAPTURE_NOT_IN_SPACE)) =>
-            {
+            Some(entry) if entry.state == QueueState::Completed || retried_by_an_import(&entry) => {
                 self.reset_for_restart(sha256)?;
                 true
             }

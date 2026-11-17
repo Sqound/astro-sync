@@ -3,6 +3,30 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.2 (2026-11-17)
+
+- Every image of a night imported again is sent, its variants included. A
+  variant whose main image was made again is now attached to the capture of
+  the new import, not to the capture of an earlier import that the space no
+  longer has. A missing capture is recovered before the images are sent.
+- A refused file no longer waits in « In progress ». Its line says it was
+  refused, and the refusal sentence, rewritten in the ten languages, says what
+  still works.
+- « Adjust image » opens in two columns: the image fitted to the height of
+  the window, the settings beside it. A curtain compares before and after, and
+  the image turns by quarter turns. A turn alone can be saved.
+- « Images to send » shows one card per image, with its preview, its setting
+  and its PNG and TIFF boxes.
+- A TIFF ticked alone is not sent without its PNG. Wherever a TIFF can be
+  chosen (the list, the night's summary and the settings), Astro Sync warns
+  that it counts towards the storage quota.
+- Stars of the natural renders: the cores of the brightest stars are white,
+  their light keeps the colour of each star, and the lavender rim, the violet
+  centres and the green patches left by the star separation are gone. Renders
+  made before this version are not changed until they are made again.
+- The installers are otherwise unchanged: the Windows installer is still
+  unsigned.
+
 ## 1.1.1 (2026-11-17)
 
 - An image whose capture was deleted from the portal is sent again. Before an

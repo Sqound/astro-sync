@@ -291,11 +291,27 @@ export function uploadsReducer(
       const rows = state.rows.map((row) => {
         // A file waiting for a run that the queue of the linked space already
         // has sent: nothing will leave, the row says so instead of waiting.
+        // One the queue holds as refused (or failed) is not waiting either:
+        // no run sends it, so the row says what the queue says of it rather
+        // than « En file d'envoi » for ever.
         if (row.status === "queued") {
           const entry = action.entries.find(
             (item) => item.sha256 === row.sha256,
           );
-          return entry?.state === "completed" ? sentBefore(row, entry) : row;
+          if (entry?.state === "completed") return sentBefore(row, entry);
+          if (entry?.state === "refused" || entry?.state === "failed")
+            return {
+              ...row,
+              status: entry.state,
+              code: entry.lastErrorCode,
+              message: null,
+              speed: null,
+              retryable:
+                entry.state === "failed" &&
+                entry.lastErrorCode === SOURCE_FILE_MISSING,
+              notice: true,
+            };
+          return row;
         }
         if (row.status !== "failed") return row;
         const entry = action.entries.find((item) => item.sha256 === row.sha256);

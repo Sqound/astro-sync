@@ -743,16 +743,19 @@ class PolishedInTheScript(unittest.TestCase):
 
 
 class NaturalRendersUnchanged(unittest.TestCase):
-    """RENDER-R5-01 changed the polished render only: the renders of the natural preparation, and their finish,
-    are the same to the last bit as before it (digests taken on the code of RENDER-STUDY-01, a1a7e735be)."""
+    """The renders of the natural preparation, and their finish, stay the same to the last bit while the polished
+    render changes.  The digests were taken again when the natural renders started cleaning what StarNet2 leaves
+    under the stars (``natural_split``, ``starless_around_stars``): the stand-in StarNet2 of these tests takes 40 % of
+    every pixel as a star, so the cleaning moves the whole frame here (up to 0.16 on the natural render, 0.20 on
+    the HOO palette), where a real star layer leaves the sky and the nebula alone."""
 
     DIGESTS = {
-        "N_raw.tif": "fb2fe7f8e55a27d447b5f0a63c626818acc0d4eeb5e384212b1eb14db8871bf5",
-        "N_raw_presentation.tif": "1e9eba738dfa281eed67949e0c7e5473b8a6970f2899ea1db777aaa492cebac5",
-        "N_dualband-correction.tif": "21f9d2166b6589900f02846b92ba70598da30055217aaf2614a5c51fdabb8013",
-        "N_dualband-correction_presentation.tif": "4150a65debb68cb8a9bdee577cf32c55137adb8e2ce58c6ae8fe48a028bb3782",
-        "N_hoo.tif": "bb9e400df1d8d37f6c9a17f9faf171296633be1093cc15a74e0f55f254f57b8a",
-        "N_hoo_presentation.tif": "e5f0d99d63a6b380b18fcd1e52fd5e7df700c5ffc381aacedff7d84d8be4e7b9",
+        "N_raw.tif": "8880444844a7b6755183ebffe3f6a76501cc184fb5bee81e879ee40bab4f53e8",
+        "N_raw_presentation.tif": "c06615ff7b43146b2e80d8c573770e8df6ad76873dbbb6e8b6d1e85bb666e692",
+        "N_dualband-correction.tif": "6998cf14462f38077412e70119dae28173d270906ca388ba272f9d70ae5b4230",
+        "N_dualband-correction_presentation.tif": "d6a8210d776131f2eff04816c214b5fd1accd5b8b276b9730d53c9ed7720af59",
+        "N_hoo.tif": "7c309772dd46c0ccf2ab704428fd771a61411869f8d109656612c5595f289ab9",
+        "N_hoo_presentation.tif": "b34e7b51dcbb9cb0fb32d27fb4e6cf704fd8a773831c62169892aad70f749bc0",
     }
 
     def test_the_natural_renders_are_the_same_to_the_last_bit(self) -> None:
@@ -901,6 +904,310 @@ class PolishedRender(unittest.TestCase):
         self.assertLess(float(core.max() - core.min()), 0.03, f"a white centre: {np.round(core, 3)}")
         halo = profile[9]
         self.assertGreater(float(halo[2] - halo[1]), 0.01, f"the halo keeps its colour: {np.round(halo, 3)}")
+
+
+class NaturalStarCores(unittest.TestCase):
+    """The natural display (``native_from_linear``) of a star whose core the sensor clipped."""
+
+    SHAPE = (300, 360)
+    CENTRE = (150, 120)
+
+    def linear(self, clipped: bool = True) -> np.ndarray:
+        """A bluish cloud, field stars and one star clipped at three levels (green highest), with a halo wider in red
+        and blue than in green; then neutral-sky gains as a green sky asks for (green lowered, red and blue raised):
+        the plateau of the core comes out magenta, as on a real master."""
+        rng = np.random.default_rng(4)
+        cloud = blob(self.SHAPE, (150, 180), 45)
+        linear = np.stack([0.010 + 0.020 * cloud, 0.010 + 0.026 * cloud, 0.010 + 0.040 * cloud], axis=-1)
+        for y, x, f in zip(rng.integers(20, 280, 40), rng.integers(20, 340, 40), rng.uniform(0.02, 0.3, 40)):
+            linear += f * blob(self.SHAPE, (y, x), 1.3)[..., None] * np.array([1.0, 0.9, 0.8])
+        linear += rng.normal(0, 0.0012, linear.shape)
+        if clipped:
+            linear += bright_star(self.SHAPE, self.CENTRE, clip=(0.90, 1.0, 0.89), widths=(4.0, 3.2, 4.6))
+        return (np.clip(linear, 0, None) * np.array([1.08, 0.86, 1.16])).astype(np.float32)
+
+    def test_a_clipped_core_is_white_without_a_ring_and_its_halo_keeps_its_colour(self) -> None:
+        native = renders.native_from_linear(self.linear())
+        image = renders.natural_deep(np.clip(native, 0, 1), np.zeros_like(native))
+        profile = radial(image, self.CENTRE, 18)
+        level = renders.lum(profile)
+        # Deepest dip: how far the luminance falls under what comes after it, outwards (a dark ring).
+        dip = max(float(level[k + 1:].max() - level[k]) for k in range(len(level) - 1))
+        self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
+        core = profile[0]
+        # 0.03 of the range (8 levels of 255) between the channels of a white core: the polished render's bound.
+        self.assertLess(float(core.max() - core.min()), 0.03, f"a white centre, not the clip levels': {np.round(core, 3)}")
+        # Violet: red and blue above green.  The core and the rim around it (8 px, where the channels leave their
+        # clip levels) are never violet; the halo beyond keeps the colour of the data (bluer than green).
+        violet = (profile[:9, 0] + profile[:9, 2]) / 2 - profile[:9, 1]
+        self.assertLess(float(violet.max()), 0.02, f"no violet core or rim: {np.round(violet, 3)}")
+        self.assertGreater(float(profile[9, 2] - profile[9, 1]), 0.01, f"the halo keeps its colour: {np.round(profile[9], 3)}")
+
+    def test_a_master_without_a_clipped_core_is_shown_as_before(self) -> None:
+        """Its brightest star peaks on one pixel: no channel counts as clipped, and the display is not touched."""
+        linear = self.linear(clipped=False)
+        self.assertEqual(renders.clip_levels(linear), [None, None, None])
+        rgb = np.full_like(linear, 0.25)
+        self.assertIs(renders.white_star_cores(linear, rgb, renders.lum(linear), renders.lum(linear)), rgb)
+        self.assertTrue(np.array_equal(rgb, np.full_like(linear, 0.25)))
+
+
+def leaving_starnet(root: Path) -> Path:
+    """A stand-in for StarNet2 that takes the stars out as the real one does on a real master, and leaves under them
+    what the real one leaves: the starless image is the input with every star taken out (a 41 px median), plus a
+    little of each small star's pixel without its green (0.08 / 0.01 / 0.08 under a yellow star of a real night),
+    and a greenish patch where it took out the wide glow of a bright star."""
+    return stand_in_tool(
+        root,
+        "starnet2",
+        "import sys\n"
+        "import numpy as np\n"
+        "import tifffile\n"
+        "from scipy.ndimage import median_filter\n"
+        "args = sys.argv[1:]\n"
+        "source, starless, mask = args[args.index('-i') + 1], args[args.index('-o') + 1], args[args.index('-m') + 1]\n"
+        "data = tifffile.imread(source).astype(np.float32) / 65535\n"
+        "lum = lambda a: 0.2126 * a[..., 0] + 0.7152 * a[..., 1] + 0.0722 * a[..., 2]\n"
+        "out = median_filter(data, size=(41, 41, 1))\n"
+        "excess = np.clip(lum(data) - lum(out), 0, None)\n"
+        "top = np.unravel_index(np.argmax(lum(data)), excess.shape)\n"
+        "yy, xx = np.mgrid[:excess.shape[0], :excess.shape[1]]\n"
+        "glow = (excess > 0.1) & (np.hypot(yy - top[0], xx - top[1]) < 30)\n"
+        "small = (excess > 0.03) & ~glow\n"
+        "out[small] += 0.12 * excess[small][:, None] * np.array([1.0, 0.1, 1.0], np.float32)\n"
+        "out[glow] = np.clip(out[glow] + np.array([-0.04, 0.02, -0.04], np.float32), 0, None)\n"
+        "tifffile.imwrite(starless, np.round(np.clip(out, 0, 1) * 65535).astype(np.uint16), photometric='rgb')\n"
+        "tifffile.imwrite(mask, np.zeros(data.shape, np.uint16), photometric='rgb')\n",
+    )
+
+
+class NaturalStarsThroughTheSplit(unittest.TestCase):
+    """The stars of the renders of the natural preparation, once StarNet2 has taken them out and left what it leaves
+    under them (``leaving_starnet``): the stacking script's render step, as the application runs it."""
+
+    SHAPE = (560, 640)
+    CLIPPED = (280, 200)
+    SMALL = [(80 + 60 * (i // 7), 380 + 35 * (i % 7)) for i in range(28)]
+    BLUE, ORANGE = (480, 120), (480, 220)
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = Path(tempfile.mkdtemp())
+        (cls.root / "work" / "render").mkdir(parents=True)
+        rng = np.random.default_rng(8)
+        cloud = blob(cls.SHAPE, (300, 320), 120)
+        linear = np.stack([0.010 + 0.004 * cloud, 0.010 + 0.006 * cloud, 0.010 + 0.010 * cloud], axis=-1)
+        # Small yellowish stars whose red and blue spread a little wider than their green (the optics).
+        for y, x in cls.SMALL:
+            linear += 0.06 * np.stack([1.1 * blob(cls.SHAPE, (y, x), 1.8), blob(cls.SHAPE, (y, x), 1.5),
+                                       0.8 * blob(cls.SHAPE, (y, x), 1.8)], axis=-1)
+        linear += 0.12 * blob(cls.SHAPE, cls.BLUE, 1.6)[..., None] * np.array([0.55, 0.8, 1.35])
+        linear += 0.12 * blob(cls.SHAPE, cls.ORANGE, 1.6)[..., None] * np.array([1.4, 0.85, 0.45])
+        # One star brighter than the sensor holds, with a wide glow.
+        linear += bright_star(cls.SHAPE, cls.CLIPPED, clip=(0.90, 1.0, 0.89), widths=(5.0, 4.2, 5.6), peak=3.0)
+        linear += 0.05 * blob(cls.SHAPE, cls.CLIPPED, 14)[..., None]
+        linear += rng.normal(0, 0.0008, linear.shape)
+        master = cls.root / "master.fit"
+        fits.PrimaryHDU(np.moveaxis(np.clip(linear, 0, None), -1, 0).astype(np.float32)).writeto(master)
+        available, _ = pipeline_defs.load_pipelines([])
+        ids = ["raw", "dualband-correction", "hoo"]
+        plan = stack.Plan(frames={}, colour=True, pipelines=[available[i] for i in ids])
+        args = argparse.Namespace(work=cls.root / "work", out=cls.root / "out", name="N", trusted=[], pipelines_dir=[],
+                                  pipeline=ids, gradient_degree=1, black_percentile=0.05, deconv_fwhm=None,
+                                  contrast="strong", polished_engine="siril", capture_filter=None)
+        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
+            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), master, leaving_starnet(cls.root), None, {})
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def image(self, name: str) -> np.ndarray:
+        import tifffile
+
+        return tifffile.imread(self.root / "out" / f"N_{name}.tif").astype(np.float32) / 65535
+
+    def test_the_brightest_star_is_white_and_falls_off_without_a_flat_disc(self) -> None:
+        for name in ("raw", "raw_strong", "dualband-correction", "hoo"):
+            with self.subTest(render=name):
+                level = renders.lum(radial(self.image(name), self.CLIPPED, 24))
+                self.assertGreater(float(level[0]), 0.95, f"a white core: {np.round(level, 3)}")
+                # The core is clipped over about 8 px; 6 px past it the light has fallen, it does not stand on a plateau.
+                self.assertLess(float(level[14]), float(level[0]) - 0.05, f"no flat disc: {np.round(level, 3)}")
+                if name != "raw_strong":  # the strong contrast lifts the glow the stand-in leaves beyond 15 px
+                    dip = max(float(level[k + 1:].max() - level[k]) for k in range(len(level) - 1))
+                    self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
+
+    def test_no_green_patch_beside_the_brightest_star(self) -> None:
+        for name in ("raw", "raw_strong", "dualband-correction"):
+            with self.subTest(render=name):
+                profile = radial(self.image(name), self.CLIPPED, 40)[8:]
+                green = profile[:, 1] - np.maximum(profile[:, 0], profile[:, 2])
+                self.assertLess(float(green.max()), 0.01, f"green beside the star: {np.round(green, 3)}")
+
+    def test_the_small_stars_have_no_violet_centre(self) -> None:
+        # The HOO palette paints the nebula around: a looser bound there.  The dual-band correction is left out: it
+        # turns red towards red-violet by design, and a yellow star with it.
+        for name, bound in (("raw", 0.02), ("raw_strong", 0.02), ("hoo", 0.03)):
+            image = self.image(name)
+            with self.subTest(render=name):
+                centres = np.asarray([image[y - 1:y + 2, x - 1:x + 2].reshape(-1, 3).mean(axis=0) for y, x in self.SMALL])
+                violet = np.minimum(centres[:, 0], centres[:, 2]) - centres[:, 1]
+                self.assertLess(float(violet.max()), bound, f"red and blue above green: {np.round(violet, 3)}")
+
+    def test_the_rim_of_a_star_loses_its_lavender_and_the_star_keeps_its_colour(self) -> None:
+        image = self.image("raw_strong")
+        rims = np.asarray([radial(image, star, 5)[2:5].mean(axis=0) for star in self.SMALL])
+        lavender = np.minimum(rims[:, 0], rims[:, 2]) - rims[:, 1]
+        self.assertLess(float(np.median(lavender)), 0.005, f"lavender rims: {np.round(lavender, 3)}")
+        blue, orange = (image[y - 1:y + 2, x - 1:x + 2].reshape(-1, 3).mean(axis=0) for y, x in (self.BLUE, self.ORANGE))
+        self.assertGreater(float(blue[2] - blue[0]), 0.04, f"a blue star stays blue: {np.round(blue, 3)}")
+        self.assertGreater(float(orange[0] - orange[2]), 0.04, f"an orange star stays orange: {np.round(orange, 3)}")
+
+
+class ClippedStarColours(unittest.TestCase):
+    """Three stars brighter than the sensor holds -- a blue, an orange and a white one --, each with the optics' halo
+    (red and blue wider than green), through the stacking script's render step and a stand-in StarNet2: each halo
+    takes its star's colour on the blue-orange axis, never magenta nor green, and every core is white."""
+
+    SHAPE = (520, 760)
+    STARS = {"blue": ((260, 150), (0.7, 1.0, 1.3)), "orange": ((260, 380), (1.4, 1.0, 0.6)),
+             "white": ((260, 610), (1.0, 1.0, 1.0))}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = Path(tempfile.mkdtemp())
+        (cls.root / "work" / "render").mkdir(parents=True)
+        rng = np.random.default_rng(12)
+        linear = np.full((*cls.SHAPE, 3), 0.010, np.float64)
+        yy, xx = np.mgrid[: cls.SHAPE[0], : cls.SHAPE[1]]
+        for (y, x), colour in cls.STARS.values():
+            # The star's colour in every channel, clipped at one level per channel (the camera's); red and blue spread
+            # wider than green (the optics), so the halo of even the white star is magenta before the render.
+            r2 = (yy - y) ** 2 + (xx - x) ** 2
+            linear += np.stack([np.minimum(4.0 * colour[c] * np.exp(-r2 / (2 * w * w)), clip)
+                                for c, (w, clip) in enumerate(zip((4.2, 4.0, 4.2), (0.90, 1.0, 0.89)))], axis=-1)
+        for y, x in zip(rng.integers(20, 500, 60), rng.integers(20, 740, 60)):
+            linear += 0.15 * blob(cls.SHAPE, (y, x), 1.4)[..., None] * np.array([1.0, 0.95, 0.85])
+        linear += rng.normal(0, 0.0008, linear.shape)
+        master = cls.root / "master.fit"
+        fits.PrimaryHDU(np.moveaxis(np.clip(linear, 0, None), -1, 0).astype(np.float32)).writeto(master)
+        available, _ = pipeline_defs.load_pipelines([])
+        plan = stack.Plan(frames={}, colour=True, pipelines=[available["raw"]])
+        args = argparse.Namespace(work=cls.root / "work", out=cls.root / "out", name="N", trusted=[], pipelines_dir=[],
+                                  pipeline=["raw"], gradient_degree=1, black_percentile=0.05, deconv_fwhm=None,
+                                  contrast="strong", polished_engine="siril", capture_filter=None)
+        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
+            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), master, leaving_starnet(cls.root), None, {})
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def profiles(self, name: str) -> dict[str, np.ndarray]:
+        import tifffile
+
+        image = tifffile.imread(self.root / "out" / f"N_{name}.tif").astype(np.float32) / 65535
+        return {key: radial(image, centre, 24) for key, (centre, _) in self.STARS.items()}
+
+    def test_each_halo_takes_its_stars_colour_and_the_cores_stay_white(self) -> None:
+        for name in ("raw", "raw_strong"):
+            profiles = self.profiles(name)
+            halos = {}
+            for key, profile in profiles.items():
+                with self.subTest(render=name, star=key):
+                    core = profile[0]
+                    self.assertGreater(float(core.min()), 0.93, f"a white core: {np.round(core, 3)}")
+                    halo = profile[10:18].mean(axis=0)
+                    level = float(renders.lum(halo[None])[0])
+                    halos[key] = float(halo[2] - halo[0]) / level
+                    magenta = float(0.5 * (halo[0] + halo[2]) - halo[1]) / level
+                    self.assertLess(abs(magenta), 0.05, f"neither magenta nor green: {np.round(halo, 3)}")
+                    luminance = renders.lum(profile)
+                    dip = max(float(luminance[k + 1:].max() - luminance[k]) for k in range(len(luminance) - 1))
+                    self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(luminance, 3)}")
+            # Held back by the star layer alone, a coloured star's halo kept a third of its colour (0.17); it now
+            # shows it (0.43), and the white star's stays white.
+            with self.subTest(render=name):
+                self.assertGreater(halos["blue"], 0.3, f"a bluish halo: {halos}")
+                self.assertLess(halos["orange"], -0.3, f"a warm halo: {halos}")
+                self.assertLess(abs(halos["white"]), 0.04, f"a white halo: {halos}")
+
+
+class SplitCleaning(unittest.TestCase):
+    """What the renders of the natural preparation do to StarNet2's split, where there is no star."""
+
+    def layers(self) -> tuple[np.ndarray, np.ndarray]:
+        rng = np.random.default_rng(5)
+        nebula = np.clip(np.stack([0.10 + 0.20 * blob(SHAPE, (80, 60), 30), 0.10 + 0.05 * blob(SHAPE, (80, 60), 30),
+                                   0.12 + 0.10 * blob(SHAPE, (80, 140), 25)], axis=-1)
+                         + rng.normal(0, 0.01, (*SHAPE, 3)), 0, 1).astype(np.float32)
+        stars = np.zeros_like(nebula)
+        stars += 0.8 * blob(SHAPE, (40, 150), 1.5)[..., None] * np.array([1.0, 0.9, 0.7], np.float32)
+        return nebula, stars
+
+    def test_an_empty_star_layer_leaves_every_render_as_it_was(self) -> None:
+        nebula, _ = self.layers()
+        stars = np.zeros_like(nebula)
+        self.assertIs(renders.natural_split(nebula, stars)[1], stars)
+        self.assertIs(renders.starless_around_stars(nebula, stars), nebula)
+        np.testing.assert_array_equal(renders.natural_deep(nebula, stars),
+                                      np.clip(1 - (1 - renders.deep_nebula_tone(nebula)) * (1 - renders.controlled_stars(stars, 0.52)), 0, 1))
+        image = renders.natural_deep(nebula, stars)
+        self.assertIs(renders.with_clipped_star_light(image, None), image)
+
+    def test_the_nebula_away_from_the_stars_does_not_move(self) -> None:
+        nebula, stars = self.layers()
+        from scipy.ndimage import binary_dilation
+
+        far = ~binary_dilation(gaussian_filter(renders.lum(stars), 1.0) >= 1e-4, iterations=3)
+        np.testing.assert_array_equal(renders.starless_around_stars(nebula, stars)[far], nebula[far])
+        for render in (renders.natural_deep, renders.dualband_deep, renders.hoo_deep):
+            with self.subTest(render=render.__name__):
+                before = render(nebula, np.zeros_like(stars))
+                after = render(nebula, stars)
+                self.assertLess(float(np.abs(after - before)[binary_dilation(~far, iterations=30) == 0].max()), 1e-6)
+
+    def test_no_green_patch_where_starnet_took_out_a_wide_glow(self) -> None:
+        """The wide, white glow of a bright star in the star layer, and under it the greenish patch StarNet2 leaves
+        when it takes such a glow out (0.03 / 0.07 / 0.03 on a real master)."""
+        nebula = np.full((*SHAPE, 3), 0.05, np.float32)
+        patch = blob(SHAPE, (80, 100), 16)[..., None] * np.array([0.03, 0.07, 0.03], np.float32)
+        nebula = (nebula + patch).astype(np.float32)
+        stars = (0.7 * blob(SHAPE, (80, 100), 12))[..., None].repeat(3, axis=-1).astype(np.float32)
+        for render in (renders.natural_deep, renders.dualband_deep):
+            with self.subTest(render=render.__name__):
+                profile = radial(render(nebula, stars), (80, 100), 30)
+                green = profile[:, 1] - np.maximum(profile[:, 0], profile[:, 2])
+                self.assertLess(float(green.max()), 0.015, f"green around the star: {np.round(green, 3)}")
+
+    def test_on_a_bright_nebula_the_rim_of_a_star_loses_its_lavender_and_its_core_keeps_its_colour(self) -> None:
+        """Over a bright nebula the star layer gives a star its colour: the lavender rim of a white star (red and
+        blue wider than green) is taken back there, while the blue or orange core of a coloured star stays."""
+        nebula = np.full((*SHAPE, 3), 0.35, np.float32)
+        yy, xx = np.mgrid[: SHAPE[0], : SHAPE[1]]
+        white, blue, orange = (40, 50), (80, 120), (120, 160)
+        stars = np.zeros_like(nebula)
+        for (y, x), colour in ((white, (1.0, 1.0, 1.0)), (blue, (0.6, 0.8, 1.2)), (orange, (1.3, 0.85, 0.5))):
+            r2 = (yy - y) ** 2 + (xx - x) ** 2
+            for c, (gain, width) in enumerate(zip(colour, (4.0, 3.0, 4.0))):
+                stars[..., c] += 0.5 * gain * np.exp(-r2 / (2 * width * width))
+        stars = np.clip(stars, 0, 1).astype(np.float32)
+        plain, rimmed = renders.natural_deep(nebula, stars), renders.natural_deep(nebula, renders.star_rims(stars))
+        before, after = radial(plain, white, 10), radial(rimmed, white, 10)
+        lavender = lambda p: float(np.mean(np.minimum(p[5:10, 0], p[5:10, 2]) - p[5:10, 1]))
+        self.assertGreater(lavender(before), 0.005, f"a lavender rim to begin with: {np.round(before[5:10], 3)}")
+        self.assertLess(lavender(after), 0.3 * lavender(before), f"the rim: {np.round(after[5:10], 3)}")
+        for centre in (blue, orange):
+            with self.subTest(star=centre):
+                core_before, core_after = plain[centre][2] - plain[centre][0], rimmed[centre][2] - rimmed[centre][0]
+                self.assertAlmostEqual(float(core_after), float(core_before), delta=0.01)
+
+    def test_a_master_without_a_clipped_star_gives_no_light_back(self) -> None:
+        linear = np.full((*SHAPE, 3), 0.02, np.float32) + 0.3 * blob(SHAPE, (80, 100), 1.5)[..., None]
+        light: list = []
+        renders.native_from_linear(linear, None, light)
+        self.assertEqual(light, [None])
 
 
 class _stderr:

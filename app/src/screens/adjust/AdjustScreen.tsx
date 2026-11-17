@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
@@ -17,6 +27,14 @@ import {
   type AdjustState,
   type SavedAdjustment,
 } from "../../lib/bridge";
+import { fitSize, type Size } from "../../lib/adjustLayout";
+import {
+  CURTAIN_START,
+  curtainFromKey,
+  curtainFromPointer,
+  curtainToggle,
+  labelVisible,
+} from "../../lib/compareCurtain";
 import { formatError } from "../../lib/format";
 import {
   ADJUST_SPECS,
@@ -29,6 +47,14 @@ import {
   type AdjustSpec,
   type AdjustValues,
 } from "../../lib/imageAdjust";
+import {
+  cleanTurns,
+  turnBy,
+  turnMatrix,
+  turnStateKey,
+  turnedSize,
+  type Turns,
+} from "../../lib/quarterTurns";
 import { formatSize } from "../../lib/written";
 import { SavedAdjustments } from "./SavedAdjustments";
 import {
@@ -50,6 +76,46 @@ async function pixelsOf(blob: Blob): Promise<ImageData> {
   return context.getImageData(0, 0, canvas.width, canvas.height);
 }
 
+/** The size of the box an element fills, followed as the window changes. */
+function useBoxSize(element: RefObject<HTMLElement | null>): Size {
+  const [size, setSize] = useState<Size>({ width: 0, height: 0 });
+  useLayoutEffect(() => {
+    const node = element.current;
+    if (!node) return;
+    const measure = () =>
+      setSize((now) =>
+        now.width === node.clientWidth && now.height === node.clientHeight
+          ? now
+          : { width: node.clientWidth, height: node.clientHeight },
+      );
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const watcher = new ResizeObserver(measure);
+    watcher.observe(node);
+    return () => watcher.disconnect();
+  }, [element]);
+  return size;
+}
+
+/** `image` drawn on `target` turned by `turns` quarter turns clockwise: the
+ * canvas takes the turned size, the pixels are only moved. */
+function paintTurned(
+  target: HTMLCanvasElement,
+  image: ImageData,
+  turns: Turns,
+): void {
+  const scratch = document.createElement("canvas");
+  scratch.width = image.width;
+  scratch.height = image.height;
+  scratch.getContext("2d")!.putImageData(image, 0, 0);
+  const size = turnedSize(turns, image.width, image.height);
+  target.width = size.width;
+  target.height = size.height;
+  const context = target.getContext("2d")!;
+  context.setTransform(...turnMatrix(turns, image.width, image.height));
+  context.drawImage(scratch, 0, 0);
+}
+
 /** The wait before the smoothing of the preview is asked (the slider moves). */
 const SMOOTH_DEBOUNCE_MS = 250;
 
@@ -58,11 +124,12 @@ function sameValues(a: AdjustValues, b: AdjustValues): boolean {
 }
 
 /**
- * « Régler l'image »: the preview over the whole
- * width -- « Avant » / « Après » --, the five settings in a band under it,
- * three per line, each with its value and its help, the render's value
- * marked on the track; « Réinitialiser » brings every setting back to the
- * render's. The window computes the preview (1080 px) itself, at once; the
+ * « Régler l'image »: two columns -- the preview at the largest size the
+ * window leaves it, never cropped, and the panel of the five settings that
+ * scrolls by itself, its foot (« Annuler », « Enregistrer l'image réglée »)
+ * always in sight --, each setting with its value and its help, the render's
+ * value marked on the track; « Réinitialiser » brings every setting back to
+ * the render's. In a narrow window the panel goes under the image. The window computes the preview (1080 px) itself, at once; the
  * smoothing alone asks the script (≈ 1 s, the star of the application says
  * so). « Enregistrer l'image réglée » computes the whole image beside the
  * render, never over it.
@@ -91,7 +158,12 @@ export function AdjustScreen({
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<AdjustValues>({ ...NEUTRAL });
   const [saved, setSaved] = useState<AdjustValues | null>(null);
-  const [view, setView] = useState<"before" | "after">("after");
+  // The quarter turns, clockwise, of the image to write, and those of the
+  // image set already saved.
+  const [turns, setTurns] = useState<Turns>(0);
+  const [savedTurns, setSavedTurns] = useState<Turns>(0);
+  // The share of the image, from the left, that shows « Avant ».
+  const [curtain, setCurtain] = useState(CURTAIN_START);
   const [stars, setStars] = useState<AdjustStars | "running" | "failed">(
     "todo",
   );
@@ -101,12 +173,18 @@ export function AdjustScreen({
   // sliders hold its values.
   const [applied, setApplied] = useState<SavedAdjustment | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const beforeCanvas = useRef<HTMLCanvasElement>(null);
+  const turnsRef = useRef<Turns>(0);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stage = useBoxSize(stageRef);
   const layers = useRef<{
     base: ImageData | null;
     mask: ImageData | null;
     stars: ImageData | null;
     smoothed: Map<number, ImageData>;
-  }>({ base: null, mask: null, stars: null, smoothed: new Map() });
+    // The settings on the preview, before the turn: a turn alone redraws it.
+    after: ImageData | null;
+  }>({ base: null, mask: null, stars: null, smoothed: new Map(), after: null });
   const [loaded, setLoaded] = useState(0);
   const lastMs = useRef<number | null>(null);
 
@@ -135,6 +213,9 @@ export function AdjustScreen({
         if (answer.state) {
           setValues({ ...answer.state.values });
           setSaved({ ...answer.state.values });
+          const reopened = cleanTurns(answer.state.quarterTurns);
+          setTurns(reopened);
+          setSavedTurns(reopened);
         }
         setLoaded((n) => n + 1);
       } catch (caught) {
@@ -207,11 +288,13 @@ export function AdjustScreen({
     };
   }, [values.smoothing, open, path]);
 
-  // The preview drawn: the render (« Avant »), or the settings on it.
+  // The preview drawn: the render (« Avant ») under, the settings on it
+  // (« Après ») over, the curtain showing one or the other.
   useEffect(() => {
-    const target = canvas.current;
+    const before = beforeCanvas.current;
+    const after = canvas.current;
     const { base, mask } = layers.current;
-    if (!target || !base || !mask) return;
+    if (!before || !after || !base || !mask) return;
     const started = performance.now();
     const source =
       values.smoothing > 0
@@ -220,14 +303,7 @@ export function AdjustScreen({
           null)
         : base;
     if (!source) return;
-    target.width = base.width;
-    target.height = base.height;
-    const context = target.getContext("2d")!;
-    if (view === "before") {
-      context.putImageData(base, 0, 0);
-      return;
-    }
-    const out = context.createImageData(base.width, base.height);
+    const out = new ImageData(base.width, base.height);
     adjustPixels(
       source.data,
       layers.current.stars?.data ?? null,
@@ -235,14 +311,28 @@ export function AdjustScreen({
       values,
       out.data,
     );
-    context.putImageData(out, 0, 0);
+    layers.current.after = out;
+    paintTurned(before, base, turnsRef.current);
+    paintTurned(after, out, turnsRef.current);
     lastMs.current = Math.round(performance.now() - started);
-    target.dataset.previewMs = String(lastMs.current);
-  }, [values, view, loaded]);
+    after.dataset.previewMs = String(lastMs.current);
+  }, [values, loaded]);
+
+  // A turn alone: the two pictures drawn again, turned, nothing recomputed.
+  useEffect(() => {
+    turnsRef.current = turns;
+    const before = beforeCanvas.current;
+    const after = canvas.current;
+    const { base } = layers.current;
+    const out = layers.current.after;
+    if (!before || !after || !base || !out) return;
+    paintTurned(before, base, turns);
+    paintTurned(after, out, turns);
+  }, [turns]);
 
   const change = useCallback((name: AdjustName, value: number) => {
     setValues((current) => ({ ...current, [name]: value }));
-    setView("after");
+    setCurtain(CURTAIN_START);
   }, []);
 
   // A saved setting only moves the sliders of the preview; nothing is
@@ -252,7 +342,7 @@ export function AdjustScreen({
     const appliedBefore = applied;
     setValues({ ...saved.values });
     setApplied(saved);
-    setView("after");
+    setCurtain(CURTAIN_START);
     notify({
       tone: "success",
       text: t("adjust.saved.applied", { name: saved.name }),
@@ -279,7 +369,7 @@ export function AdjustScreen({
   const save = () => {
     setSaving(true);
     setError(null);
-    void imageAdjustSave(path, values)
+    void imageAdjustSave(path, values, turns)
       .then((state) => {
         setSaving(false);
         onSaved(state);
@@ -291,105 +381,133 @@ export function AdjustScreen({
   };
 
   const neutral = isNeutral(values);
-  const unchanged = neutral || (saved !== null && sameValues(values, saved));
+  // Nothing to write: every setting is the render's and the image is not
+  // turned, or the image set already saved is exactly this one.
+  const unchanged =
+    (neutral && turns === 0) ||
+    (saved !== null && sameValues(values, saved) && turns === savedTurns);
   const canSave = !!open && !unchanged && !smoothing && !saving;
-  const badge =
-    view === "before"
-      ? t("adjust.badge.before")
-      : neutral
-        ? t("adjust.badge.unchanged")
-        : t("adjust.badge.after");
+
+  const shape = turnedSize(
+    turns,
+    open?.previewWidth ?? 0,
+    open?.previewHeight ?? 0,
+  );
+  const fit = fitSize(stage.width, stage.height, shape.width, shape.height);
+  const stateKey = turnStateKey(turns);
 
   return (
     <div className="as-page as-adjust">
-      <PageTop>
-        <button
-          type="button"
-          className="as-button as-button--link as-back"
-          onClick={back.onClick}
-        >
-          <Icon name="back" className="as-button__icon" />
-          {back.label}
-        </button>
-        <p className="as-page__eyebrow">{eyebrow}</p>
-        <h1 className="as-page__title">{t("adjust.title")}</h1>
-        <p className={helpTextClassName}>
-          {t("adjust.line", {
-            target,
-            render,
-            format: "PNG",
-            size: open ? formatSize(t, open.size, locale) : "…",
-          })}
-        </p>
-      </PageTop>
-      <section className="as-card as-adjust__zone">
-        <div className="as-adjust__bar">
-          <div className="as-segments" role="group">
-            {(["before", "after"] as const).map((item) => (
+      <div className="as-adjust__main">
+        <PageTop>
+          <button
+            type="button"
+            className="as-button as-button--link as-back"
+            onClick={back.onClick}
+          >
+            <Icon name="back" className="as-button__icon" />
+            {back.label}
+          </button>
+          <p className="as-page__eyebrow">{eyebrow}</p>
+          <h1 className="as-page__title">{t("adjust.title")}</h1>
+          <p className={helpTextClassName}>
+            {t("adjust.line", {
+              target,
+              render,
+              format: "PNG",
+              size: open ? formatSize(t, open.size, locale) : "…",
+            })}
+          </p>
+        </PageTop>
+        <section className="as-adjust__zone">
+          <div className="as-adjust__tools">
+            {stateKey && (
+              <p className={`${helpTextClassName} as-adjust__turned`}>
+                {t(stateKey)}
+                <button
+                  type="button"
+                  className={buttonClassName("link")}
+                  onClick={() => setTurns(0)}
+                >
+                  {t("adjust.rotate.reset")}
+                </button>
+              </p>
+            )}
+            <span className="as-wizard-foot__gap" />
+            {(["left", "right"] as const).map((direction) => (
               <button
-                key={item}
+                key={direction}
                 type="button"
-                className={
-                  view === item ? "as-segment is-chosen" : "as-segment"
-                }
-                aria-pressed={view === item}
-                onClick={() => setView(item)}
+                className={buttonClassName("tertiary")}
+                disabled={!open}
+                onClick={() => setTurns((now) => turnBy(now, direction))}
               >
-                {t(item === "before" ? "adjust.before" : "adjust.after")}
+                <Icon
+                  name={direction === "left" ? "rotateLeft" : "rotateRight"}
+                  className="as-button__icon"
+                />
+                {t(
+                  direction === "left"
+                    ? "adjust.rotate.left"
+                    : "adjust.rotate.right",
+                )}
               </button>
             ))}
           </div>
-          <span className={helpTextClassName}>{t("adjust.previewNote")}</span>
-        </div>
-        <div className="as-adjust__preview">
-          {open ? (
-            <>
-              <canvas
-                ref={canvas}
-                className="as-adjust__canvas"
-                aria-label={badge}
+          <div className="as-adjust__preview" ref={stageRef}>
+            {open ? (
+              <CompareFrame
+                fit={fit}
+                position={curtain}
+                onPosition={setCurtain}
+                before={beforeCanvas}
+                after={canvas}
+                veil={
+                  smoothing && curtain < 100 ? (
+                    <div className="as-adjust__veil">
+                      <Waiting
+                        size="inline"
+                        label={t("adjust.smoothing.computing")}
+                      />
+                    </div>
+                  ) : null
+                }
               />
-              <span className="as-adjust__pill">{badge}</span>
-              {smoothing && view === "after" && (
-                <div className="as-adjust__veil">
-                  <Waiting
-                    size="inline"
-                    label={t("adjust.smoothing.computing")}
-                  />
-                </div>
-              )}
-            </>
-          ) : (
-            !error && <Waiting label={t("adjust.wait.open")} />
-          )}
-        </div>
-        <div className="as-adjust__panel">
-          <div className="as-adjust__panel-head">
-            <h2 className="as-adjust__panel-title">{t("adjust.panel")}</h2>
-            <span className={badgeClassName(neutral ? "outline" : "neutral")}>
-              {neutral ? t("adjust.panel.asRender") : t("adjust.panel.changed")}
-            </span>
-            {applied && sameValues(values, applied.values) && (
-              <span className="as-adjust__applied">
-                {t("adjust.saved.onPreview", { name: applied.name })}
-              </span>
+            ) : (
+              !error && <Waiting label={t("adjust.wait.open")} />
             )}
-            <span className="as-wizard-foot__gap" />
-            <SavedAdjustments
-              values={values}
-              neutral={neutral}
-              ready={!!open}
-              onApply={apply}
-            />
-            <button
-              type="button"
-              className={buttonClassName("link")}
-              disabled={neutral || !open}
-              onClick={reset}
-            >
-              {t("adjust.reset")}
-            </button>
           </div>
+          <span className={helpTextClassName}>{t("adjust.previewNote")}</span>
+        </section>
+      </div>
+      <aside className="as-adjust__panel">
+        <div className="as-adjust__panel-head">
+          <h2 className="as-adjust__panel-title">{t("adjust.panel")}</h2>
+          <span className={badgeClassName(neutral ? "outline" : "neutral")}>
+            {neutral ? t("adjust.panel.asRender") : t("adjust.panel.changed")}
+          </span>
+          {applied && sameValues(values, applied.values) && (
+            <span className="as-adjust__applied">
+              {t("adjust.saved.onPreview", { name: applied.name })}
+            </span>
+          )}
+          <span className="as-wizard-foot__gap" />
+          <SavedAdjustments
+            values={values}
+            neutral={neutral}
+            ready={!!open}
+            onApply={apply}
+          />
+          <button
+            type="button"
+            className={buttonClassName("link")}
+            disabled={neutral || !open}
+            onClick={reset}
+          >
+            {t("adjust.reset")}
+          </button>
+        </div>
+        <div className="as-adjust__scroll">
           <div className="as-adjust__sliders">
             {ADJUST_SPECS.map((spec) => (
               <AdjustSlider
@@ -409,35 +527,148 @@ export function AdjustScreen({
             ))}
           </div>
         </div>
-      </section>
-      <Notice tone="error">{error}</Notice>
-      <div className="as-step-foot as-wizard-foot">
-        <div className="as-wizard-foot__message">
-          {saving ? (
-            <Waiting size="inline" label={t("adjust.saving")} />
-          ) : (
-            <p className={helpTextClassName} role="status">
-              {neutral ? t("adjust.foot.unchanged") : t("adjust.foot.kept")}
-            </p>
-          )}
+        <Notice tone="error">{error}</Notice>
+        <div className="as-adjust__foot as-wizard-foot">
+          <div className="as-wizard-foot__message">
+            {saving ? (
+              <Waiting size="inline" label={t("adjust.saving")} />
+            ) : (
+              <p className={helpTextClassName} role="status">
+                {neutral && turns === 0
+                  ? t("adjust.foot.unchanged")
+                  : t("adjust.foot.kept")}
+              </p>
+            )}
+          </div>
+          <div className="as-wizard-foot__row">
+            <button
+              type="button"
+              className={`${buttonClassName("link")} as-wizard-foot__previous`}
+              onClick={back.onClick}
+            >
+              {t("common.cancel")}
+            </button>
+            <span className="as-wizard-foot__gap" />
+            <button
+              type="button"
+              className={`${canSave ? buttonClassName("primary") : inactiveButtonClassName} as-adjust__save`}
+              disabled={!canSave}
+              onClick={save}
+            >
+              {t("adjust.save")}
+            </button>
+          </div>
         </div>
-        <div className="as-wizard-foot__row">
-          <button
-            type="button"
-            className={`${buttonClassName("link")} as-wizard-foot__previous`}
-            onClick={back.onClick}
-          >
-            {t("common.cancel")}
-          </button>
-          <span className="as-wizard-foot__gap" />
-          <button
-            type="button"
-            className={`${canSave ? buttonClassName("primary") : inactiveButtonClassName} as-adjust__save`}
-            disabled={!canSave}
-            onClick={save}
-          >
-            {t("adjust.save")}
-          </button>
+      </aside>
+    </div>
+  );
+}
+
+/** The radius of the handle (2.25 rem at 16 px, border included). */
+const HANDLE_RADIUS_PX = 18;
+
+/** The image with its curtain: « Avant » under, « Après » over it, clipped
+ * to the right of the bar; the bar and its handle (a slider, reached by Tab)
+ * are in the theme's amber. Drag with the mouse or a finger anywhere on the
+ * image, arrows 2 % (Shift 10 %), Home / End the two edges, a double click on
+ * the bar all « Avant » / all « Après ». */
+function CompareFrame({
+  fit,
+  position,
+  onPosition,
+  before,
+  after,
+  veil,
+}: {
+  fit: Size;
+  position: number;
+  onPosition: (position: number) => void;
+  before: RefObject<HTMLCanvasElement | null>;
+  after: RefObject<HTMLCanvasElement | null>;
+  veil: ReactNode;
+}) {
+  const { t } = useI18n();
+  const frame = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  // The handle never leaves the image: at an edge it leans in by its radius.
+  const bar = (position / 100) * fit.width;
+  const lean =
+    Math.max(0, HANDLE_RADIUS_PX - bar) -
+    Math.max(0, bar - (fit.width - HANDLE_RADIUS_PX));
+  const pointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const box = frame.current?.getBoundingClientRect();
+    if (box) onPosition(curtainFromPointer(event.clientX, box.left, box.width));
+  };
+  return (
+    <div
+      ref={frame}
+      className="as-adjust__frame"
+      style={{ width: fit.width, height: fit.height }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        dragging.current = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        pointer(event);
+      }}
+      onPointerMove={(event) => {
+        if (dragging.current) pointer(event);
+      }}
+      onPointerUp={() => {
+        dragging.current = false;
+      }}
+      onPointerCancel={() => {
+        dragging.current = false;
+      }}
+    >
+      <canvas
+        ref={before}
+        className="as-adjust__canvas"
+        aria-label={t("adjust.before")}
+      />
+      <canvas
+        ref={after}
+        className="as-adjust__canvas as-adjust__canvas--over"
+        style={{ clipPath: `inset(0 0 0 ${position}%)` }}
+        aria-label={t("adjust.after")}
+      />
+      {labelVisible("before", position, fit.width) && (
+        <span className="as-adjust__side as-adjust__side--before">
+          {t("adjust.before")}
+        </span>
+      )}
+      {labelVisible("after", position, fit.width) && (
+        <span className="as-adjust__side as-adjust__side--after">
+          {t("adjust.after")}
+        </span>
+      )}
+      {veil}
+      <div
+        className="as-adjust__rule"
+        style={{ left: `${position}%` }}
+        onDoubleClick={() => onPosition(curtainToggle(position))}
+      >
+        <div
+          className="as-adjust__handle"
+          role="slider"
+          tabIndex={0}
+          style={{ marginLeft: lean }}
+          aria-label={t("adjust.compare")}
+          aria-orientation="horizontal"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(position)}
+          aria-valuetext={t("adjust.compare.value", {
+            percent: Math.round(position),
+          })}
+          onKeyDown={(event) => {
+            const next = curtainFromKey(position, event.key, event.shiftKey);
+            if (next === null) return;
+            event.preventDefault();
+            onPosition(next);
+          }}
+        >
+          <Icon name="chevron" className="as-adjust__chevron is-left" />
+          <Icon name="chevron" className="as-adjust__chevron" />
         </div>
       </div>
     </div>

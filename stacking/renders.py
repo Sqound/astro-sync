@@ -11,8 +11,11 @@ their ``entry`` field as ``renders:<function>``; only the functions listed in
 ``RENDERS`` can be named:
 
 - ``natural_deep`` (pipeline ``raw``): the camera's native RGB ratios, never
-  remapped; a soft shadow toe, a gentle lift of the faint signal, restrained
-  stars.  The pipeline's current natural reference.
+  remapped (only the cores the sensor clipped, which have none, are made
+  white: ``white_star_cores``); a soft shadow toe, a gentle lift of the faint
+  signal, restrained stars (what StarNet2 leaves under them
+  cleaned: ``natural_split``, ``starless_around_stars``; the light of the clipped
+  ones given back: ``with_clipped_star_light``).  The pipeline's current natural reference.
 - ``dualband_deep`` (pipeline ``dualband-correction``): exactly the same
   luminance treatment, then one global, continuous colour transform (green
   towards cyan, red towards red-violet, a slight blue-violet balance) that
@@ -462,24 +465,252 @@ def prepare_native(
     display_scale: float | None = None,
     black: Sequence[float] | None = None,
     measured: dict[str, object] | None = None,
+    light: list[np.ndarray | None] | None = None,
 ) -> np.ndarray:
     """The natural display image of a master.
 
     The display is two numbers: the black point (per channel) and the stretch scale.  They are measured on
     the image unless ``black`` and ``display_scale`` impose them -- the plan's milestones are shown at the
     level of the image of the plan --; ``measured`` (when given) receives the pair used, as
-    ``measured["black"]`` and ``measured["scale"]``.
+    ``measured["black"]`` and ``measured["scale"]``.  ``light`` (a list, when given) receives the clipped stars'
+    light (``clipped_star_light``) the render gives back.
     """
     linear = calibrated_linear(source, gradient_degree, black_percentile, deconv_fwhm, black, measured)
     scale = display_scale if display_scale is not None else stretch_scale(linear)
     if measured is not None:
         measured["scale"] = float(scale)
     note_stretched(linear)
-    return native_from_linear(linear, scale)
+    return native_from_linear(linear, scale, light)
 
 
-def native_from_linear(linear: np.ndarray, display_scale: float | None = None) -> np.ndarray:
-    """The natural display stretch of a prepared linear image (what ``prepare_native`` ends with)."""
+# The cores of the stars the sensor clipped, in the natural display.  A clipped core has no colour of its own: its
+# plateau takes the ratio of the channels' clip levels, pushed again by the neutral-sky gains (violet, green or
+# cyan, never the star's), and the edge of the plateau, where each channel leaves its clip level at its own radius
+# (the optics spread red and blue wider than green), is strongly coloured.  The luminance stretch lifts that edge
+# to the top of the range with its colour ratios, a channel passes 1, and the roll by the brightest channel darkens
+# the pixel under the core it surrounds: a dark, violet ring around a coloured centre, which StarNet2, the
+# composition of the render and every later contrast or colour step only make stronger.  Around such a core, and
+# only there (``near_stars``), the natural display makes the core neutral at its luminance, rolls the luminance
+# instead of the brightest channel, brings a channel past 1 towards white at the same luminance (``into_gamut``)
+# and lets the highlights fade to white, as the polished render does.  A master without a clipped core is shown
+# as before, to the bit.
+NATURAL_ROLL_KNEE = 0.72  # display level above which the natural stretch rolls its highlights
+# A clipped channel holds its clip level over a plateau; an unclipped star peaks on a single pixel of the 3 x 3
+# median (a Gaussian stays within 0.2 % of its peak over a tenth of its width only).
+CLIP_PLATEAU_PIXELS = 5  # pixels of the 3 x 3 median at the clip level, from which a channel counts as clipped
+CLIP_PLATEAU_TOLERANCE = 0.002  # share of the clip level within which a pixel stands on the plateau
+# The clip level is looked for among the brightest pixels of a channel only (the full 3 x 3 median of a 24 Mpx
+# frame takes seconds): those at least ``CLIP_SEARCH_SHARE`` of its ``CLIP_SEARCH_RANK``-th brightest pixel, so a
+# few hot pixels left by the stacking cannot hide the plateau.
+CLIP_SEARCH_RANK = 50
+CLIP_SEARCH_SHARE = 0.5
+# The work around the clipped cores is done in boxes: ``STAR_BOX_MARGIN`` px around each core covers the reach of
+# ``near_stars`` and of the smoothings (1 + 4 + 6 + 8 px), so a box gives the same pixels as the whole frame would.
+STAR_BOX_MARGIN = 32
+STAR_BOX_BLOCK = 16  # the grid (px) on which nearby cores are grouped into one box
+
+
+def natural_roll(x: np.ndarray) -> np.ndarray:
+    """The highlight roll of the natural display, on any display value (the curve ``native_from_linear`` rolls the
+    brightest channel with)."""
+    over = np.maximum(x - NATURAL_ROLL_KNEE, 0)
+    return np.where(x > NATURAL_ROLL_KNEE, NATURAL_ROLL_KNEE + over / (1 + 1.9 * over), x)
+
+
+def mask_boxes(
+    mask: np.ndarray, margin: int, block: int = STAR_BOX_BLOCK, disjoint: bool = True,
+) -> list[tuple[slice, slice]]:
+    """Boxes that hold every pixel of ``mask`` with ``margin`` px around it (the image's edges cut them); ``disjoint``:
+    no two of them overlap."""
+    from scipy.ndimage import binary_dilation, find_objects, label
+
+    height, width = mask.shape
+    rows, cols = -(-height // block), -(-width // block)
+    padded = np.zeros((rows * block, cols * block), bool)
+    padded[:height, :width] = mask
+    grid = padded.reshape(rows, block, cols, block).any(axis=(1, 3))
+    grown = binary_dilation(grid, iterations=-(-margin // block), structure=np.ones((3, 3), bool))
+    boxes = [(slice(s[0].start * block, min(s[0].stop * block, height)),
+              slice(s[1].start * block, min(s[1].stop * block, width)))
+             for s in find_objects(label(grown, structure=np.ones((3, 3), bool))[0]) if s is not None]
+    # Two bounding boxes of separate groups can still overlap: join them until none does.
+    joined = disjoint
+    while joined:
+        joined = False
+        for i in range(len(boxes)):
+            for j in range(i + 1, len(boxes)):
+                a, b = boxes[i], boxes[j]
+                if all(a[k].start < b[k].stop and b[k].start < a[k].stop for k in (0, 1)):
+                    boxes[i] = (slice(min(a[0].start, b[0].start), max(a[0].stop, b[0].stop)),
+                                slice(min(a[1].start, b[1].start), max(a[1].stop, b[1].stop)))
+                    del boxes[j]
+                    joined = True
+                    break
+            if joined:
+                break
+    return boxes
+
+
+def clip_levels(linear: np.ndarray) -> list[float | None]:
+    """Each channel's clip level (the highest value of its 3 x 3 median, as in ``clipped_cores``), or None when no
+    plateau of ``CLIP_PLATEAU_PIXELS`` stands at it: that channel was not clipped."""
+    levels: list[float | None] = []
+    for channel in range(linear.shape[2]):
+        plane = linear[..., channel]
+        flat = plane.ravel()
+        rank = flat.size - CLIP_SEARCH_RANK
+        top = float(np.partition(flat, rank)[rank]) if rank > 0 else 0.0
+        bright = plane >= CLIP_SEARCH_SHARE * top
+        medians = [median_filter(plane[box], size=3) for box in mask_boxes(bright, 2, disjoint=False)]
+        level = max((float(m.max()) for m in medians), default=0.0)
+        plateau = max((int(np.count_nonzero(m >= level * (1 - CLIP_PLATEAU_TOLERANCE))) for m in medians), default=0)
+        levels.append(level if level > 0 and plateau >= CLIP_PLATEAU_PIXELS else None)
+    return levels
+
+
+def near_clipped_cores(linear: np.ndarray, levels: list[float | None]) -> np.ndarray:
+    """The pixels of ``linear`` at or above ``core_from`` of the clip level of a clipped channel."""
+    near_core = np.zeros(linear.shape[:2], bool)
+    for channel, value in enumerate(levels):
+        if value is not None:
+            near_core |= linear[..., channel] >= POLISHED.core_from * value
+    return near_core
+
+
+def white_star_cores(linear: np.ndarray, rgb: np.ndarray, level: np.ndarray, stretched: np.ndarray,
+                     levels: list[float | None] | None = None) -> np.ndarray:
+    """``rgb``, the natural display before its saturation, with the cores the sensor clipped made white and their
+    halo never darkened under them (in place); unchanged where no clipped core is near.
+
+    ``level`` is the luminance of ``linear``, ``stretched`` its display luminance before the roll; ``levels`` the
+    clip levels (``clip_levels``), read on ``linear`` when not given.
+    """
+    levels = clip_levels(linear) if levels is None else levels
+    if all(value is None for value in levels):
+        return rgb
+    span = max(POLISHED.core_to - POLISHED.core_from, 1e-6)
+    near_core = near_clipped_cores(linear, levels)
+    for box in mask_boxes(near_core, STAR_BOX_MARGIN):
+        local = linear[box]
+        # The weight of ``clipped_cores``, on the clipped channels only.
+        share = np.zeros(local.shape[:2], np.float32)
+        for channel, value in enumerate(levels):
+            if value is not None:
+                share = np.maximum(share, np.clip((local[..., channel] / value - POLISHED.core_from) / span, 0, 1))
+        cores = np.clip(gaussian_filter(maximum_filter(share, size=3), 1.0), 0, 1).astype(np.float32)
+        near = near_stars(cores)[..., None]
+        shown = natural_roll(stretched[box])
+        star = into_gamut(neutral_cores(local, cores) * (shown / np.maximum(level[box], 1e-8))[..., None], shown)
+        fade = np.clip((shown - POLISHED.white_from) / max(POLISHED.white_to - POLISHED.white_from, 1e-6), 0, 1)
+        keep = (1 - fade * fade * (3 - 2 * fade))[..., None]
+        star = shown[..., None] + keep * (star - shown[..., None])
+        rgb[box] += near * (star - rgb[box])
+    return rgb
+
+
+# The light of the stars the sensor clipped, for the renders of the natural preparation.  The renders hold every
+# star back (``controlled_stars``: about half its displayed level); the brightest ones used to escape it by accident,
+# StarNet2 leaving their ringed cores in the starless layer.  With a white core StarNet2 takes them out like any
+# other star, and they came out as flat grey discs, dimmer than the medium stars.  Their light is given back after
+# the render (``with_clipped_star_light``): white at the clipped core, then falling with the linear luminance, on the
+# logarithm, down to the level the display stretch saturates at (``display_scale``), under which nothing changes.
+# The natural display shows that whole span at its top, flat: the star's own profile is read on the linear image.
+STAR_LIGHT_REACH = 3.0  # radii of the clipped core within which a pixel may take the star's light ...
+STAR_LIGHT_MARGIN = 6.0  # ... plus this many px, the last half of the reach fading out: a bright nebula never does
+# The light has the star's own colour, white at the core.  The colour of a clipped core is the clip levels', never the
+# star's: it is read on the star's wings that the sensor did not clip, the first half of the reach, less the sky or
+# nebula around it (the median of a ring ``STAR_COLOUR_RING`` px wide just past the reach, so the blue reflection nebula
+# around a star is not taken for the star's colour).  Only the blue-orange part of that colour is kept: the optics
+# spread red and blue wider than green, and the green-magenta part of a halo is that chromatism.  The share of each
+# pixel's linear light that is the star's (above that sky) carries the colour, ``STAR_COLOUR`` of it, at most
+# ``STAR_COLOUR_MAX``: a blue star's halo is bluish, an orange one's warm, a white one's white.
+STAR_COLOUR = 0.75
+STAR_COLOUR_MAX = 0.3
+STAR_COLOUR_RING = 10
+# Adding ``t`` along this axis keeps the luminance and ``(R + B) / 2 - G``, and moves ``B - R`` by ``t``.
+BLUE_ORANGE_AXIS = np.array([-0.4298, 0.0702, 0.5702], np.float32)
+
+
+def clipped_star_light(linear: np.ndarray, level: np.ndarray, scale: float,
+                       levels: list[float | None]) -> np.ndarray | None:
+    """The light of the clipped stars, height x width x 2: ``[..., 0]`` (0..1) how much of a clipped star's light each
+    pixel takes back, ``[..., 1]`` the colour it takes along the blue-orange axis (``BLUE_ORANGE_AXIS``); None when
+    no channel is clipped.  ``with_clipped_star_light`` gives it back.
+
+    The light is 1 on the clipped core, ``log(level / scale) / log(core / scale)`` around it (``core``: the brightest
+    luminance of the core), 0 where the luminance is under ``scale`` or farther than the reach from the core.  The
+    colour is the star's (``STAR_COLOUR``), times the share of the pixel's linear light that is the star's.
+    """
+    if all(value is None for value in levels):
+        return None
+    from scipy.ndimage import find_objects, label
+
+    cores, _ = label(near_clipped_cores(linear, levels), structure=np.ones((3, 3), bool))
+    light = np.zeros((*level.shape, 2), np.float32)
+    height, width = level.shape
+    for index, found in enumerate(find_objects(cores), start=1):
+        if found is None:
+            continue
+        own = cores[found] == index
+        radius = float(np.sqrt(own.sum() / np.pi))
+        reach = STAR_LIGHT_REACH * radius + STAR_LIGHT_MARGIN
+        grow = int(np.ceil(reach)) + STAR_COLOUR_RING + 1
+        box = (slice(max(found[0].start - grow, 0), min(found[0].stop + grow, height)),
+               slice(max(found[1].start - grow, 0), min(found[1].stop + grow, width)))
+        core = cores[box] == index
+        local = level[box]
+        top = float(local[core].max())
+        if top > scale * 1.01:
+            share = np.log(np.maximum(local, 1e-12) / scale) / np.log(top / scale)
+        else:
+            share = (local >= scale).astype(np.float32)
+        distance = distance_transform_edt(~core)
+        x = np.clip((reach - distance) / (0.5 * reach), 0, 1)
+        fade = x * x * (3 - 2 * x)
+        weight = np.clip(share, 0, 1) * fade
+        light[box][..., 0] = np.maximum(light[box][..., 0], weight.astype(np.float32))
+        # The star's colour, on its unclipped wings, less the sky around it.
+        others = (cores[box] > 0) & ~core
+        ring = (distance >= reach) & (distance < reach + STAR_COLOUR_RING) & ~others
+        wings = (distance >= 1) & (distance < 0.5 * reach) & ~others
+        if ring.sum() < 20 or not wings.any():
+            continue
+        sky = np.median(linear[box][ring], axis=0)
+        flux = (linear[box][wings] - sky).sum(axis=0)
+        total = float(lum(flux[None])[0])
+        if total <= 0:
+            continue
+        colour = float(np.clip(STAR_COLOUR * (flux[2] - flux[0]) / total, -STAR_COLOUR_MAX, STAR_COLOUR_MAX))
+        sky_level = float(lum(sky[None])[0])
+        own_light = np.clip((local - sky_level) / np.maximum(local, 1e-12), 0, 1)
+        tint = (colour * own_light * fade).astype(np.float32)
+        light[box][..., 1] = np.where(np.abs(tint) > np.abs(light[box][..., 1]), tint, light[box][..., 1])
+    return light
+
+
+def with_clipped_star_light(image: np.ndarray, light: np.ndarray | None) -> np.ndarray:
+    """A render (0..1) with the clipped stars' light given back (``clipped_star_light``): screened with white by
+    its weight, then coloured along the blue-orange axis by the star's colour, the less the whiter the core.  Nothing
+    changes where both are 0, nor when it is None."""
+    if light is None:
+        return image
+    out = np.clip(image, 0, 1).astype(np.float32)
+    lit = (light[..., 0] > 0) | (light[..., 1] != 0)
+    weight = np.clip(light[lit, 0], 0, 1)[:, None]
+    shown = 1 - (1 - out[lit]) * (1 - weight)
+    level = lum(shown)
+    shown = shown + (level * light[lit, 1] * (1 - weight[:, 0]))[:, None] * BLUE_ORANGE_AXIS
+    out[lit] = into_gamut(np.clip(shown, 0, None), level)
+    return out
+
+
+def native_from_linear(linear: np.ndarray, display_scale: float | None = None,
+                       light: list[np.ndarray | None] | None = None) -> np.ndarray:
+    """The natural display stretch of a prepared linear image (what ``prepare_native`` ends with).
+
+    Around the cores the sensor clipped, the core is white and the halo is never darkened under it
+    (``white_star_cores``).  ``light`` (a list, when given) receives the clipped stars' light
+    (``clipped_star_light``), for the render."""
     level = lum(linear)
     scale = display_scale if display_scale is not None else stretch_scale(linear)
     stretched = display_curve(level, scale, already_stretched(linear))
@@ -487,6 +718,10 @@ def native_from_linear(linear: np.ndarray, display_scale: float | None = None) -
     maximum = np.max(rgb, axis=2)
     rolled = np.where(maximum > 0.72, 0.72 + (maximum - 0.72) / (1 + 1.9 * (maximum - 0.72)), maximum)
     rgb *= rolled[..., None] / np.maximum(maximum[..., None], 1e-8)
+    levels = clip_levels(linear)
+    rgb = white_star_cores(linear, rgb, level, stretched, levels)
+    if light is not None:
+        light.append(clipped_star_light(linear, level, scale, levels))
     hsv = rgb2hsv(np.clip(rgb, 0, 1))
     hsv[..., 1] = np.clip(hsv[..., 1] * (1.0 + 0.10 * (1 - hsv[..., 1])), 0, 0.88)
     return hsv2rgb(hsv)
@@ -578,6 +813,83 @@ def star_layer(
     return np.clip(starless, 0, 1), np.clip(stars, 0, 1)
 
 
+# What StarNet2 leaves under a star.  Where it takes a star out, its starless image keeps a little of the pixel in a
+# colour of its own: a centre without green (0.08 / 0.01 / 0.08 under a small yellow star of a real master), or a
+# greenish patch where it took out the wide glow of a bright one.  The renders lift the faint signal of the starless
+# layer (``deep_nebula_tone``) while they hold the stars back, so that colour shows: a violet centre on hundreds of
+# unclipped stars, a green band beside the brightest.  Under the stars only, the starless layer keeps its luminance and
+# takes the colour of the nebula or sky around them: what lies behind a star, not the star's own colour (the star
+# layer gives that).  Where the star layer is empty, nothing moves.
+UNDER_STARS_FROM = 0.1  # share of a pixel's display luminance in the star layer from which its starless colour is replaced ...
+UNDER_STARS_TO = 0.5  # ... wholly from this share
+UNDER_STARS_LEVEL = 0.05  # display luminance of the star layer (smoothed) at which a pixel is wholly under a star
+UNDER_STARS_REACH = 6.0  # px: the width of the average the colour around the stars is read on
+# The rim of a star.  The optics spread red and blue a little wider than green: on a real master the linear halo of a
+# bright star, 6 to 10 px out, has red and blue 1.3 to 2.1 times its green, a lavender ring around a whiter centre, that
+# every colour step makes stronger.  On the rim only (the star layer under ``RIM_TO`` of its brightest pixel within
+# ``RIM_REACH`` px), its magenta (red and blue above green) is taken back by ``RIM_AMOUNT``; the colour between blue
+# and red-orange, the star's own, is kept, and so is the core: a blue star stays blue, an orange one orange.
+RIM_FROM = 0.5
+RIM_TO = 0.95
+RIM_REACH = 10
+RIM_AMOUNT = 0.85
+# Removing ``m`` of ``(R + B) / 2 - G`` along this axis keeps the luminance and ``B - R``.
+MAGENTA_AXIS = np.array([0.7152, -0.2848, 0.7152], np.float32)
+
+
+def under_stars(starless: np.ndarray, stars: np.ndarray) -> np.ndarray | None:
+    """0..1: how much each pixel of the starless layer lies under a star (``UNDER_STARS_*``); None under none."""
+    starless_level, star_level = lum(starless), lum(stars)
+    share = gaussian_filter(star_level / np.maximum(star_level + starless_level, 1e-4), 1.0)
+    x = np.clip((share - UNDER_STARS_FROM) / (UNDER_STARS_TO - UNDER_STARS_FROM), 0, 1)
+    # The grain StarNet2 leaves in the star layer is no star: under a quarter of ``UNDER_STARS_LEVEL`` nothing moves.
+    lit = np.clip(gaussian_filter(star_level, 1.0) / UNDER_STARS_LEVEL - 0.25, 0, 1)
+    under = maximum_filter(x * x * (3 - 2 * x) * lit * lit * (3 - 2 * lit), size=3).astype(np.float32)
+    return under if under.any() else None
+
+
+def starless_around_stars(starless: np.ndarray, stars: np.ndarray) -> np.ndarray:
+    """The starless layer with the colour StarNet2 left under the stars replaced by the colour of the nebula or sky
+    around them (an average weighted away from the stars, ``UNDER_STARS_REACH`` px), at its own luminance."""
+    under = under_stars(starless, stars)
+    if under is None:
+        return starless
+    colour = starless - lum(starless)[..., None]
+    away = 1 - under
+    around = (gaussian_filter(colour * away[..., None], (UNDER_STARS_REACH, UNDER_STARS_REACH, 0))
+              / (gaussian_filter(away, UNDER_STARS_REACH)[..., None] + 0.02))
+    return np.clip(starless + under[..., None] * (around - colour), 0, 1).astype(np.float32)
+
+
+def star_rim(stars: np.ndarray) -> np.ndarray:
+    """0..``RIM_AMOUNT``: how much of its magenta each pixel of a star's rim loses (``without_magenta``)."""
+    level = lum(stars)
+    peak = maximum_filter(gaussian_filter(level, 1.0), size=2 * RIM_REACH + 1)
+    x = np.clip((level / np.maximum(peak, 1e-6) - RIM_FROM) / (RIM_TO - RIM_FROM), 0, 1)
+    return (RIM_AMOUNT * (1 - x * x * (3 - 2 * x)) * (level > 0)).astype(np.float32)
+
+
+def without_magenta(rgb: np.ndarray, amount: np.ndarray) -> np.ndarray:
+    """``rgb`` with ``amount`` (per pixel) of its magenta (red and blue above green) taken back, its luminance and
+    ``B - R`` kept.  A greener pixel is left as it is: taking its green back would turn a yellow star orange."""
+    magenta = np.maximum(0.5 * (rgb[..., 0] + rgb[..., 2]) - rgb[..., 1], 0)
+    return np.clip(rgb - (amount * magenta)[..., None] * MAGENTA_AXIS, 0, 1).astype(np.float32)
+
+
+def star_rims(stars: np.ndarray) -> np.ndarray:
+    """The star layer with the magenta of the stars' rims taken back (``RIM_AMOUNT``)."""
+    return without_magenta(stars, star_rim(stars))
+
+
+def natural_split(starless: np.ndarray, stars: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """StarNet2's split for the renders of the natural preparation: the star layer's rims cleaned (``star_rims``); the
+    colour under the stars is cleaned by each render (``starless_around_stars``).  A split
+    whose star layer is empty is returned as it is."""
+    if not np.any(stars > 0):
+        return starless, stars
+    return starless, star_rims(stars)
+
+
 def controlled_stars(stars: np.ndarray, value: float) -> np.ndarray:
     star_lum = lum(stars)
     chroma = gaussian_filter(stars - star_lum[..., None], sigma=(1.05, 1.05, 0))
@@ -614,7 +926,7 @@ def deep_nebula_tone(nebula: np.ndarray) -> np.ndarray:
 
 def natural_deep(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
     """Natural deep reference with a soft toe and restrained stars."""
-    nebula = deep_nebula_tone(nebula)
+    nebula = deep_nebula_tone(starless_around_stars(nebula, stars))
     return np.clip(
         1 - (1 - nebula) * (1 - controlled_stars(stars, 0.52)),
         0,
@@ -660,7 +972,7 @@ def dualband_v7(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
 
 def dualband_deep(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
     """Dual-band correction on top of the validated deep luminance treatment."""
-    nebula = dualband_palette(deep_nebula_tone(nebula))
+    nebula = dualband_palette(deep_nebula_tone(starless_around_stars(nebula, stars)))
     return np.clip(1 - (1 - nebula) * (1 - controlled_stars(stars, 0.58)), 0, 1)
 
 
@@ -1446,48 +1758,63 @@ def _soft_positive(x: np.ndarray, width: np.ndarray | float) -> np.ndarray:
     return 0.5 * (x + np.sqrt(x * x + width * width))
 
 
-def hoo_weight(nebula: np.ndarray) -> np.ndarray:
+def _hoo_bands(nebula: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Hα and OIII of a nebula layer, smoothed at ``HOO_SMOOTHING``."""
+    smooth = gaussian_filter(np.asarray(nebula, dtype=np.float32), sigma=(HOO_SMOOTHING, HOO_SMOOTHING, 0))
+    return smooth[..., 0], 0.5 * (smooth[..., 1] + smooth[..., 2])
+
+
+def hoo_levels(nebula: np.ndarray) -> dict[str, float]:
+    """The figures the HOO palette reads on the image: the sky (median) and the noise of Hα and OIII, and the boost
+    of OIII."""
+    ha, oiii = _hoo_bands(nebula)
+    levels = {"ha": float(np.median(ha)), "oiii": float(np.median(oiii)),
+              "ha_noise": _background_noise(ha) + 1e-6, "oiii_noise": _background_noise(oiii) + 1e-6}
+    ha_signal = _soft_positive(ha - levels["ha"], levels["ha_noise"])
+    oiii_signal = _soft_positive(oiii - levels["oiii"], levels["oiii_noise"])
+    ratio = np.percentile(ha_signal, 99.5) / max(np.percentile(oiii_signal, 99.5), 1e-6)
+    levels["boost"] = float(np.clip(HOO_OIII_DAMPING * ratio, *HOO_OIII_BOOST))
+    return levels
+
+
+def hoo_weight(nebula: np.ndarray, levels: dict[str, float] | None = None) -> np.ndarray:
     """0 in the sky, 1 where Hα or OIII stand well above the noise; smooth in between (no threshold).
 
     The signal-to-noise ratio is read on the image smoothed at ``HOO_SMOOTHING``
     and taken through a smooth step, so the edge of a faint red zone is a
-    gradient, not a line.
+    gradient, not a line.  ``levels``: ``hoo_levels``, read on ``nebula`` when not given.
     """
-    smooth = gaussian_filter(np.asarray(nebula, dtype=np.float32), sigma=(HOO_SMOOTHING, HOO_SMOOTHING, 0))
-    ha, oiii = smooth[..., 0], 0.5 * (smooth[..., 1] + smooth[..., 2])
-    snr = np.maximum(
-        (ha - np.median(ha)) / (_background_noise(ha) + 1e-6),
-        (oiii - np.median(oiii)) / (_background_noise(oiii) + 1e-6),
-    )
+    levels = hoo_levels(nebula) if levels is None else levels
+    ha, oiii = _hoo_bands(nebula)
+    snr = np.maximum((ha - levels["ha"]) / levels["ha_noise"], (oiii - levels["oiii"]) / levels["oiii_noise"])
     x = np.clip((snr - HOO_SNR_FROM) / (HOO_SNR_TO - HOO_SNR_FROM), 0, 1)
     return gaussian_filter(x * x * (3 - 2 * x), sigma=HOO_SMOOTHING).astype(np.float32)
 
 
-def hoo_palette(nebula: np.ndarray) -> np.ndarray:
+def hoo_palette(nebula: np.ndarray, reference: np.ndarray | None = None) -> np.ndarray:
     """The HOO palette on the brightness of the natural tone, fading into the natural colours.
 
     Where Hα or OIII stand out of the noise the colour is the palette's (Hα to
     red, OIII to blue-green); in the sky it is the natural tone's own neutral
-    sky, and the faint zones in between are a smooth mix of both.
+    sky, and the faint zones in between are a smooth mix of both.  The sky, the noise and the boost of OIII are
+    read on ``reference`` when given (``hoo_deep``: the layer before its colour under the stars was cleaned, so
+    that the cleaning moves nothing away from the stars).
     """
     nebula = np.clip(np.asarray(nebula, dtype=np.float32), 0, 1)
+    levels = hoo_levels(nebula if reference is None else np.clip(np.asarray(reference, dtype=np.float32), 0, 1))
     toned = deep_nebula_tone(nebula)
     # The nebula layer keeps the linear ratios of the channels (the stretch
     # scales each pixel), so its red is Hα and the mean of green and blue OIII.
-    smooth = gaussian_filter(nebula, sigma=(HOO_SMOOTHING, HOO_SMOOTHING, 0))
-    ha, oiii = smooth[..., 0], 0.5 * (smooth[..., 1] + smooth[..., 2])
-    ha_noise, oiii_noise = _background_noise(ha) + 1e-6, _background_noise(oiii) + 1e-6
+    ha, oiii = _hoo_bands(nebula)
     # Signals above the sky, the corner of the positive part rounded at the noise.
-    ha_signal = _soft_positive(ha - np.median(ha), ha_noise)
-    oiii_signal = _soft_positive(oiii - np.median(oiii), oiii_noise)
-    ratio = np.percentile(ha_signal, 99.5) / max(np.percentile(oiii_signal, 99.5), 1e-6)
-    oiii_signal = oiii_signal * float(np.clip(HOO_OIII_DAMPING * ratio, *HOO_OIII_BOOST))
+    ha_signal = _soft_positive(ha - levels["ha"], levels["ha_noise"])
+    oiii_signal = _soft_positive(oiii - levels["oiii"], levels["oiii_noise"]) * levels["boost"]
     palette = np.stack([ha_signal, oiii_signal, oiii_signal], axis=-1)
     hsv = rgb2hsv(palette / max(float(palette.max()), 1e-6))
     value = np.max(toned, axis=-1)
     saturation = np.clip(hsv[..., 1] * HOO_SATURATION, 0, HOO_MAX_SATURATION)
     coloured = hsv2rgb(np.stack([hsv[..., 0], saturation, value], axis=-1))
-    weight = hoo_weight(nebula)[..., None]
+    weight = hoo_weight(nebula, levels)[..., None]
     mixed = toned * (1 - weight) + coloured * weight
     # The brightness is the natural one: the brightest channel is the natural tone's.
     return np.clip(mixed * (value / np.maximum(mixed.max(axis=-1), 1e-6))[..., None], 0, 1)
@@ -1495,7 +1822,7 @@ def hoo_palette(nebula: np.ndarray) -> np.ndarray:
 
 def hoo_deep(nebula: np.ndarray, stars: np.ndarray) -> np.ndarray:
     """HOO palette: the palette on the nebula, the stars in their natural colours."""
-    nebula = hoo_palette(nebula)
+    nebula = hoo_palette(starless_around_stars(nebula, stars), nebula)
     return np.clip(1 - (1 - nebula) * (1 - controlled_stars(stars, 0.52)), 0, 1)
 
 

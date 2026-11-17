@@ -111,6 +111,28 @@ test("a run that found nothing to send ends the rows the queue of the space says
   );
 });
 
+test("a file the queue holds as refused does not stay « En file d'envoi »: no run sends it", () => {
+  const refused = {
+    ...entry(SHA, "refused"),
+    lastErrorCode: "upload_refused",
+    lastError: "refused by the service (404 capture_not_found): gone",
+  };
+  const state = play([
+    tracked,
+    { type: "reconcile", entries: [refused, entry(OTHER, "queued")] },
+  ]);
+  const row = state.rows.find((item) => item.sha256 === SHA)!;
+  assert.equal(row.status, "refused");
+  assert.equal(row.code, "upload_refused");
+  assert.equal(row.message, null, "never the technical text");
+  assert.ok(!isLive(row));
+  assert.equal(pendingCount(state), 1, "only the other file is to send");
+  assert.equal(
+    state.rows.find((item) => item.sha256 === OTHER)!.status,
+    "queued",
+  );
+});
+
 test("a file this run sends is not « already sent », even when the queue was read before its event", () => {
   const state = play([
     tracked,

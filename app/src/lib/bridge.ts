@@ -4182,6 +4182,9 @@ export async function resultFilePreview(path: string): Promise<Blob | null> {
 /** The image set of a render: its values, where it is, what leaves. */
 export interface AdjustState {
   values: AdjustValues;
+  /** The quarter turns, clockwise (1: 90° right), written into the image set;
+   * absent when it is not turned. */
+  quarterTurns?: number;
   path: string;
   sha256: string;
   size: number;
@@ -4242,12 +4245,18 @@ export async function imageAdjustSmooth(
   return new Blob([bytes], { type: "image/png" });
 }
 
-/** « Enregistrer l'image réglée »: the whole image, beside the render. */
+/** « Enregistrer l'image réglée »: the whole image, beside the render, turned
+ * by `quarterTurns` quarter turns clockwise (0..3). */
 export function imageAdjustSave(
   path: string,
   values: AdjustValues,
+  quarterTurns = 0,
 ): Promise<AdjustState> {
-  return invoke<AdjustState>("image_adjust_save", { path, values });
+  return invoke<AdjustState>("image_adjust_save", {
+    path,
+    values,
+    quarterTurns,
+  });
 }
 
 /** The image set of a render, when it has a valid one. */

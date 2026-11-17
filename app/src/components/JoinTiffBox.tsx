@@ -1,6 +1,7 @@
 import { useI18n } from "../i18n";
 import { joinTiffLabel } from "../lib/renderFormat";
 import { helpTextClassName } from "../theme";
+import { TiffWarning } from "./TiffWarning";
 
 /**
  * « Joindre aussi les TIFF (pleine résolution, ≈ 47 Mo chacun) »: the one box
@@ -37,6 +38,7 @@ export function JoinTiffBox({
       <p className={`${helpTextClassName} as-join-tiff__help`}>
         {t("uploadFormat.help")}
       </p>
+      {checked && <TiffWarning />}
     </div>
   );
 }

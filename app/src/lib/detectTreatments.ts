@@ -187,14 +187,13 @@ export interface TreatmentResult {
   path: string;
   size: number;
   /** The TIFF in full resolution of a render that leaves as a PNG
-   * (`render_files`): listed under its PNG, ticked only with « Joindre aussi
-   * les TIFF ». `twinOf` is the path of that PNG. */
+   * (`render_files`): the second box of its PNG's card, ticked by a choice,
+   * and only once the PNG is ticked. `twinOf` is the path of that PNG. */
   fullResolution?: boolean;
   twinOf?: string;
   /** `linear`: the file of « Sans traitement » -- a file attached to the
    * capture of its target (a TIFF to download), never an image of it. Listed
-   * under the images of its target, ticked only with « Joindre aussi les TIFF
-   * ». */
+   * under the images of its target, ticked by a choice. */
   file?: "linear";
 }
 
@@ -385,12 +384,60 @@ export function summaryImages(
   return rows;
 }
 
-/** A TIFF the person chooses to send: the TIFF in full resolution of a render
- * and the linear file. Ticked only with « Joindre aussi les TIFF ». */
+/** A TIFF the person chooses to send, image by image: the TIFF in full
+ * resolution of a render and the linear file. Never ticked from the start. */
 export function isTiffChoice(
   row: Pick<TreatmentResult, "fullResolution" | "file">,
 ): boolean {
   return !!row.fullResolution || !!row.file;
+}
+
+/** The row of the PNG whose TIFF in full resolution `row` is (`twinOf` is its
+ * path, in the same target); `null` for any other row, or when the PNG is not
+ * listed. */
+export function pngRowOf(
+  row: Pick<SummaryImage, "targetId" | "fullResolution" | "twinOf">,
+  rows: readonly SummaryImage[],
+): SummaryImage | null {
+  if (!row.fullResolution || !row.twinOf) return null;
+  return (
+    rows.find(
+      (other) =>
+        other.targetId === row.targetId &&
+        other.path === row.twinOf &&
+        !other.fullResolution,
+    ) ?? null
+  );
+}
+
+/** The keys of the TIFF rows of `row` (the one PNG of a card has at most
+ * one): they leave with it, never alone. */
+export function tiffKeysOf(
+  row: Pick<SummaryImage, "targetId" | "path" | "fullResolution">,
+  rows: readonly SummaryImage[],
+): string[] {
+  if (row.fullResolution) return [];
+  return rows
+    .filter(
+      (other) =>
+        other.fullResolution &&
+        other.targetId === row.targetId &&
+        other.twinOf === row.path,
+    )
+    .map((other) => other.key);
+}
+
+/** Whether `row` is the TIFF of a render whose PNG is not ticked: a TIFF
+ * never leaves without its PNG, so its box stays shut (a TIFF whose PNG is
+ * not listed has nothing to go with). */
+export function tiffWaitsForPng(
+  row: SummaryImage,
+  rows: readonly SummaryImage[],
+  ticked: readonly string[],
+): boolean {
+  if (!row.fullResolution) return false;
+  const png = pngRowOf(row, rows);
+  return !png || !ticked.includes(png.key);
 }
 
 function blockOf(
@@ -432,6 +479,7 @@ export function canTickImage(
 ): boolean {
   if (ticked.includes(row.key)) return true;
   if (row.blocked) return false;
+  if (tiffWaitsForPng(row, rows, ticked)) return false;
   const taken = tickedTargets(rows, ticked);
   // The linear file takes no place of its own: it is attached to the capture
   // of an image of its target, so it opens once one is ticked.
@@ -458,6 +506,8 @@ export function sendOrder(
     `${row.targetId}\u0000${seriesKeyOfRow(row) ?? ""}`;
   for (const row of rows) {
     if (!ticked.includes(row.key)) continue;
+    // A TIFF never leaves without its PNG, whatever was ticked.
+    if (row.fullResolution && tiffWaitsForPng(row, rows, ticked)) continue;
     const head =
       firstOf.get(headKey(row)) ??
       (row.role === "file"

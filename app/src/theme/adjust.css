@@ -1,26 +1,58 @@
-/* « Régler l'image » (variant B): the preview over the whole width, the five
-   settings in a band under it, three per line. */
-.as-adjust {
+/* « Régler l'image »: two columns -- the image, at the largest size the window
+   leaves it and never cropped, and the panel of the five settings, which
+   scrolls by itself with its foot always in sight. The page leaves the fixed
+   column of 47.5 rem the other screens have (only this one). Under 48 rem of
+   window the panel goes under the image, which keeps 40 % of the height. */
+.as-content > .as-adjust {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 34%, 36rem);
+  grid-template-rows: minmax(0, 1fr);
+  gap: var(--as-space-lg);
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  padding-bottom: 0;
+}
+
+.as-adjust__main {
   display: flex;
   flex-direction: column;
-  gap: var(--as-space-md);
+  gap: var(--as-space-sm);
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: var(--as-space-md);
 }
 
 .as-adjust__zone {
-  gap: var(--as-space-md);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--as-space-sm);
+  min-height: 0;
 }
 
-.as-adjust__bar {
+/* « Pivoter à gauche » / « Pivoter à droite » over the image, and the state
+   of a turned image with its way back. */
+.as-adjust__tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: var(--as-space-sm);
+}
+
+.as-adjust__turned {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--as-space-xs) var(--as-space-sm);
+  margin: 0;
 }
 
 .as-adjust__preview {
   position: relative;
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
   min-height: 12rem;
@@ -30,22 +62,86 @@
   background-color: var(--as-color-page-background);
 }
 
+.as-adjust__frame {
+  position: relative;
+  flex: none;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+}
+
 .as-adjust__canvas {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
-.as-adjust__pill {
+.as-adjust__canvas--over {
+  position: absolute;
+  inset: 0;
+}
+
+/* « Avant » / « Après » in the corners of the image. */
+.as-adjust__side {
   position: absolute;
   top: var(--as-space-sm);
-  left: var(--as-space-sm);
   padding: 0.125rem var(--as-space-sm);
   border-radius: var(--as-radius-sm);
   background-color: var(--as-color-modal-surface);
   color: var(--as-color-primary-text);
   font-size: 0.75rem;
   font-weight: 600;
+  pointer-events: none;
+}
+
+.as-adjust__side--before {
+  left: var(--as-space-sm);
+}
+
+.as-adjust__side--after {
+  right: var(--as-space-sm);
+}
+
+/* The bar of the curtain and its handle, in the amber of the sliders. */
+.as-adjust__rule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background-color: var(--as-color-gold-accent);
+  cursor: ew-resize;
+}
+
+.as-adjust__handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 2px solid var(--as-color-gold-accent);
+  border-radius: 50%;
+  background-color: var(--as-color-modal-surface);
+  color: var(--as-color-gold-accent);
+  transform: translate(-50%, -50%);
+  touch-action: none;
+}
+
+.as-adjust__handle:focus-visible {
+  outline: 2px solid var(--as-color-primary-text);
+  outline-offset: 2px;
+}
+
+.as-adjust__chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.as-adjust__chevron.is-left {
+  transform: rotate(180deg);
 }
 
 /* The smoothing is computed (≈ 1 s): a veil and the star of the application. */
@@ -60,6 +156,7 @@
     var(--as-color-page-background) 45%,
     transparent
   );
+  pointer-events: none;
 }
 
 .as-adjust__veil .as-waiting {
@@ -72,13 +169,15 @@
   display: flex;
   flex-direction: column;
   gap: var(--as-space-md);
-  padding: var(--as-space-md);
-  border: 1px solid var(--as-color-border);
-  border-radius: var(--as-radius-md);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--as-space-xl) 0 0 var(--as-space-md);
+  border-left: 1px solid var(--as-color-border);
 }
 
 .as-adjust__panel-head {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--as-space-sm);
 }
@@ -89,10 +188,45 @@
   font-weight: 700;
 }
 
+/* The sliders scroll under the head; the foot stays. */
+.as-adjust__scroll {
+  flex: 1;
+  min-height: 0;
+  padding-right: var(--as-space-sm);
+  overflow-y: auto;
+}
+
+.as-adjust__foot {
+  flex: none;
+  padding: var(--as-space-md) 0;
+  border-top: 1px solid var(--as-color-border);
+}
+
 .as-adjust__sliders {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
   gap: var(--as-space-md) var(--as-space-lg);
+}
+
+@media (max-width: 48rem) {
+  .as-content > .as-adjust {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    gap: var(--as-space-sm);
+  }
+
+  .as-adjust__preview {
+    flex: none;
+    height: 40vh;
+    min-height: 0;
+  }
+
+  .as-adjust__panel {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--as-color-border);
+    padding-top: var(--as-space-md);
+  }
 }
 
 .as-adjust__slider {

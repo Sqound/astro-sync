@@ -149,16 +149,16 @@
         "zh-Hant": "拉伸"
       },
       "text": {
-        "fr": "Une courbe arcsinh éclaircit le signal faible sans saturer le signal fort ; elle agit sur la luminosité seule, chaque pixel garde ses proportions de rouge, de vert et de bleu.",
-        "en": "An arcsinh curve brightens the faint signal without saturating the strong one; it acts on brightness only, so each pixel keeps its proportions of red, green and blue.",
-        "ja": "arcsinh カーブで、明るい部分を飽和させずに淡い信号を持ち上げます。明るさだけに作用するので、各画素の赤・緑・青の比率は変わりません。",
-        "de": "Eine arcsinh-Kurve hellt das schwache Signal auf, ohne das starke zu sättigen; sie wirkt nur auf die Helligkeit, jedes Pixel behält sein Verhältnis von Rot, Grün und Blau.",
-        "es": "Una curva arcsinh aclara la señal débil sin saturar la fuerte; actúa solo sobre la luminosidad, y cada píxel conserva sus proporciones de rojo, verde y azul.",
-        "it": "Una curva arcsinh schiarisce il segnale debole senza saturare quello forte; agisce solo sulla luminosità, ogni pixel conserva le sue proporzioni di rosso, verde e blu.",
-        "pt-BR": "Uma curva arcsinh clareia o sinal fraco sem saturar o forte; ela age só sobre a luminosidade, e cada pixel mantém suas proporções de vermelho, verde e azul.",
-        "ru": "Кривая arcsinh осветляет слабый сигнал, не пересвечивая сильный; она действует только на яркость, и каждый пиксель сохраняет свои доли красного, зелёного и синего.",
-        "zh-Hans": "用 arcsinh 曲线提亮微弱信号，同时不让强信号饱和；它只作用于亮度，每个像素的红、绿、蓝比例保持不变。",
-        "zh-Hant": "用 arcsinh 曲線提亮微弱訊號，同時不讓強訊號飽和；它只作用於亮度，每個像素的紅、綠、藍比例保持不變。"
+        "fr": "Une courbe arcsinh éclaircit le signal faible sans saturer le signal fort ; elle agit sur la luminosité seule, chaque pixel garde ses proportions de rouge, de vert et de bleu. Le cœur d’une étoile que le capteur a saturée est rendu blanc, sans anneau coloré autour.",
+        "en": "An arcsinh curve brightens the faint signal without saturating the strong one; it acts on brightness only, so each pixel keeps its proportions of red, green and blue. The core of a star the sensor clipped is shown white, with no coloured ring around it.",
+        "ja": "arcsinh カーブで、明るい部分を飽和させずに淡い信号を持ち上げます。明るさだけに作用するので、各画素の赤・緑・青の比率は変わりません。センサーで飽和した星の中心は白く表示し、周りに色の輪が出ないようにします。",
+        "de": "Eine arcsinh-Kurve hellt das schwache Signal auf, ohne das starke zu sättigen; sie wirkt nur auf die Helligkeit, jedes Pixel behält sein Verhältnis von Rot, Grün und Blau. Der Kern eines Sterns, den der Sensor übersteuert hat, wird weiß dargestellt, ohne farbigen Ring darum.",
+        "es": "Una curva arcsinh aclara la señal débil sin saturar la fuerte; actúa solo sobre la luminosidad, y cada píxel conserva sus proporciones de rojo, verde y azul. El núcleo de una estrella que el sensor ha saturado se muestra blanco, sin anillo de color alrededor.",
+        "it": "Una curva arcsinh schiarisce il segnale debole senza saturare quello forte; agisce solo sulla luminosità, ogni pixel conserva le sue proporzioni di rosso, verde e blu. Il nucleo di una stella che il sensore ha saturato appare bianco, senza anello colorato intorno.",
+        "pt-BR": "Uma curva arcsinh clareia o sinal fraco sem saturar o forte; ela age só sobre a luminosidade, e cada pixel mantém suas proporções de vermelho, verde e azul. O núcleo de uma estrela que o sensor saturou aparece branco, sem anel colorido em volta.",
+        "ru": "Кривая arcsinh осветляет слабый сигнал, не пересвечивая сильный; она действует только на яркость, и каждый пиксель сохраняет свои доли красного, зелёного и синего. Ядро звезды, пересвеченное сенсором, показывается белым, без цветного кольца вокруг.",
+        "zh-Hans": "用 arcsinh 曲线提亮微弱信号，同时不让强信号饱和；它只作用于亮度，每个像素的红、绿、蓝比例保持不变。传感器饱和的星点核心显示为白色，周围不会出现彩色圆环。",
+        "zh-Hant": "用 arcsinh 曲線提亮微弱訊號，同時不讓強訊號飽和；它只作用於亮度，每個像素的紅、綠、藍比例保持不變。感測器飽和的星點核心顯示為白色，周圍不會出現彩色圓環。"
       }
     },
     {

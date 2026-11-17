@@ -79,7 +79,7 @@ const KNOWN: [(&str, &str); 23] = [
     ),
     (
         "upload_refused",
-        "The service refused this file and will not accept it as it is. It will not be sent again: update Astro Sync, then add the file again if you want to try once more.",
+        "The service refused this file and will not accept it as it is. It will not be sent again by itself: to try again, import the night again from Sessions, after updating Astro Sync if a newer version is offered.",
     ),
     (
         "service_error",

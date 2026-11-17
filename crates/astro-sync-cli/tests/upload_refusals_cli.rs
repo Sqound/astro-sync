@@ -300,7 +300,9 @@ fn a_refusal_nobody_knows_yet_is_said_plainly_and_not_asked_again() {
 
     let stdout = text(&output.stdout);
     assert!(
-        stdout.contains("The service refused this file and will not accept it as it is."),
+        stdout.contains(
+            "The service refused this file and will not accept it as it is. It will not be sent again by itself"
+        ),
         "{stdout}"
     );
     assert!(
