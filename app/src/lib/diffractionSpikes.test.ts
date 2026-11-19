@@ -23,6 +23,15 @@ interface Fixture {
     starFactor: number;
     layer: number[];
   }[];
+  ranked: SpikeStar[];
+  below: {
+    strength: number;
+    reach: number;
+    scale: number;
+    starFactor: number;
+    count: number;
+    layer: number[];
+  }[];
 }
 
 const fixture = JSON.parse(
@@ -127,4 +136,53 @@ test("the drawing of the preview is quick", () => {
   assert.ok(layer);
   assert.ok(ms < 400, `${ms} ms`);
   console.log(`spike layer of the preview, 220 stars: ${ms.toFixed(1)} ms`);
+});
+
+test("below 0 the reach counts stars, and the window picks the script's stars", () => {
+  for (const item of fixture.below) {
+    assert.equal(starCount(fixture.ranked, item.reach), item.count);
+    const layer = spikeLayer(
+      fixture.width,
+      fixture.height,
+      fixture.ranked,
+      item.strength,
+      item.reach,
+      item.scale,
+      item.starFactor,
+    );
+    assert.ok(layer);
+    let worst = 0;
+    for (let i = 0; i < layer.length; i += 1) {
+      worst = Math.max(worst, Math.abs(layer[i] - item.layer[i]));
+    }
+    assert.ok(worst < 1e-4, `reach ${item.reach}: largest difference ${worst}`);
+  }
+});
+
+test("the reach goes down to the brightest star alone in even steps", () => {
+  const steps = [-30, -25, -20, -15, -10, -5, 0];
+  assert.deepEqual(
+    steps.map((r) => starCount(fixture.ranked, r)),
+    [1, 1, 2, 2, 3, 4, 6],
+  );
+  const many: SpikeStar[] = Array.from({ length: 60 }, (_, i) => ({
+    x: 10 + i,
+    y: 10,
+    flux: 200 * 0.9 ** i,
+    radius: 2,
+    colour: [1, 1, 1],
+  }));
+  assert.deepEqual(
+    steps.map((r) => starCount(many, r)),
+    [1, 2, 3, 4, 6, 10, 16],
+  );
+  assert.equal(starCount(many, -300), 1);
+  assert.equal(starCount([], -30), 0);
+});
+
+test("a reach of 0 and more does not depend on the list of stars", () => {
+  for (const reach of [0, 10, 25, 50, 75, 100]) {
+    assert.equal(fluxThreshold(reach, fixture.ranked), fluxThreshold(reach));
+  }
+  assert.equal(fluxThreshold(0), 40);
 });

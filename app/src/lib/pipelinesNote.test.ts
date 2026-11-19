@@ -74,7 +74,7 @@ test("the note is one component, shown in the window of a target, under the rend
     dialog.indexOf("<PipelinesNote") < dialog.indexOf("view.cards.map"),
     "the note before the cards",
   );
-  const bridge = await read("./bridge.ts");
+  const bridge = await read("./openSystem.ts");
   assert.match(bridge, /invoke<void>\("pipelines_folder_open"\)/);
   const readme = await read("../../../README.md");
   assert.match(readme, /stacking\/pipelines\/SCHEMA\.md/);

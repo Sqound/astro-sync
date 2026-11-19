@@ -50,6 +50,12 @@ use crate::time_util::now_iso8601_utc;
 /// (`queue.replacedPhoto`).
 pub const REPLACED_NOTE: &str = "replaced";
 
+/// What the row of a completed entry says when its image left as a new
+/// variant because the space could not say which image is its main one
+/// ([`crate::main_choice`]): the interface looks it up
+/// (`queue.variantUnconfirmed`).
+pub const VARIANT_UNCONFIRMED_NOTE: &str = "variant_unconfirmed";
+
 /// What a result is: the only files the queue takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -202,6 +208,11 @@ pub struct EntryTarget {
     /// in place of the render's TIFF online); absent: the image is added.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replaces_sha256: Option<String>,
+    /// What the space must confirm when this image, the head of a series,
+    /// leaves ([`crate::main_choice`]): `keep` or `over`. Absent: the
+    /// service's own rule, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_wish: Option<String>,
 }
 
 /// What the image of a multi-night plan declares (`uploads.md`, « The image
@@ -382,6 +393,7 @@ fn row_to_entry(row: &Row<'_>) -> rusqlite::Result<QueueEntry> {
                 .and_then(|json| serde_json::from_str(&json).ok()),
             placement: row.get("placement")?,
             replaces_sha256: row.get("replaces_sha256")?,
+            main_wish: row.get("main_wish")?,
         },
     })
 }
@@ -476,7 +488,9 @@ fn queue_table(name: &str) -> String {
     plan TEXT,
     space_id TEXT,
     placement TEXT,
-    replaces_sha256 TEXT
+    replaces_sha256 TEXT,
+    main_wish TEXT,
+    main_reads INTEGER
 )"
     )
 }
@@ -526,6 +540,7 @@ fn add_missing_columns(connection: &Connection) -> rusqlite::Result<()> {
         "space_id",
         "placement",
         "replaces_sha256",
+        "main_wish",
     ] {
         if !columns.iter().any(|name| name == column) {
             connection.execute(
@@ -533,6 +548,9 @@ fn add_missing_columns(connection: &Connection) -> rusqlite::Result<()> {
                 [],
             )?;
         }
+    }
+    if !columns.iter().any(|name| name == "main_reads") {
+        connection.execute("ALTER TABLE upload_queue ADD COLUMN main_reads INTEGER", [])?;
     }
     let sky_columns = connection
         .prepare("PRAGMA table_info(sky_annotation)")?
@@ -551,7 +569,7 @@ const SPACE_SCOPED_VERSION: i64 = 1;
 
 const QUEUE_COLUMNS: &str = "id, source_path, sha256, size, upload_id, offset, state, capture_id, \
     last_error, last_error_code, created_at, updated_at, kind, session_id, target_ids, \
-    variant_of, source, metadata, frames, plan, space_id, placement, replaces_sha256";
+    variant_of, source, metadata, frames, plan, space_id, placement, replaces_sha256, main_wish";
 
 const SKY_COLUMNS: &str = "sha256, space_id, capture_id, state, failure, error_code, message, elapsed_ms, source, updated_at";
 
@@ -968,8 +986,8 @@ impl UploadQueue {
             "INSERT INTO upload_queue
                 (source_path, sha256, size, offset, state, created_at, updated_at,
                  kind, session_id, target_ids, variant_of, source, metadata, frames, plan,
-                 space_id, placement, replaces_sha256)
-             VALUES (?1, ?2, ?3, 0, 'queued', ?4, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                 space_id, placement, replaces_sha256, main_wish)
+             VALUES (?1, ?2, ?3, 0, 'queued', ?4, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
              ON CONFLICT DO NOTHING",
             params![
                 file.path.to_string_lossy(),
@@ -993,6 +1011,7 @@ impl UploadQueue {
                 self.space_id,
                 file.target.placement,
                 file.target.replaces_sha256,
+                file.target.main_wish,
             ],
         )?;
         Ok(changed == 1)
@@ -1073,6 +1092,40 @@ impl UploadQueue {
             params![sha256, REPLACED_NOTE, self.space_id],
         )?;
         Ok(())
+    }
+
+    /// Notes on a completed entry that its image left as a new variant
+    /// because the space could not be read ([`VARIANT_UNCONFIRMED_NOTE`]).
+    /// Touches nothing but the code, and only on a completed entry.
+    pub fn mark_variant_unconfirmed(&self, sha256: &str) -> Result<(), UploadQueueError> {
+        self.connection.execute(
+            "UPDATE upload_queue SET last_error_code = ?2
+             WHERE sha256 = ?1 AND state = 'completed' AND space_id IS ?3",
+            params![sha256, VARIANT_UNCONFIRMED_NOTE, self.space_id],
+        )?;
+        Ok(())
+    }
+
+    /// Counts one more failed reading of the space for the image of this
+    /// digest (the main image choice waits for a readable state) and answers
+    /// how many there have been, this one included. Kept in the queue file,
+    /// so closing the application does not start the count again.
+    pub fn count_unread_main(&self, sha256: &str) -> Result<u32, UploadQueueError> {
+        self.connection.execute(
+            "UPDATE upload_queue SET main_reads = COALESCE(main_reads, 0) + 1
+             WHERE sha256 = ?1 AND space_id IS ?2",
+            params![sha256, self.space_id],
+        )?;
+        let count: Option<i64> = self
+            .connection
+            .query_row(
+                "SELECT main_reads FROM upload_queue WHERE sha256 = ?1 AND space_id IS ?2",
+                params![sha256, self.space_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(u32::try_from(count.unwrap_or(0)).unwrap_or(u32::MAX))
     }
 
     /// Marks an entry as a terminal failure with a human-readable `reason`.
@@ -1959,6 +2012,7 @@ mod tests {
             plan: None,
             placement: None,
             replaces_sha256: None,
+            main_wish: None,
         };
         queue
             .enqueue_results(&[

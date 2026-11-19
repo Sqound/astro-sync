@@ -1181,6 +1181,7 @@ pub fn enqueue_checked(
                 plan: None,
                 placement: placement_of(&plan.decision),
                 replaces_sha256: replaces_of(&plan.decision),
+                main_wish: None,
             },
         })
         .collect();

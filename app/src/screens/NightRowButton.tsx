@@ -99,6 +99,15 @@ function StatePill({ state }: { state: NonNullable<NightRow["state"]> }) {
       </span>
     );
   }
+  if (state === "plan_left_out") {
+    // Complete, nothing owed: the neutral badge, its reserve said beside.
+    return (
+      <span className={badgeClassName("neutral")}>
+        <Icon name="check" strokeWidth={2.4} />
+        {t("nights.state.complete")}
+      </span>
+    );
+  }
   if (state === "to_complete") {
     return (
       <span className={badgeClassName("neutral")}>

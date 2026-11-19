@@ -18,6 +18,8 @@ export interface SummaryImageView {
   title: string;
   /** « Rendu naturel », or « Correction bibande · Présentation · 2,0 · Couleurs +40 % ». */
   render: string;
+  /** The name of the render alone, « Correction bibande ». */
+  name: string;
   /** « 3 nuits empilées · PNG · 13 Mo ». */
   meta: string;
   /** Why the box cannot be ticked, or `null`. */
@@ -66,6 +68,7 @@ export function summaryImageView(
       title: t("wizard.linear.of", { target: row.designation }),
       // The file is always "Sans traitement".
       render: t("wizard.treatments.noProcessing"),
+      name: t("wizard.treatments.noProcessing"),
       meta: [t("wizard.linear.format"), formatBytes(t, row.size, locale)].join(
         t("detect.join"),
       ),
@@ -79,6 +82,7 @@ export function summaryImageView(
       row.role === "variant"
         ? t("wizard.sending.variant", { target: row.designation })
         : row.designation,
+    name: pipelineName(row.pipelineId),
     render: [pipelineName(row.pipelineId), curve, ...finishSummaries(row, t)]
       .filter(Boolean)
       .join(t("detect.join")),
@@ -97,4 +101,23 @@ export function summaryImageView(
       .join(t("detect.join")),
     blocked: row.blocked ? blockText(t, locale, row.blocked) : null,
   };
+}
+
+/** How a card is named in a sentence about the main image: the name of its
+ * render, « Palette HOO », and the whole of it (« Palette HOO · Présentation ·
+ * 2,0 ») only when another card of the group has the same name. */
+export function mainImageName(
+  t: Translate,
+  locale: string,
+  card: SummaryImage,
+  group: readonly SummaryImage[],
+  pipelineName: (id: string) => string,
+): string {
+  const view = summaryImageView(t, locale, card, pipelineName);
+  const twin = group.some(
+    (other) =>
+      other.key !== card.key &&
+      summaryImageView(t, locale, other, pipelineName).name === view.name,
+  );
+  return twin ? view.render : view.name;
 }

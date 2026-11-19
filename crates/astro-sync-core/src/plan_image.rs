@@ -2227,6 +2227,7 @@ fn plan_result(
             }),
             placement: None,
             replaces_sha256: None,
+            main_wish: None,
         },
     }
 }

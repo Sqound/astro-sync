@@ -1,5 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[cfg(test)]
+mod blocking_gate_tests;
+#[cfg(test)]
 mod build_info_tests;
 mod commands;
 mod commands_adjust;

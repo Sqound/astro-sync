@@ -124,7 +124,9 @@ export function PrivateConnected({ status }: { status: SpaceStatus }) {
           {t("settings.pairedBadge")}
         </span>
       </p>
-      <p>{t("space.private.connectedTo", { url: status.serviceUrl })}</p>
+      <p className="as-selectable">
+        {t("space.private.connectedTo", { url: status.serviceUrl })}
+      </p>
       <p className={helpTextClassName}>{t("space.private.description")}</p>
     </>
   );

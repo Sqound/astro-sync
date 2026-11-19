@@ -136,6 +136,14 @@ test("a file the service refused, or that waits for the person, says why under i
     );
     assert.equal(replaced, t("queue.replacedPhoto"), locale);
     assert.ok(!(replaced ?? "").startsWith("queue."), locale);
+    // A done file that left as a variant because the space could not be read.
+    const unconfirmed = rowReason(
+      t,
+      entry({ state: "completed", lastErrorCode: "variant_unconfirmed" }),
+    );
+    assert.equal(unconfirmed, t("queue.variantUnconfirmed"), locale);
+    assert.ok(!(unconfirmed ?? "").startsWith("queue."), locale);
+    assert.ok(!/[;—]/.test(unconfirmed ?? ""), locale);
   }
 });
 

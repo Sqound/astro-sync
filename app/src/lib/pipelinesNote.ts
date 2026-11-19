@@ -15,7 +15,7 @@ export interface PipelinesNoteLink {
   /** The address of a `web` link. */
   target: string | null;
   /** Opens it. */
-  open: () => void | Promise<void>;
+  open: () => unknown;
 }
 
 export interface PipelinesNote {
@@ -27,8 +27,8 @@ export interface PipelinesNote {
 /** The note and its two links; `openUrl` and `openFolder` are the window's
  * (`openInBrowser`, `pipelinesFolderOpen`). */
 export function pipelinesNote(actions: {
-  openUrl: (url: string) => void | Promise<void>;
-  openFolder: () => void | Promise<void>;
+  openUrl: (url: string) => unknown;
+  openFolder: () => unknown;
 }): PipelinesNote {
   return {
     textKey: "wizard.treatments.pipelinesNote.text",

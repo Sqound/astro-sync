@@ -34,6 +34,34 @@ pub const DETECT_FOUND_EVENT: &str = "detect-found";
 /// sessions of the dates found, read from the service).
 pub const DETECT_PHASE_EVENT: &str = "detect-phase";
 
+/// What step 4's primary is doing inside a stage, for the window to say it
+/// instead of a sentence that never changes: the service asked to create the
+/// sessions (`service`, `total` of them), the night folders renamed
+/// (`folders`), each image prepared (`prepare`, `done` of `total`), the space
+/// asked what it still holds (`check`), the rows written (`queue`).
+pub const IMPORT_PROGRESS_EVENT: &str = "import-progress";
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgressStep {
+    pub step: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub done: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total: Option<usize>,
+}
+
+fn say_step<R: Runtime>(app: &AppHandle<R>, step: &str, done: Option<usize>, total: Option<usize>) {
+    let _ = app.emit(
+        IMPORT_PROGRESS_EVENT,
+        ImportProgressStep {
+            step: step.to_string(),
+            done,
+            total,
+        },
+    );
+}
+
 /// The rights of the account, from the capabilities kept and whether the
 /// service sells the multi-night plans (the gates of the other screens).
 fn account<R: Runtime>(app: &AppHandle<R>) -> Result<AccountRights, CommandError> {
@@ -268,7 +296,10 @@ pub async fn sessions_organise_plan(
     sessions: Option<Vec<String>>,
     names: Option<std::collections::BTreeMap<String, NightNaming>>,
 ) -> Result<OrganisePlan, CommandError> {
-    run_blocking(move || {
+    // Every file of the proposal is looked at on the disk: two at a time at
+    // most, whatever the window asks.
+    static PLANS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+    crate::commands::run_gated(&PLANS, move || {
         Ok(session_detection::plan_organise_named(
             &proposal,
             &PathBuf::from(destination),
@@ -410,7 +441,20 @@ pub async fn detect_import_create<R: Runtime>(
             Some(&queue),
             &[ImportStage::Sessions, ImportStage::Nights],
             &mut progress,
-            &mut |_| {},
+            &mut |stage| match stage {
+                ImportStage::Sessions => {
+                    // The sessions the space creates (the ones it holds
+                    // already are only completed).
+                    let to_create = provisional
+                        .sessions
+                        .iter()
+                        .filter(|s| astro_sync_core::working_folder::is_provisional(&s.session_id))
+                        .count();
+                    say_step(&app, "service", None, Some(to_create));
+                }
+                ImportStage::Nights => say_step(&app, "folders", None, None),
+                ImportStage::Plans => {}
+            },
         )
         .map_err(|(stage, error)| stage_error(stage, error))?;
         Ok(ImportCreated {
@@ -512,6 +556,15 @@ pub enum ImageToSend {
         /// the capture). The image it names goes first.
         #[serde(default)]
         variant_of_sha256: Option<String>,
+        /// A capture of the space this render is a variant of, whatever its
+        /// main image is (« Garder l'image principale de votre espace », a
+        /// public capture): the main image is never touched.
+        #[serde(default)]
+        variant_of_capture: Option<String>,
+        /// What the space must confirm as this render, the head of its
+        /// series, leaves (`main_choice`): `keep` or `over`.
+        #[serde(default)]
+        main_wish: Option<String>,
         /// The row of the render's TIFF (`render.full_resolution`), which
         /// « Joindre aussi les TIFF » ticks; else its PNG.
         #[serde(default)]
@@ -554,18 +607,30 @@ pub async fn detect_images_send<R: Runtime>(
         // steps, and for the capture the acquisition, the sensor and the
         // calibration; its quality under `analysis.logs` only.
         let language = crate::commands_night::settings_locale(&paths);
-        let pipelines = crate::commands_night::pipeline_list_of(&app, &paths, &language);
+        // The list « Traitements » read a moment ago (the stacking script is
+        // not started again for it: several seconds each time).
+        let pipelines = crate::commands_night::pipeline_list_kept(&app, &paths, &language);
         let image_quality = capabilities_cached(&paths)?.is_some_and(|c| c.analysis_logs);
         let mut files = Vec::new();
-        for image in images {
+        // The frames of a target and the calibration of a night, read once
+        // for every image of the sending.
+        let mut sources = astro_sync_core::metadata::ImportProposalSources::default();
+        let total = images.len();
+        for (index, image) in images.into_iter().enumerate() {
+            say_step(&app, "prepare", Some(index + 1), Some(total));
             match image {
                 ImageToSend::Night {
                     session_id,
                     target_id,
                     render,
                     variant_of_sha256,
+                    variant_of_capture,
+                    main_wish,
                     full_resolution,
                 } => {
+                    // A variant of a capture the space holds, or of the image of
+                    // this sending that creates the capture.
+                    let is_head = variant_of_sha256.is_none() && variant_of_capture.is_none();
                     let linear = render.pipeline_id == astro_sync_core::pipelines::LINEAR_PIPELINE;
                     let file = match (full_resolution, render.full_resolution) {
                         (true, Some(tiff)) => tiff,
@@ -583,7 +648,7 @@ pub async fn detect_images_send<R: Runtime>(
                     };
                     // "No processing" is a file attached to the capture of its
                     // target, not an image of it: it never creates that capture.
-                    if linear && variant_of_sha256.is_none() {
+                    if linear && is_head {
                         return Err(CommandError::new(
                             "file_capture_refused",
                             format!("{} needs the capture of an image", file.path.display()),
@@ -594,11 +659,11 @@ pub async fn detect_images_send<R: Runtime>(
                     } else {
                         ResultKind::Stacked
                     };
-                    let metadata = astro_sync_core::metadata::import_render_proposals(
+                    let metadata = sources.proposals(
                         &file.path,
                         kind,
                         Some(&render.pipeline_id),
-                        variant_of_sha256.is_none(),
+                        is_head,
                         Some(&pipelines),
                         image_quality,
                     );
@@ -619,9 +684,15 @@ pub async fn detect_images_send<R: Runtime>(
                         target: EntryTarget {
                             session_id: Some(session_id),
                             target_ids: vec![target_id],
-                            variant_of: variant_of_sha256.map(|digest| {
-                                format!("{}{digest}", astro_sync_core::uploader::VARIANT_OF_SHA256)
+                            variant_of: variant_of_capture.or_else(|| {
+                                variant_of_sha256.map(|digest| {
+                                    format!(
+                                        "{}{digest}",
+                                        astro_sync_core::uploader::VARIANT_OF_SHA256
+                                    )
+                                })
                             }),
+                            main_wish: main_wish.filter(|_| is_head),
                             source: Some("stacking".to_string()),
                             metadata,
                             ..EntryTarget::default()
@@ -681,6 +752,7 @@ pub async fn detect_images_send<R: Runtime>(
         if let (Ok((portal_url, token)), Ok(service)) =
             (require_portal_and_token(&app), transport(&app))
         {
+            say_step(&app, "check", None, Some(files.len()));
             let _ = astro_sync_core::uploader::requeue_vanished(
                 &service,
                 &portal_url,
@@ -689,6 +761,7 @@ pub async fn detect_images_send<R: Runtime>(
                 &files,
             );
         }
+        say_step(&app, "queue", None, Some(files.len()));
         Ok(queue.enqueue_results(&files)?)
     })
     .await

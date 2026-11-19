@@ -77,6 +77,19 @@
   margin: 0;
 }
 
+/* The line of the recap's foot while its primary runs: the star and what is
+   being done take the place of the sentence, in a box of one height (the
+   star's), so nothing moves when the star comes or goes. */
+.as-recap-progress {
+  display: flex;
+  align-items: center;
+  min-height: 1.5rem;
+}
+
+.as-recap-progress > p {
+  margin: 0;
+}
+
 .as-wizard-foot__row {
   display: flex;
   flex-wrap: wrap;

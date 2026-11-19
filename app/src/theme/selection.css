@@ -1,0 +1,45 @@
+/* What can be selected, in one place.
+
+   The window behaves like a native application: titles, labels, buttons,
+   helps and menus are not selected by a drag that goes astray (a slider, a
+   curtain, a list). Selecting and copying stay where they are useful: file
+   paths, error messages, identifiers and versions, and the fields where
+   something is typed. A zone that must stay selectable carries the class
+   `as-selectable`; `code`, `pre`, fields and text areas are selectable by
+   nature. While something is dragged (`as-dragging`, set by
+   `lib/dragSelection.ts`) nothing is selected anywhere. */
+
+html,
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.as-selectable,
+.as-selectable *,
+code,
+pre,
+kbd,
+samp,
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* A button inside a selectable zone stays a button. */
+.as-selectable button,
+.as-selectable [role="button"],
+.as-selectable summary {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* A drag of a slider or of the curtain: no selection, wherever the pointer
+   goes (outside the frame, outside the window), whatever the zone. */
+.as-dragging,
+.as-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}

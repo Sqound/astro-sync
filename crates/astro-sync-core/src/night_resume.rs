@@ -21,6 +21,15 @@
 //! ("The night's analysis will be recomputed and will replace the one of 5 Oct.");
 //! the progression is redone when a target's frame count changed.
 //!
+//! **A target of a multi-night plan** ([`PlanOnline`]): the image of the plan
+//! is one image for the whole plan, a capture of the plan that belongs to no
+//! night, so `…/online` of a night never lists it. A target whose plan has
+//! its image online owes no image of its own for the night
+//! ([`resume_night_with_plans`]). When that image leaves the night out (the
+//! nights it combined do not name it, or, naming none, it was made before
+//! the night began), the night is complete all the same and says so
+//! ([`NightResume::plans_left_out`]).
+//!
 //! Nothing here writes in the person's tree: the ledger and the originals
 //! live in Astro Sync's own data.
 
@@ -33,7 +42,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::gui_bridge::{GuiBridgeError, HttpPortalGuiTransport};
-use crate::night_online::{NightOnline, OnlineImage};
+use crate::multi_night::NightMultiNight;
+use crate::night_online::{NightOnline, OnlineCapture, OnlineImage};
 use crate::precheck::ImageCandidate;
 use crate::scanner::{self, ScanError};
 use crate::service_wait::RequestFactory;
@@ -318,14 +328,27 @@ pub enum Missing {
     LogsAdded,
     /// Logs here, no analysis online.
     Analysis,
-    /// "sky annotations of 1 image".
-    SkyAnnotations { count: u64 },
+    /// "sky annotations of 1 image": the main image of a capture online
+    /// has no sky solution. `targets` names the targets of those captures.
+    SkyAnnotations {
+        count: u64,
+        #[serde(default)]
+        targets: Vec<String>,
+    },
     /// A target's frames changed since its progression was made.
     Progression { target_id: String },
-    /// Images here not online yet.
-    ImagesToSend { count: u64 },
+    /// Images here not online yet. `targets` names the targets they are
+    /// of, one per image owed.
+    ImagesToSend {
+        count: u64,
+        #[serde(default)]
+        targets: Vec<String>,
+    },
     /// Rows of the night still in the queue (waiting, or set aside).
     QueuePending { count: u64 },
+    /// Rows of the night the person asked to send that failed or were
+    /// refused.
+    QueueFailed { count: u64 },
 }
 
 impl Missing {
@@ -339,9 +362,9 @@ impl Missing {
             Missing::Analysis | Missing::SkyAnnotations { .. } | Missing::Progression { .. } => {
                 WizardStep::Traitements
             }
-            Missing::ImagesToSend { .. } | Missing::QueuePending { .. } => {
-                WizardStep::Recapitulatif
-            }
+            Missing::ImagesToSend { .. }
+            | Missing::QueuePending { .. }
+            | Missing::QueueFailed { .. } => WizardStep::Recapitulatif,
         }
     }
 
@@ -359,16 +382,20 @@ impl Missing {
             Missing::FinalImage { name, .. } => format!("final image of {name}"),
             Missing::LogsAdded => "logs added to the folder".to_string(),
             Missing::Analysis => "analysis of the logs".to_string(),
-            Missing::SkyAnnotations { count } => format!(
+            Missing::SkyAnnotations { count, .. } => format!(
                 "sky annotations of {count} image{}",
                 if *count > 1 { "s" } else { "" }
             ),
             Missing::Progression { .. } => "progression to redo".to_string(),
-            Missing::ImagesToSend { count } => {
+            Missing::ImagesToSend { count, .. } => {
                 format!("{count} image{} to send", if *count > 1 { "s" } else { "" })
             }
             Missing::QueuePending { count } => format!(
                 "{count} upload{} waiting",
+                if *count > 1 { "s" } else { "" }
+            ),
+            Missing::QueueFailed { count } => format!(
+                "{count} upload{} not sent",
                 if *count > 1 { "s" } else { "" }
             ),
         }
@@ -458,11 +485,19 @@ pub enum SolveFrom {
 #[serde(rename_all = "camelCase")]
 pub struct NightResume {
     pub status: NightStatus,
-    /// The step the wizard reopens at; `None` for a complete night.
+    /// The step the wizard reopens at; `None` for a complete night, but
+    /// « Traitements » when an image of its plan leaves it out.
     pub step: Option<WizardStep>,
     pub missing: Vec<Missing>,
     pub analysis: AnalysisPlan,
     pub sky_solutions: Vec<SolveFrom>,
+    /// The multi-night plans whose image online stands for a target of the
+    /// night and does not hold the night ([`PlanOnline::night_left_out`]).
+    /// Nothing is owed for the night: a complete night says it, and its
+    /// wizard reopens at « Traitements », where the image of the plan is
+    /// made again.
+    #[serde(default)]
+    pub plans_left_out: Vec<PlanOnline>,
 }
 
 impl NightResume {
@@ -472,6 +507,23 @@ impl NightResume {
     pub fn sentence(&self) -> String {
         match self.status {
             NightStatus::NotStarted => "Not started".to_string(),
+            NightStatus::Complete if !self.plans_left_out.is_empty() => format!(
+                "Complete: the image of the plan of {} {}hold this night",
+                self.plans_left_out
+                    .iter()
+                    .map(|plan| plan.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                if self
+                    .plans_left_out
+                    .iter()
+                    .any(|plan| plan.night_left_out == Some(NightLeftOut::NotCombined))
+                {
+                    "does not "
+                } else {
+                    "may not "
+                }
+            ),
             NightStatus::Complete => "Complete".to_string(),
             NightStatus::ToComplete => format!(
                 "To complete: {}",
@@ -495,11 +547,91 @@ fn later_than(a: &str, b: &str) -> bool {
     }
 }
 
-/// The night's state, its step and its complements (see the module
-/// documentation). `queue` is every row of the upload queue (the night's are
-/// those attributed to `online.session_id`); `variant_limit` is the
-/// space's `capture.variant_limit` (a different image that will not be sent
-/// does not keep a night "To complete").
+/// The multi-night plan a target of the night works for, and whether the
+/// plan has its image online. That image is a capture of the plan: it
+/// belongs to no night and no night's `…/online` lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanOnline {
+    pub project_id: String,
+    /// The night's target that works for the plan.
+    pub target_id: String,
+    /// The plan's target as the plan names it.
+    pub name: String,
+    /// The plan has an image online (`planCapture`).
+    pub image_online: bool,
+    /// The image online does not hold this night, or may not: `None` when
+    /// it holds it, or when nothing tells.
+    #[serde(default)]
+    pub night_left_out: Option<NightLeftOut>,
+}
+
+/// Why the image of a plan online leaves the night out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NightLeftOut {
+    /// The nights the image combined (`planCapture.combinedNightIds`, what
+    /// Astro Sync sends with it) do not name this night: the image does not
+    /// hold it.
+    NotCombined,
+    /// The image names no night, and was made before the night began
+    /// (`planCapture.createdAt`): it may not hold it.
+    MadeBefore,
+}
+
+/// Whether the image of a plan online (`planCapture`) leaves the night
+/// `session_id` out. The nights it combined say it when the image names
+/// them; else an image made before the night began may not hold it.
+#[must_use]
+pub fn night_left_out(
+    plan_capture: &serde_json::Value,
+    session_id: &str,
+    night_started_at: Option<&str>,
+) -> Option<NightLeftOut> {
+    let combined: Vec<&str> = plan_capture
+        .get("combinedNightIds")
+        .and_then(serde_json::Value::as_array)
+        .map(|ids| ids.iter().filter_map(serde_json::Value::as_str).collect())
+        .unwrap_or_default();
+    if !combined.is_empty() {
+        let held = combined
+            .iter()
+            .any(|id| id.eq_ignore_ascii_case(session_id));
+        return (!held).then_some(NightLeftOut::NotCombined);
+    }
+    let made = plan_capture
+        .get("createdAt")
+        .and_then(serde_json::Value::as_str)?;
+    later_than(night_started_at?, made).then_some(NightLeftOut::MadeBefore)
+}
+
+/// The plans of a night ([`crate::multi_night::night_projects`]) as the
+/// resume reads them, for the night `session_id` that began at
+/// `night_started_at` (ISO 8601 UTC, when known).
+#[must_use]
+pub fn plans_online(
+    night: &NightMultiNight,
+    session_id: &str,
+    night_started_at: Option<&str>,
+) -> Vec<PlanOnline> {
+    night
+        .projects
+        .iter()
+        .map(|project| PlanOnline {
+            project_id: project.project_id.clone(),
+            target_id: project.target_id.clone(),
+            name: project.name.clone(),
+            image_online: project.plan_capture.is_some(),
+            night_left_out: project
+                .plan_capture
+                .as_ref()
+                .and_then(|capture| night_left_out(capture, session_id, night_started_at)),
+        })
+        .collect()
+}
+
+/// [`resume_night_with_plans`] for a night whose targets work for no
+/// multi-night plan.
 #[must_use]
 pub fn resume_night(
     online: &NightOnline,
@@ -508,7 +640,49 @@ pub fn resume_night(
     ledger: Option<&NightLedger>,
     variant_limit: u64,
 ) -> NightResume {
+    resume_night_with_plans(online, local, queue, ledger, variant_limit, &[])
+}
+
+/// The image of a capture the list shows and the annotations are owed for:
+/// its main image.
+fn shown_image(capture: &OnlineCapture) -> Option<&OnlineImage> {
+    capture
+        .images
+        .iter()
+        .find(|image| image.main)
+        .or(capture.main_image.as_ref())
+        .or(capture.images.first())
+}
+
+/// The night's state, its step and its complements (see the module
+/// documentation). `queue` is every row of the upload queue (the night's are
+/// those attributed to `online.session_id`); `variant_limit` is the
+/// space's `capture.variant_limit`. Only what the person asked for keeps a
+/// night "To complete": an image set here and not online, a queued, failed
+/// or refused row, or a target with no image online at all. The other
+/// renders of a folder are choices, never owed. `plans` are the multi-night
+/// plans the night's targets work for: a target whose plan has its image
+/// online owes no image for the night, whichever nights the plan combined.
+///
+/// The sky annotations are owed for the main image of each capture online
+/// (the images « Online » counts); the variants that lack theirs are in
+/// [`NightResume::sky_solutions`] and solved in the same pass, and never
+/// keep a night "To complete" by themselves.
+#[must_use]
+pub fn resume_night_with_plans(
+    online: &NightOnline,
+    local: &ResumeLocal,
+    queue: &[QueueEntry],
+    ledger: Option<&NightLedger>,
+    variant_limit: u64,
+    plans: &[PlanOnline],
+) -> NightResume {
     let mut missing = Vec::new();
+    let plan_image_online = |target_id: &str| {
+        plans
+            .iter()
+            .any(|plan| plan.image_online && plan.target_id == target_id)
+    };
     let planned: Vec<_> = online
         .targets
         .iter()
@@ -540,7 +714,7 @@ pub fn resume_night(
         let id = target.target_id.as_deref().unwrap_or_default();
         let online_image = target.captures.iter().any(|c| c.main_image.is_some());
         let here = local.images.iter().any(|i| i.target_id == id);
-        if !online_image && !here {
+        if !online_image && !here && !plan_image_online(id) {
             missing.push(Missing::FinalImage {
                 target_id: id.to_string(),
                 name: target.name.clone().unwrap_or_else(|| id.to_string()),
@@ -589,9 +763,27 @@ pub fn resume_night(
         }
         sky_solutions.push(solve_from(capture.id.as_str(), image, local));
     }
-    if !sky_solutions.is_empty() {
+    // Owed: the main image of each capture (a capture listed under several
+    // targets counts once).
+    let mut unsolved: Vec<&OnlineCapture> = Vec::new();
+    for capture in online.targets.iter().flat_map(|t| t.captures.iter()) {
+        if unsolved.iter().any(|seen| seen.id == capture.id) {
+            continue;
+        }
+        if shown_image(capture).is_some_and(|image| !image.has_sky_solution()) {
+            unsolved.push(capture);
+        }
+    }
+    if !unsolved.is_empty() {
+        let mut targets: Vec<String> = Vec::new();
+        for id in unsolved.iter().filter_map(|c| c.target_ids.first()) {
+            if !targets.contains(id) {
+                targets.push(id.clone());
+            }
+        }
         missing.push(Missing::SkyAnnotations {
-            count: sky_solutions.len() as u64,
+            count: unsolved.len() as u64,
+            targets,
         });
     }
 
@@ -627,39 +819,69 @@ pub fn resume_night(
             )
         })
     };
-    let to_send = local
+    let in_queue = |sha: &str| queue.iter().any(|row| row.sha256.eq_ignore_ascii_case(sha));
+    // An image set in « Régler l'image » is something the person asked for.
+    let replacements: Vec<&str> = local
         .images
         .iter()
         .filter(|image| !image.is_optional_tiff())
-        .filter(|image| match replacing(image) {
-            Some((set, set_tiff, original_online)) => {
-                online.image_with(&set).is_none()
-                    && set_tiff
-                        .as_deref()
-                        .is_none_or(|tiff| online.image_with(tiff).is_none())
-                    && original_online != Some(false)
-                    && (original_online == Some(true)
-                        || variant_limit > 0
-                        || online.capture_of(&image.target_id).is_none())
-                    && !queue
-                        .iter()
-                        .any(|row| row.sha256.eq_ignore_ascii_case(&set))
-            }
-            None => {
-                online.image_with(&image.sha256).is_none()
-                    && image
-                        .twin_sha256
-                        .as_deref()
-                        .is_none_or(|twin| online.image_with(twin).is_none())
-                    && (variant_limit > 0 || online.capture_of(&image.target_id).is_none())
-                    && !queue
-                        .iter()
-                        .any(|row| row.sha256.eq_ignore_ascii_case(&image.sha256))
-            }
+        .filter_map(|image| replacing(image).map(|r| (&image.target_id, r)))
+        .filter(|(target_id, (set, set_tiff, original_online))| {
+            online.image_with(set).is_none()
+                && set_tiff
+                    .as_deref()
+                    .is_none_or(|tiff| online.image_with(tiff).is_none())
+                && *original_online != Some(false)
+                && (*original_online == Some(true)
+                    || variant_limit > 0
+                    || online.capture_of(target_id).is_none())
+                && !in_queue(set)
         })
-        .count() as u64;
-    if to_send > 0 {
-        missing.push(Missing::ImagesToSend { count: to_send });
+        .map(|(target_id, _)| target_id.as_str())
+        .collect();
+    // Every other render here is a choice (the stacker writes several per
+    // integration, and the person sends the ones they ticked, which then
+    // sit in the queue or online). What is owed is one image for a target
+    // that has none online, nothing in the queue and no multi-night plan
+    // whose image is online.
+    let mut bare_targets: Vec<&str> = Vec::new();
+    for image in local
+        .images
+        .iter()
+        .filter(|image| !image.is_optional_tiff() && replacing(image).is_none())
+    {
+        let id = image.target_id.as_str();
+        if bare_targets.contains(&id) {
+            continue;
+        }
+        let has_online = online.target(id).is_some_and(|target| {
+            target
+                .captures
+                .iter()
+                .any(|c| c.main_image.is_some() || !c.images.is_empty())
+        });
+        let touched = local.images.iter().filter(|i| i.target_id == id).any(|i| {
+            in_queue(&i.sha256)
+                || online.image_with(&i.sha256).is_some()
+                || i.twin_sha256
+                    .as_deref()
+                    .is_some_and(|twin| in_queue(twin) || online.image_with(twin).is_some())
+        });
+        // The image of its multi-night plan is the target's image online.
+        if !has_online && !touched && !plan_image_online(id) {
+            bare_targets.push(id);
+        }
+    }
+    let owed: Vec<String> = replacements
+        .iter()
+        .chain(bare_targets.iter())
+        .map(|id| (*id).to_string())
+        .collect();
+    if !owed.is_empty() {
+        missing.push(Missing::ImagesToSend {
+            count: owed.len() as u64,
+            targets: owed,
+        });
     }
     let pending = queue
         .iter()
@@ -674,6 +896,17 @@ pub fn resume_night(
     if pending > 0 {
         missing.push(Missing::QueuePending { count: pending });
     }
+    // Rows the person asked to send that did not leave: failed, or refused
+    // by the service (unless the same bytes are online meanwhile).
+    let failed = queue
+        .iter()
+        .filter(|row| row.target.session_id.as_deref() == Some(online.session_id.as_str()))
+        .filter(|row| matches!(row.state, QueueState::Failed | QueueState::Refused))
+        .filter(|row| online.image_with(&row.sha256).is_none())
+        .count() as u64;
+    if failed > 0 {
+        missing.push(Missing::QueueFailed { count: failed });
+    }
 
     let nothing_here = local.images.is_empty() && !has_material;
     let status = if online.is_bare() && nothing_here {
@@ -683,7 +916,23 @@ pub fn resume_night(
     } else {
         NightStatus::ToComplete
     };
+    // The images of plans that stand for a target of the night without
+    // holding it: owed by no one, said all the same.
+    let mut plans_left_out: Vec<PlanOnline> = Vec::new();
+    for plan in plans
+        .iter()
+        .filter(|plan| plan.image_online && plan.night_left_out.is_some())
+    {
+        if !plans_left_out
+            .iter()
+            .any(|seen| seen.project_id == plan.project_id)
+        {
+            plans_left_out.push(plan.clone());
+        }
+    }
     let step = match status {
+        // The image of the plan is made again in « Traitements ».
+        NightStatus::Complete if !plans_left_out.is_empty() => Some(WizardStep::Traitements),
         NightStatus::Complete => None,
         NightStatus::NotStarted => Some(
             missing
@@ -701,6 +950,7 @@ pub fn resume_night(
         missing,
         analysis,
         sky_solutions,
+        plans_left_out,
     }
 }
 

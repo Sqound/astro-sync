@@ -16,6 +16,7 @@ import type {
 import { hasContrast, type Contrast } from "./contrast.ts";
 import { hasFinish, type Colour, type SoftStars } from "./finish.ts";
 import { NATURAL_ID } from "./pipelineChoice.ts";
+import type { MainPick, MainWish } from "./mainImage.ts";
 
 /** `Number.MAX_SAFE_INTEGER`: a number the profile does not cap. */
 const UNLIMITED = 9007199254740991;
@@ -488,40 +489,122 @@ export function canTickImage(
   return room === null || taken.size < room.remaining;
 }
 
+/** One image that leaves, and what it leaves as. */
+export interface SendItem {
+  row: SummaryImage;
+  /** The image of the same sending whose capture this one is a variant of;
+   * `null`: this image creates its capture, or is a variant of
+   * `variantOfCapture`. */
+  variantOf: SummaryImage | null;
+  /** A capture of the space this image is a variant of, whatever it holds. */
+  variantOfCapture?: string;
+  /** What the space must confirm as the image leaves, for the image that
+   * creates the capture of a series the space may hold already. */
+  mainWish?: MainWish;
+}
+
+/** The images of `picks`' groups, the one that leads first with its TIFF. */
+function leadFirst(
+  rows: readonly SummaryImage[],
+  picks: Readonly<Record<string, MainPick>>,
+  groupOf: (row: SummaryImage) => string,
+): SummaryImage[] {
+  let list = [...rows];
+  for (const pick of Object.values(picks)) {
+    if (pick.kind !== "row") continue;
+    const lead = list.find((row) => row.key === pick.key);
+    if (!lead) continue;
+    const moved = [
+      lead,
+      ...list.filter(
+        (row) =>
+          row.fullResolution &&
+          row.targetId === lead.targetId &&
+          row.twinOf === lead.path,
+      ),
+    ];
+    const rest = list.filter((row) => !moved.includes(row));
+    const at = rest.findIndex(
+      (row) => row.role !== "file" && groupOf(row) === groupOf(lead),
+    );
+    rest.splice(
+      at < 0 ? Math.min(list.indexOf(lead), rest.length) : at,
+      0,
+      ...moved,
+    );
+    list = rest;
+  }
+  return list;
+}
+
 /**
  * What leaves for a target: its rows ticked, the first of them the capture
  * and the others its variants. When the capture's row is not ticked, the
- * first row ticked is sent as the capture of the target.
+ * first row ticked is sent as the capture of the target. `picks` (what the
+ * person chose, `mainPlan`) says better: the image chosen leads its series,
+ * or every image of the series is a variant of a capture the space holds.
  */
 export function sendOrder(
   rows: readonly SummaryImage[],
   ticked: readonly string[],
-): { row: SummaryImage; variantOf: SummaryImage | null }[] {
-  const sent: { row: SummaryImage; variantOf: SummaryImage | null }[] = [];
-  const firstOf = new Map<string, SummaryImage>();
+  picks: Readonly<Record<string, MainPick>> = {},
+): SendItem[] {
+  const sent: SendItem[] = [];
+  // The head of each series of a target: the image that creates its capture,
+  // or the capture of the space its images are variants of.
+  const heads = new Map<
+    string,
+    { targetId: string; row: SummaryImage | null; capture: string | null }
+  >();
   // One capture per series of poses: the first image ticked of each series of
   // a target is its capture, the others its variants (a series not known is
   // one, as before).
   const headKey = (row: SummaryImage) =>
     `${row.targetId}\u0000${seriesKeyOfRow(row) ?? ""}`;
-  for (const row of rows) {
+  for (const row of leadFirst(rows, picks, headKey)) {
     if (!ticked.includes(row.key)) continue;
     // A TIFF never leaves without its PNG, whatever was ticked.
     if (row.fullResolution && tiffWaitsForPng(row, rows, ticked)) continue;
+    const key = headKey(row);
     const head =
-      firstOf.get(headKey(row)) ??
+      heads.get(key) ??
       (row.role === "file"
-        ? ([...firstOf.values()].find((r) => r.targetId === row.targetId) ??
-          null)
+        ? ([...heads.values()].find((h) => h.targetId === row.targetId) ?? null)
         : null);
+    const pick = row.role === "file" ? undefined : picks[key];
     if (row.role === "file") {
       // A file needs the capture of an image sent with it; without one, it
       // stays here.
-      if (head) sent.push({ row, variantOf: head });
+      if (head?.row) sent.push({ row, variantOf: head.row });
+      else if (head?.capture)
+        sent.push({ row, variantOf: null, variantOfCapture: head.capture });
       continue;
     }
-    if (!head) firstOf.set(headKey(row), row);
-    sent.push({ row, variantOf: head });
+    if (pick?.kind === "capture") {
+      heads.set(key, {
+        targetId: row.targetId,
+        row: null,
+        capture: pick.captureId,
+      });
+      sent.push({
+        row,
+        variantOf: null,
+        variantOfCapture: pick.captureId,
+      });
+      continue;
+    }
+    if (!head) {
+      heads.set(key, { targetId: row.targetId, row, capture: null });
+      sent.push({
+        row,
+        variantOf: null,
+        ...(pick?.kind === "row" && pick.key === row.key && pick.wish
+          ? { mainWish: pick.wish }
+          : {}),
+      });
+      continue;
+    }
+    sent.push({ row, variantOf: head.row });
   }
   return sent;
 }

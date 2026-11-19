@@ -405,6 +405,9 @@ export function pipelineDialogView(
     target: DialogTarget;
     pipelines: readonly Pipeline[];
     tools: readonly ToolRow[];
+    /** The tools are not read yet: nothing is said of them (no « Absent »,
+     * no fallback of GraXpert, no version). */
+    toolsPending?: boolean;
     selection: readonly string[];
     several: boolean;
     engine: PolishedEngine;
@@ -412,6 +415,7 @@ export function pipelineDialogView(
   },
 ): PipelineDialogView {
   const { target, tools, progress } = input;
+  const pending = input.toolsPending === true;
   const row = (id: string) => tools.find((item) => item.id === id);
   const graxpert = toolPill(t, locale, {
     id: "graxpert",
@@ -463,7 +467,10 @@ export function pipelineDialogView(
           return {
             name: pill.name,
             detail:
-              [version, dependency.required ? null : pill.stateLabel]
+              [
+                pending ? null : version,
+                dependency.required || pending ? null : pill.stateLabel,
+              ]
                 .filter(Boolean)
                 .join(" · ") || null,
             reason:
@@ -504,7 +511,10 @@ export function pipelineDialogView(
           )
         : null,
       fallback:
-        graxpertCard && input.engine !== "siril" && graxpert.state !== "present"
+        graxpertCard &&
+        !pending &&
+        input.engine !== "siril" &&
+        graxpert.state !== "present"
           ? t(
               graxpert.state === "downloading"
                 ? "wizard.pipelines.fallbackDownloading"

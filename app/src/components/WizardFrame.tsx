@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { BrandLoader } from "./BrandLoader";
 import { Icon, type IconName } from "./Icon";
 import { PageTop } from "./PageTop";
 import { useI18n } from "../i18n";
@@ -152,7 +153,15 @@ export function WizardFoot({
   message?: ReactNode;
   previous?: (() => void) | null;
   secondary?: FootAction | null;
-  primary?: (FootAction & { enabled?: boolean; icon?: IconName }) | null;
+  primary?:
+    | (FootAction & {
+        enabled?: boolean;
+        icon?: IconName;
+        /** The action runs: the star takes the place of the icon in the
+         * greyed button (same box, the label does not move). */
+        busy?: boolean;
+      })
+    | null;
 }) {
   const { t } = useI18n();
   const enabled = primary ? primary.enabled !== false : false;
@@ -185,10 +194,15 @@ export function WizardFoot({
             className={`${enabled ? buttonClassName("primary") : inactiveButtonClassName}${primary.className ? ` ${primary.className}` : ""}`}
             disabled={!enabled}
             aria-describedby={primary.describedBy}
+            aria-busy={primary.busy ? true : undefined}
             onClick={primary.onClick}
           >
-            {primary.icon && (
-              <Icon name={primary.icon} className="as-button__icon" />
+            {primary.busy ? (
+              <BrandLoader className="as-button__icon as-button__icon--busy" />
+            ) : (
+              primary.icon && (
+                <Icon name={primary.icon} className="as-button__icon" />
+              )
             )}
             {primary.label}
           </button>

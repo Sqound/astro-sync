@@ -39,6 +39,20 @@ STARS = [
 ]
 
 
+# Stars of distinct fluxes for the reach below 0: six of them reach 0 (flux of 40 and more), two do not.
+RANKED = [
+    (30.0, 30.0, 90.0, 2.5, (1.0, 1.0, 1.0)),
+    (170.0, 40.0, 70.0, 2.5, (1.2, 1.0, 0.8)),
+    (100.0, 80.0, 55.0, 2.0, (1.0, 1.0, 1.0)),
+    (40.0, 120.0, 48.0, 2.0, (0.8, 0.95, 1.2)),
+    (150.0, 130.0, 44.0, 2.0, (1.0, 1.0, 1.0)),
+    (90.0, 140.0, 41.0, 2.0, (1.0, 1.0, 1.0)),
+    (130.0, 20.0, 30.0, 2.0, (1.0, 1.0, 1.0)),
+    (20.0, 90.0, 12.0, 1.6, (1.0, 1.0, 1.0)),
+]
+BELOW_ZERO = (-30, -25, -20, -15, -10, -5, 0)
+
+
 def star_list(rows=STARS) -> dict:
     return {"x": np.array([r[0] for r in rows]), "y": np.array([r[1] for r in rows]),
             "flux": np.array([r[2] for r in rows]), "radius": np.array([r[3] for r in rows]),
@@ -125,6 +139,73 @@ class Drawing(unittest.TestCase):
         lit = [float((D.spike_layer((160, 200), spots, 70, r) > 0).sum()) for r in (0, 50, 100)]
         self.assertEqual(lit, sorted(lit))
 
+    def test_below_zero_the_reach_counts_stars_down_to_the_brightest_alone(self) -> None:
+        import diffraction_spikes as D
+
+        spots = star_list(RANKED)
+        counts = [D.star_count(spots, r) for r in BELOW_ZERO]
+        self.assertEqual(counts, [1, 1, 2, 2, 3, 4, 6])
+        # Reach 0 is what it always was: the stars of flux 40 and more.
+        self.assertEqual(D.flux_threshold(0), 40.0)
+        self.assertEqual(D.flux_threshold(-30, spots["flux"]), 90.0)
+        # Many stars: steps of about the same ratio, the first ones not jumping.
+        fluxes = 200.0 * 0.9 ** np.arange(60)
+        many = [D.star_count({"flux": fluxes}, r) for r in BELOW_ZERO]
+        self.assertEqual(many, [1, 2, 3, 4, 6, 10, 16])
+        # Out of range: the lowest reach.
+        self.assertEqual(D.star_count(spots, -300), 1)
+        # No star at all: nothing, and no error.
+        self.assertEqual(D.star_count({"flux": np.array([])}, -30), 0)
+
+    def test_the_brightest_alone_gets_the_only_spikes(self) -> None:
+        import diffraction_spikes as D
+
+        spots = star_list(RANKED)
+        alone = D.spike_layer((160, 200), spots, 80, -30)
+        lit_cols = np.flatnonzero((alone > 0).any(axis=(0, 2)))
+        lit_rows = np.flatnonzero((alone > 0).any(axis=(1, 2)))
+        # Only the arms of the star at (30, 30) are lit: nothing near the others.
+        self.assertGreater(float(alone[30, 40].max()), 0.0)
+        self.assertEqual(float(alone[40, 160:190].max()), 0.0)
+        self.assertEqual(float(alone[140, 100:110].max()), 0.0)
+        self.assertGreater(len(lit_cols), 0)
+        self.assertGreater(len(lit_rows), 0)
+        # Reach 0 draws what the older range drew, spikes of the six stars.
+        six = D.spike_layer((160, 200), spots, 80, 0)
+        self.assertGreater(float(six[40, 175].max()), 0.0)
+
+    def test_the_fixed_brightness_range_does_not_depend_on_the_list(self) -> None:
+        import diffraction_spikes as D
+
+        spots = star_list()
+        for reach in (0, 10, 25, 50, 75, 100):
+            self.assertEqual(D.flux_threshold(reach, spots["flux"]), D.flux_threshold(reach))
+            self.assertEqual(D.star_count(spots, reach), int((spots["flux"] >= D.flux_threshold(reach)).sum()))
+
+    def test_stars_of_distinct_brightness_are_ranked_from_an_image(self) -> None:
+        import diffraction_spikes as D
+
+        yy, xx = np.mgrid[0:200, 0:300].astype(np.float32)
+        img = np.zeros((200, 300, 3), dtype=np.float32)
+        centres = [(40, 40, 0.9), (120, 50, 0.7), (200, 60, 0.55), (60, 130, 0.45), (150, 140, 0.35), (240, 150, 0.25)]
+        for x, y, peak in centres:
+            img += (peak * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * 2.2 ** 2)))[..., None]
+        spots = D.find_stars(img)
+        self.assertEqual(len(spots["flux"]), 6)
+        top = D.star_count(spots, -30)
+        self.assertEqual(top, 1)
+        keep = spots["flux"] >= D.flux_threshold(-30, spots["flux"])
+        self.assertAlmostEqual(float(spots["x"][keep][0]), 40.0, delta=1.0)
+        counts = [D.star_count(spots, r) for r in BELOW_ZERO]
+        self.assertEqual(counts, sorted(counts))
+        self.assertEqual(counts[0], 1)
+        # The list the script keeps for the window (flux of 3 and more) gives the same ranks.
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "stars.json"
+            D.write_stars(spots, path)
+            back = D.read_stars(path)
+        self.assertEqual([D.star_count(back, r) for r in BELOW_ZERO], counts)
+
     def test_a_quarter_turn_commutes_with_the_drawing(self) -> None:
         import diffraction_spikes as D
         import image_adjust as A
@@ -171,8 +252,15 @@ class Drawing(unittest.TestCase):
             light = D.spike_layer(shape, star_list(), strength, reach, scale, factor)
             cases.append({"strength": strength, "reach": reach, "scale": scale, "starFactor": factor,
                           "layer": [round(float(v), 6) for v in light.ravel()]})
+        ranked = star_list(RANKED)
+        below = [{"strength": 70, "reach": reach, "scale": 0.25, "starFactor": 1.0,
+                  "count": D.star_count(ranked, reach),
+                  "layer": [round(float(v), 6) for v in D.spike_layer(shape, ranked, 70, reach, 0.25, 1.0).ravel()]}
+                 for reach in (-30, -20, -10, 0)]
         data = {"width": shape[1], "height": shape[0],
                 "thresholds": {str(r): D.flux_threshold(r) for r in (0, 25, 50, 75, 100)},
+                "ranked": [{"x": r[0], "y": r[1], "flux": r[2], "radius": r[3], "colour": list(r[4])} for r in RANKED],
+                "below": below,
                 "stars": [{"x": r[0], "y": r[1], "flux": r[2], "radius": r[3], "colour": list(r[4])} for r in STARS],
                 "cases": cases}
         if os.environ.get("WRITE_SPIKES_FIXTURE"):

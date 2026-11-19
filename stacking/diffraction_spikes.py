@@ -162,14 +162,30 @@ ARMS = ((1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0))
 FILE_VERSION = 1
 
 
-def flux_threshold(reach: float) -> float:
-    t = min(max(reach, 0.0), 100.0) / 100.0
-    return float(FLUX_AT_REACH_0 * (FLUX_AT_REACH_100 / FLUX_AT_REACH_0) ** t)
+# Below reach 0 the reach counts stars (see ``flux_threshold``), down to this reach: one star, the brightest.
+REACH_MIN = -30.0
+
+
+def flux_threshold(reach: float, fluxes: np.ndarray | None = None) -> float:
+    """The flux of the faintest star that gets spikes at ``reach`` (-30..100).
+
+    0..100: a fixed brightness (a setting saved with such a reach draws what it always drew).  Below 0: a number of
+    stars, falling in equal ratios from the count at reach 0 to one star at the lowest reach, so the threshold is the
+    flux of that many-th brightest star of ``fluxes``.
+    """
+    if reach >= 0.0 or fluxes is None or len(fluxes) == 0:
+        t = min(max(reach, 0.0), 100.0) / 100.0
+        return float(FLUX_AT_REACH_0 * (FLUX_AT_REACH_100 / FLUX_AT_REACH_0) ** t)
+    ordered = np.sort(np.asarray(fluxes, dtype=np.float64))[::-1]
+    start = max(1, int(np.count_nonzero(ordered >= FLUX_AT_REACH_0)))
+    share = (max(REACH_MIN, reach) - REACH_MIN) / -REACH_MIN
+    wanted = int(np.floor(start ** share + 0.5 + 1e-9))
+    return float(ordered[min(len(ordered), max(1, wanted)) - 1])
 
 
 def star_count(stars: dict[str, np.ndarray], reach: float) -> int:
     """How many stars the reach lets through (the number the window shows)."""
-    return int(np.count_nonzero(stars["flux"] >= flux_threshold(reach)))
+    return int(np.count_nonzero(stars["flux"] >= flux_threshold(reach, stars["flux"])))
 
 
 def write_stars(stars: dict[str, np.ndarray], path: Path) -> None:
@@ -215,7 +231,7 @@ def spike_layer(shape: tuple[int, int], stars: dict[str, np.ndarray], strength: 
         return out
     s = min(strength, 100.0) / 100.0
     long_side = float(max(h, w))
-    keep = stars["flux"] >= flux_threshold(reach)
+    keep = stars["flux"] >= flux_threshold(reach, stars["flux"])
     order = np.argsort(stars["flux"][keep], kind="stable")  # faint first (screen mode is commutative anyway)
     # A pixel's centre is at its index: the full image's pixel x lands on (x + 0.5) * scale - 0.5.
     xs = (stars["x"][keep][order] + 0.5) * scale - 0.5

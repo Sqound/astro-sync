@@ -17,6 +17,9 @@ import {
   missingText,
   nightHeader,
   nightRow,
+  nightState,
+  onlineLine,
+  planLeftOutText,
   offlineWhen,
   saveSnapshot,
   treatmentHold,
@@ -550,4 +553,233 @@ test("the creation window opens at today on this computer's calendar, its propos
   // The name proposed is built from the date of the form, never a fixed one.
   const fr = createTranslator("fr");
   assert.equal(fr("wizard.title", { day: "6 nov." }), "Nuit du 6 nov.");
+});
+
+test("a failed sending is told in every language, with its plural", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const tr = createTranslator(locale);
+    const one = missingText(
+      tr,
+      locale,
+      [{ key: "queueFailed", count: 1 }],
+      new Map(),
+      "nights",
+    );
+    const two = missingText(
+      tr,
+      locale,
+      [{ key: "queueFailed", count: 2 }],
+      new Map(),
+      "nights",
+    );
+    assert.ok(one.includes("1"), locale);
+    assert.ok(two.includes("2"), locale);
+    assert.ok(!one.includes("nights.missing"), locale);
+    assert.ok(!one.includes(";") && !one.includes("—"), locale);
+  }
+  assert.equal(
+    plain(
+      missingText(
+        fr,
+        "fr",
+        [{ key: "queueFailed", count: 2 }],
+        new Map(),
+        "nights",
+      ),
+    ),
+    "2 fichiers non envoyés",
+  );
+});
+
+/* The image of a multi-night plan belongs to no night: « En ligne » says it
+ * for each night of the plan, and what a night still owes names its target. */
+
+const PLAN_OF_IC = {
+  projectId: "p-ic1396",
+  targetId: IC,
+  name: "IC 1396",
+  imageOnline: true,
+};
+const SENT = { sentAt: "2026-10-09T09:00:00Z" };
+
+test("« En ligne » of a night of a plan whose image is online says « image du plan », never « analyse » alone", () => {
+  const night = online("night-5", [IC], [], SENT);
+  assert.equal(onlineLine(fr, "fr", night), "analyse");
+  assert.equal(
+    onlineLine(fr, "fr", night, [PLAN_OF_IC]),
+    "image du plan · analyse",
+  );
+  // Nothing of the night itself online, the plan's image all the same.
+  assert.equal(
+    onlineLine(fr, "fr", online("night-5", [IC]), [PLAN_OF_IC]),
+    "image du plan",
+  );
+  // A plan without its image changes nothing.
+  assert.equal(
+    onlineLine(fr, "fr", online("night-5", [IC]), [
+      { ...PLAN_OF_IC, imageOnline: false },
+    ]),
+    "Rien encore",
+  );
+  // A second target of the night with its own image, annotated.
+  const two = online(
+    "night-3",
+    [IC, NGC],
+    [capture(NGC, image("NGC7000.png", "e1", 1, { solved: true }))],
+    SENT,
+  );
+  assert.equal(
+    onlineLine(fr, "fr", two, [PLAN_OF_IC]),
+    "1 image · image du plan · annotations · analyse",
+  );
+  // Two plans of one night.
+  assert.equal(
+    onlineLine(fr, "fr", night, [
+      PLAN_OF_IC,
+      { ...PLAN_OF_IC, projectId: "p-m31", targetId: M31, name: "M31" },
+    ]),
+    "images de 2 plans · analyse",
+  );
+});
+
+test("the row of a night of a plan reads its plans; a night of no plan keeps its words", () => {
+  const detection = detectionAllFound();
+  detection.targets = [target(IC, 190, M31_LIGHTS, null)];
+  const row = nightRow(fr, "fr", {
+    session: byId("night-5"),
+    detail: detail("night-5", [IC]),
+    view: {
+      ...view(
+        detection,
+        online("night-5", [IC], [], SENT),
+        resume("complete", null),
+      ),
+      plans: [PLAN_OF_IC],
+    },
+  });
+  assert.equal(row.online, "image du plan · analyse");
+  assert.equal(row.state, "complete");
+  assert.equal(row.missing, null);
+});
+
+test("what a night owes names its targets, in every language", () => {
+  const names = new Map([
+    [IC, "IC 1396"],
+    [M31, "M31"],
+    [NGC, "NGC 7000"],
+  ]);
+  assert.equal(
+    missingText(
+      fr,
+      "fr",
+      [
+        { key: "skyAnnotations", count: 1, targets: [NGC] },
+        { key: "imagesToSend", count: 2, targets: [IC, M31] },
+      ],
+      names,
+    ),
+    "annotations du ciel de 1 image (NGC 7000), 2 images à envoyer (IC 1396, M31)",
+  );
+  // A count from an older core, or a target the night cannot name: the count
+  // alone, as before.
+  assert.equal(
+    missingText(fr, "fr", [{ key: "imagesToSend", count: 1 }], names),
+    "1 image à envoyer",
+  );
+  assert.equal(
+    missingText(
+      fr,
+      "fr",
+      [{ key: "imagesToSend", count: 1, targets: ["t-unknown"] }],
+      names,
+    ),
+    "1 image à envoyer",
+  );
+  for (const locale of SUPPORTED_LOCALES) {
+    const tr = createTranslator(locale);
+    const text = missingText(
+      tr,
+      locale,
+      [{ key: "imagesToSend", count: 1, targets: [IC] }],
+      names,
+    );
+    assert.ok(text.includes("IC 1396"), locale);
+    assert.ok(!text.includes("nights."), locale);
+    const line = onlineLine(tr, locale, online("night-5", [IC], [], SENT), [
+      PLAN_OF_IC,
+    ]);
+    assert.ok(!line.includes("nights."), locale);
+    assert.notEqual(
+      line,
+      onlineLine(tr, locale, online("night-5", [IC], [], SENT)),
+      locale,
+    );
+    for (const said of [text, line]) {
+      assert.ok(!said.includes(";") && !said.includes("—"), locale);
+    }
+  }
+});
+
+/* A night the image of its plan does not hold: complete (nothing is owed),
+ * said with the neutral badge and its reserve. */
+
+const LEFT_OUT = { ...PLAN_OF_IC, nightLeftOut: "not_combined" as const };
+const MAYBE_LEFT_OUT = { ...PLAN_OF_IC, nightLeftOut: "made_before" as const };
+
+test("a night the image of its plan does not hold says so, in « En ligne » and in its state", () => {
+  const detection = detectionAllFound();
+  detection.targets = [target(IC, 190, M31_LIGHTS, null)];
+  const leftOut = {
+    ...resume("complete", null),
+    step: "traitements" as const,
+    plansLeftOut: [LEFT_OUT],
+  };
+  const row = nightRow(fr, "fr", {
+    session: byId("night-5"),
+    detail: detail("night-5", [IC]),
+    view: {
+      ...view(detection, online("night-5", [IC], [], SENT), leftOut),
+      plans: [LEFT_OUT],
+    },
+  });
+  assert.equal(row.online, "image du plan sans cette nuit · analyse");
+  assert.equal(row.state, "plan_left_out");
+  assert.equal(
+    row.missing,
+    "L’image du plan ne contient pas cette nuit. Refaites l’image du plan pour l’inclure.",
+  );
+  assert.equal(nightState(leftOut), "plan_left_out");
+  // An image that names no night and is only older: « peut-être ».
+  assert.equal(
+    onlineLine(fr, "fr", online("night-5", [IC], [], SENT), [MAYBE_LEFT_OUT]),
+    "image du plan d’avant cette nuit · analyse",
+  );
+  assert.equal(
+    planLeftOutText(fr, [MAYBE_LEFT_OUT]),
+    "L’image du plan ne contient peut-être pas cette nuit. Refaites l’image du plan pour l’inclure.",
+  );
+  // The nights the image holds: « Complète » without reserve.
+  assert.equal(nightState(resume("complete", null)), "complete");
+  assert.equal(planLeftOutText(fr, [PLAN_OF_IC]), null);
+  // A night still owing something stays « À compléter ».
+  assert.equal(
+    nightState({
+      ...resume("to_complete", "recapitulatif"),
+      plansLeftOut: [LEFT_OUT],
+    }),
+    "to_complete",
+  );
+});
+
+test("the reserve of a plan left out is said in every language", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const tr = createTranslator(locale);
+    for (const plan of [LEFT_OUT, MAYBE_LEFT_OUT]) {
+      const text = planLeftOutText(tr, [plan]);
+      assert.ok(text && !text.includes("nights."), locale);
+      assert.ok(!/[;—]/.test(text ?? ""), locale);
+      const line = onlineLine(tr, locale, online("night-5", [IC]), [plan]);
+      assert.ok(!line.includes("nights."), locale);
+    }
+  }
 });

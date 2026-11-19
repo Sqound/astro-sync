@@ -37,6 +37,8 @@ import {
   detectionInput,
   loadUnticked,
   missingText,
+  nightState,
+  planLeftOutText,
   newestFirst,
   eveningOfSession,
   nightSentence,
@@ -152,8 +154,16 @@ export function HomeScreen({
                 detectionInput(session, online, unticked),
                 loadImportClock(windowStorage(), session.id),
               ),
+              session.planId ?? null,
             );
-            if (view.resume.status !== "to_complete") continue;
+            // A night to complete, or complete with an image of its plan
+            // that leaves it out.
+            const leftOut =
+              nightState(view.resume) === "plan_left_out"
+                ? planLeftOutText(t, view.resume.plansLeftOut)
+                : null;
+            if (view.resume.status !== "to_complete" && leftOut === null)
+              continue;
             const place = placeOf(detail);
             const names = new Map(
               online.targets
@@ -173,16 +183,19 @@ export function HomeScreen({
               ]
                 .filter(Boolean)
                 .join(" · "),
-              line: t("home.resume.line", {
-                what: missingText(
-                  t,
-                  locale,
-                  view.resume.missing,
-                  names,
-                  "home",
-                ),
-              }),
+              line:
+                leftOut ??
+                t("home.resume.line", {
+                  what: missingText(
+                    t,
+                    locale,
+                    view.resume.missing,
+                    names,
+                    "home",
+                  ),
+                }),
               step: view.resume.step,
+              complete: leftOut !== null,
             });
           } catch {
             // A night that cannot be read is simply not proposed here.
@@ -336,7 +349,9 @@ export function HomeScreen({
                 <span className={rowLineClassName}>{row.line}</span>
               </span>
               <span className={badgeClassName("neutral")}>
-                {t("nights.state.toComplete")}
+                {row.complete
+                  ? t("nights.state.complete")
+                  : t("nights.state.toComplete")}
               </span>
               <Icon name="chevron" className={rowChevronClassName} />
             </button>

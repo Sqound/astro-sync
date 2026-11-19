@@ -66,12 +66,12 @@ export function ConnectedSpace({
         <span className={fieldLabelClassName}>
           {t("space.connected.signInAddress")}
         </span>
-        <strong>{space.email}</strong>
+        <strong className="as-selectable">{space.email}</strong>
       </div>
 
       <h4>{portal ? t("space.portal.web") : t("space.connected.web")}</h4>
       <p>
-        <strong>{hostOf(space.webUrl)}</strong>
+        <strong className="as-selectable">{hostOf(space.webUrl)}</strong>
       </p>
       <p className={helpTextClassName}>{t("space.connected.webHelp")}</p>
       <p>

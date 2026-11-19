@@ -902,7 +902,8 @@ class PolishedRender(unittest.TestCase):
         self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
         core = profile[0]
         self.assertLess(float(core.max() - core.min()), 0.03, f"a white centre: {np.round(core, 3)}")
-        halo = profile[9]
+        # The outer halo: the first ring under 0.8 of luminance (the white core and the few px around it are white).
+        halo = profile[int(np.argmax(level < 0.8))]
         self.assertGreater(float(halo[2] - halo[1]), 0.01, f"the halo keeps its colour: {np.round(halo, 3)}")
 
 
@@ -1132,6 +1133,313 @@ class ClippedStarColours(unittest.TestCase):
                 self.assertGreater(halos["blue"], 0.3, f"a bluish halo: {halos}")
                 self.assertLess(halos["orange"], -0.3, f"a warm halo: {halos}")
                 self.assertLess(abs(halos["white"]), 0.04, f"a white halo: {halos}")
+
+
+class PolishedStarsThroughTheSplit(unittest.TestCase):
+    """The polished render, with its strong contrast, of three stars brighter than the sensor holds -- a white, a blue
+    and an orange one -- on a bluish nebula, each with the optics' halo (red and blue wider than green), through the
+    stacking script's render step and a stand-in StarNet2: the core is white, the halo around it never turns into a
+    violet ring, and each star keeps its colour on the blue-orange axis."""
+
+    SHAPE = (420, 640)
+    STARS = {"white": ((210, 130), (1.0, 1.0, 1.0)), "blue": ((210, 320), (0.7, 1.0, 1.3)),
+             "orange": ((210, 510), (1.4, 1.0, 0.6))}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = Path(tempfile.mkdtemp())
+        (cls.root / "work" / "render").mkdir(parents=True)
+        rng = np.random.default_rng(21)
+        cloud = blob(cls.SHAPE, (210, 320), 160)
+        linear = np.stack([0.010 + 0.05 * cloud, 0.010 + 0.07 * cloud, 0.010 + 0.11 * cloud], axis=-1)
+        yy, xx = np.mgrid[: cls.SHAPE[0], : cls.SHAPE[1]]
+        for (y, x), colour in cls.STARS.values():
+            r2 = (yy - y) ** 2 + (xx - x) ** 2
+            linear += np.stack([np.minimum(3.0 * colour[c] * np.exp(-r2 / (2 * w * w)), clip)
+                                for c, (w, clip) in enumerate(zip((3.6, 3.0, 3.8), (0.90, 1.0, 0.89)))], axis=-1)
+        for y, x in zip(rng.integers(20, 400, 60), rng.integers(20, 620, 60)):
+            linear += 0.12 * blob(cls.SHAPE, (y, x), 1.4)[..., None] * np.array([1.0, 0.95, 0.85])
+        linear += rng.normal(0, 0.0008, linear.shape)
+        master = cls.root / "master.fit"
+        fits.PrimaryHDU(np.moveaxis(np.clip(linear, 0, None), -1, 0).astype(np.float32)).writeto(master)
+        available, _ = pipeline_defs.load_pipelines([])
+        plan = stack.Plan(frames={}, colour=True, pipelines=[available["polished"]])
+        args = argparse.Namespace(work=cls.root / "work", out=cls.root / "out", name="N", trusted=[], pipelines_dir=[],
+                                  pipeline=["polished"], gradient_degree=1, black_percentile=0.05, deconv_fwhm=None,
+                                  contrast="strong", polished_engine="siril", capture_filter=None)
+        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
+            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), master, leaving_starnet(cls.root), None, {})
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def test_a_white_core_and_no_violet_ring_and_each_star_keeps_its_colour(self) -> None:
+        import tifffile
+
+        for name in ("polished", "polished_strong"):
+            image = tifffile.imread(self.root / "out" / f"N_{name}.tif").astype(np.float32) / 65535
+            for key, (centre, _) in self.STARS.items():
+                profile = radial(image, centre, 16)
+                with self.subTest(render=name, star=key):
+                    core = profile[0]
+                    self.assertLess(float(core.max() - core.min()), 0.03, f"a white core: {np.round(core, 3)}")
+                    # Violet: red and blue both above green, on the rings around the core.  Before: up to 0.07.
+                    violet = np.minimum(profile[:, 0], profile[:, 2]) - profile[:, 1]
+                    self.assertLess(float(violet.max()), 0.01, f"a violet ring: {np.round(violet, 3)}")
+                    level = renders.lum(profile)
+                    dip = max(float(level[k + 1:].max() - level[k]) for k in range(len(level) - 1))
+                    self.assertLess(dip, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
+                    halo = profile[6:12].mean(axis=0)
+                    if key == "blue":
+                        self.assertGreater(float(halo[2] - halo[0]), 0.05, f"a bluish halo: {np.round(halo, 3)}")
+                    if key == "orange":
+                        self.assertGreater(float(halo[0] - halo[2]), 0.05, f"a warm halo: {np.round(halo, 3)}")
+
+    def test_a_master_without_a_clipped_core_has_no_halo(self) -> None:
+        linear = np.full((64, 64, 3), 0.01, np.float32) + 0.5 * blob((64, 64), (32, 32), 2.0)[..., None]
+        self.assertIsNone(renders.clipped_star_halos(linear, linear, renders.clip_levels(linear)))
+
+
+class PolishedHalosThroughTheSplit(unittest.TestCase):
+    """The polished render, plain and with its strong contrast, of three stars brighter than the sensor holds, whose
+    halo the optics colour in rings as on a real master -- red and blue wider than green near the core, green wider
+    than both far out -- on a bluish nebula whose capture band is not known (its green is kept), through the stacking
+    script's render step and a stand-in StarNet2.  It came out as a grey core, a blue ring darker than what lies
+    beyond it, then a green glow; the halo now goes from a white core to the nebula in one piece."""
+
+    SHAPE = (420, 640)
+    STARS = {"white": ((210, 130), (1.0, 1.0, 1.0)), "blue": ((210, 320), (0.7, 1.0, 1.3)),
+             "orange": ((210, 510), (1.4, 1.0, 0.6))}
+    REACH = 40  # px of the profiles: the green ring of the halo stands 15 to 35 px out
+    PEAK, WIDE, CLOUD = 30.0, 0.02, (0.05, 0.07, 0.11)  # a deeply clipped star, its wide halo, the nebula
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.root = Path(tempfile.mkdtemp())
+        (cls.root / "work" / "render").mkdir(parents=True)
+        rng = np.random.default_rng(23)
+        cloud = blob(cls.SHAPE, (210, 320), 200)
+        linear = np.stack([0.010 + level * cloud for level in cls.CLOUD], axis=-1)
+        yy, xx = np.mgrid[: cls.SHAPE[0], : cls.SHAPE[1]]
+        for (y, x), colour in cls.STARS.values():
+            r2 = (yy - y) ** 2 + (xx - x) ** 2
+            for c, (core, wide, clip) in enumerate(zip((3.6, 3.0, 3.8), (13.0, 17.0, 13.0), (0.90, 1.0, 0.89))):
+                halo = cls.PEAK * colour[c] * (np.exp(-r2 / (2 * core * core))
+                                               + cls.WIDE * np.exp(-r2 / (2 * wide * wide)))
+                linear[..., c] += np.minimum(halo, clip)
+        for y, x in zip(rng.integers(20, 400, 60), rng.integers(20, 620, 60)):
+            linear += 0.12 * blob(cls.SHAPE, (y, x), 1.4)[..., None] * np.array([1.0, 0.95, 0.85])
+        linear += rng.normal(0, 0.0008, linear.shape)
+        master = cls.root / "master.fit"
+        fits.PrimaryHDU(np.moveaxis(np.clip(linear, 0, None), -1, 0).astype(np.float32)).writeto(master)
+        available, _ = pipeline_defs.load_pipelines([])
+        plan = stack.Plan(frames={}, colour=True, pipelines=[available["polished"]])
+        args = argparse.Namespace(work=cls.root / "work", out=cls.root / "out", name="N", trusted=[], pipelines_dir=[],
+                                  pipeline=["polished"], gradient_degree=1, black_percentile=0.05, deconv_fwhm=None,
+                                  contrast="strong", polished_engine="siril", capture_filter=None)
+        with redirect_stdout(io.StringIO()), _stderr(io.StringIO()):
+            stack.render_outputs(args, plan, stack.Reporter(False), stack.Runner(), master, leaving_starnet(cls.root), None, {})
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def renders(self) -> dict[str, np.ndarray]:
+        import tifffile
+
+        return {name: tifffile.imread(self.root / "out" / f"N_{name}.tif").astype(np.float32) / 65535
+                for name in ("polished", "polished_strong")}
+
+    def test_the_halo_is_neither_green_nor_ringed_and_falls_in_one_piece_from_a_white_core(self) -> None:
+        for name, image in self.renders().items():
+            for key, (centre, _) in self.STARS.items():
+                profile = radial(image, centre, self.REACH + 12)
+                level = renders.lum(profile)
+                green = (profile[:, 1] - 0.5 * (profile[:, 0] + profile[:, 2])) / np.maximum(level, 1e-6)
+                around = float(green[self.REACH:].mean())  # the nebula past the halo
+                with self.subTest(render=name, star=key):
+                    # A white core: before, a grey disc at 0.93 in the render.
+                    self.assertGreater(float(profile[:3].min()), 0.97, f"a white core: {np.round(profile[:3], 3)}")
+                    # The halo no greener than the nebula around it, nor more violet (the measure's noise: 0.03).
+                    # Before: +0.43 to +0.64 of the luminance, against +0.16 for the nebula.
+                    self.assertLess(float(green[:self.REACH].max()), max(around, 0.0) + 0.03,
+                                    f"a green halo: {np.round(green[:self.REACH], 3)}")
+                    self.assertGreater(float(green[:self.REACH].min()), min(around, 0.0) - 0.03,
+                                       f"a violet ring: {np.round(green[:self.REACH], 3)}")
+                    # No ring: the luminance never rises again outwards (before: 0.10 to 0.11 past a darker ring, with
+                    # the strong contrast) ...
+                    rise = max(float(level[k + 1:self.REACH].max() - level[k]) for k in range(self.REACH - 1))
+                    self.assertLess(rise, 0.01, f"the profile falls in one piece: {np.round(level, 3)}")
+                    # ... and no step: it never falls by more than 0.09 from one px to the next (the natural render's
+                    # steepest fall on the bright stars of a real night: 0.095; here 0.083 at most, since the sky no
+                    # longer takes the stars' gains and the curve, read on its grain, stands a little steeper).
+                    step = float(-np.diff(level[:self.REACH]).min())
+                    self.assertLess(step, 0.09, f"a sharp edge: {np.round(level, 3)}")
+
+
+class PolishedFieldStars(unittest.TestCase):
+    """The colours of the small stars of the polished render: a field of unclipped stars of known colours (white,
+    blue-white, yellow, orange) and of three brightnesses, on a black sky and on a blue veil, beside three very bright
+    blue stars whose wide halos hold most of the light of the star layer, seen by a camera that is short of blue.
+    The white reference was the light of the star layer as a whole -- the bright blue stars' --: every field star
+    came out yellow to orange, and the nebula layer kept each star's colour under it, strengthened, as a dark orange
+    rim.  The reference is now the median field star, and the nebula layer under a star has the colour around it."""
+
+    SHAPE = (520, 480)
+    COLOURS = {"white": (1.0, 1.0, 1.0), "blue": (0.8, 1.0, 1.25), "yellow": (1.15, 1.0, 0.8), "orange": (1.4, 1.0, 0.6)}
+    ORDER = ("white", "white", "blue", "yellow", "orange")  # two stars in five are white: so is the median one
+    PEAKS = (0.006, 0.03, 0.2)  # faint (under the sky's level), medium, bright; none clipped
+    CAMERA = (1.0, 1.0, 0.65)
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        rng = np.random.default_rng(5)
+        yy, xx = np.mgrid[: cls.SHAPE[0], : cls.SHAPE[1]]
+        veil = np.exp(-((yy - 260) ** 2 + (xx - 370) ** 2) / (2 * 60.0 ** 2))
+        base = 0.010 + 0.03 * veil[..., None] * np.array([0.5, 0.8, 1.3])
+        stars = np.zeros(cls.SHAPE + (3,))
+        cls.table = []  # (y, x, colour, brightness 0..2, where: "sky" | "veil" | None)
+        for j in range(12):
+            for i in range(8):
+                y, x = 40 + 40 * j, 30 + 52 * i
+                name = cls.ORDER[(i + j) % 5]
+                stars += cls.PEAKS[j % 3] * blob(cls.SHAPE, (y, x), 1.5)[..., None] * np.array(cls.COLOURS[name])
+                where = "veil" if veil[y, x] > 0.5 else "sky" if veil[y, x] < 0.01 else None
+                cls.table.append((y, x, name, j % 3, where))
+        for y in (100, 260, 420):
+            stars += 0.9 * blob(cls.SHAPE, (y, 440), 5.0)[..., None] * np.array([0.7, 1.0, 1.4])
+        camera = np.array(cls.CAMERA)
+        linear = np.clip((base + stars) * camera + rng.normal(0, 0.0008, cls.SHAPE + (3,)), 0, None).astype(np.float32)
+        scale = renders.stretch_scale(linear)
+
+        def shown(image: np.ndarray) -> np.ndarray:
+            level = renders.lum(image)
+            curved = renders.polished_stretch_level(level, scale, False)
+            return np.clip(image * (curved / np.maximum(level, 1e-8))[..., None], 0, 1).astype(np.float32)
+
+        # A perfect star separation: the starless display is the display of the image without its stars.
+        starless = shown(np.clip(linear - (stars * camera).astype(np.float32), 0, None))
+        cls.done = {}
+        with redirect_stdout(io.StringIO()):
+            cls.nebula, star_layer = renders.polished_layers(linear, shown(linear), starless, scale, "unknown", done=cls.done)
+        cls.image = renders.polished_deep(cls.nebula, star_layer)
+
+    @staticmethod
+    def blue_less_red(rgb: np.ndarray) -> float:
+        return float(rgb[2] - rgb[0]) / float(renders.lum(rgb[None])[0])
+
+    def stars_of(self, image: np.ndarray, where: str) -> dict[tuple[str, int], list[tuple[np.ndarray, np.ndarray]]]:
+        """``(colour, brightness)`` -> the ``(core, surroundings)`` RGB of each such star of ``image`` on ``where``."""
+        yy, xx = np.mgrid[-14:15, -14:15]
+        distance = np.hypot(yy, xx)
+        found: dict[tuple[str, int], list[tuple[np.ndarray, np.ndarray]]] = {}
+        for y, x, name, brightness, place in self.table:
+            if place == where:
+                box = image[y - 14:y + 15, x - 14:x + 15]
+                found.setdefault((name, brightness), []).append(
+                    (box[distance <= 1.5].mean(axis=0), box[(distance >= 10) & (distance <= 13)].mean(axis=0)))
+        return found
+
+    def test_the_white_reference_is_the_median_field_star_not_the_brightest_ones(self) -> None:
+        gains = self.done["starGains"]
+        # The camera gave blue 0.65 of red: the gains give it back (the reference was 0.93 with the bright blue stars).
+        self.assertAlmostEqual(gains[2] / gains[0], 1 / self.CAMERA[2], delta=0.1, msg=f"{gains}")
+        self.assertAlmostEqual(gains[1] / gains[0], 1.0, delta=0.05, msg=f"{gains}")
+
+    def test_on_the_sky_each_star_keeps_its_colour_pale(self) -> None:
+        for (name, brightness), stars in self.stars_of(self.image, "sky").items():
+            for core, _ in stars:
+                with self.subTest(star=name, brightness=brightness):
+                    colour = self.blue_less_red(core)
+                    saturation = float(core.max() - core.min()) / float(core.max())
+                    said = f"{np.round(core, 3)}"
+                    if name == "white":  # before: -0.14 to -0.08, a yellow star
+                        self.assertLess(abs(colour), 0.08, f"a white star is white: {said}")
+                    if name == "blue":  # before: -0.06 to -0.01, no blue star left
+                        self.assertGreater(colour, 0.08, f"a blue star stays blue: {said}")
+                    if name == "yellow":
+                        self.assertLess(colour, 0.0, f"a yellow star is not blue: {said}")
+                        self.assertGreater(colour, -0.28, f"a yellow star is not orange: {said}")
+                    if name == "orange":
+                        self.assertLess(colour, -0.12, f"an orange star stays orange, not grey: {said}")
+                    self.assertLess(saturation, 0.45, f"a pale colour: {said}")
+                    if brightness == 0:
+                        self.assertLess(saturation, 0.32, f"a faint star is paler still: {said}")
+
+    def test_the_sky_around_the_stars_does_not_take_the_gains(self) -> None:
+        """The gains that give the camera its blue back are the stars' and the nebula's: the grain of the sky stays
+        neutral (with the gains on it too: up to +0.25, a blue cast)."""
+        for stars in self.stars_of(self.image, "sky").values():
+            for _, around in stars:
+                self.assertLess(abs(self.blue_less_red(around)), 0.18, f"{np.round(around, 4)}")
+
+    def test_on_the_veil_the_stars_keep_their_order_from_orange_to_blue(self) -> None:
+        colours = {key: np.mean([self.blue_less_red(core) for core, _ in stars])
+                   for key, stars in self.stars_of(self.image, "veil").items()}
+        compared = 0
+        for brightness in range(3):
+            row = [colours.get((name, brightness)) for name in ("orange", "yellow", "white", "blue")]
+            row = [value for value in row if value is not None]
+            for warmer, bluer in zip(row, row[1:]):
+                compared += 1
+                self.assertLess(warmer, bluer - 0.03, f"brightness {brightness}: {colours}")
+        self.assertGreaterEqual(compared, 3)
+
+    def test_the_nebula_layer_under_a_star_has_the_colour_around_it(self) -> None:
+        for where in ("sky", "veil"):
+            for (name, brightness), stars in self.stars_of(self.nebula, where).items():
+                for core, around in stars:
+                    with self.subTest(where=where, star=name, brightness=brightness):
+                        # Before: down to -2.8 under an orange star (the dark orange rim), up to +1.2 under a blue one.
+                        self.assertLess(abs(self.blue_less_red(core) - self.blue_less_red(around)), 0.45,
+                                        f"{np.round(core, 3)} in {np.round(around, 3)}")
+                        level = float(renders.lum(core[None])[0] / renders.lum(around[None])[0])
+                        self.assertGreater(level, 0.75, "no dark hole under the star")
+                        self.assertLess(level, 1.3, "no bright disc under the star")
+
+
+class PolishedHalosOfAGroup(unittest.TestCase):
+    """``clipped_star_halos`` on a very bright clipped star with three smaller clipped stars in its violet glow (the
+    companions of a Pleiad): each halo read the others' light on its circles and recoloured it too, the violet was
+    taken out several times over and a green glow was left between the stars."""
+
+    SHAPE = (420, 420)
+    BIG, SMALL = (230, 210), [(160, 185), (165, 215), (185, 240)]
+
+    def star(self, centre: tuple[int, int], peak: float, widths: tuple[float, float, float], glow: float,
+             reach: float) -> np.ndarray:
+        core = bright_star(self.SHAPE, centre, clip=(0.90, 1.0, 0.89), widths=widths, peak=peak)
+        return core + glow * blob(self.SHAPE, centre, reach)[..., None] * np.array([1.3, 0.8, 1.6])
+
+    def greenness(self, linear: np.ndarray, zone: np.ndarray) -> np.ndarray:
+        """Green above the mean of red and blue, as a share of the luminance, on ``zone``, once the halos are recoloured."""
+        halos = renders.clipped_star_halos(linear, linear, renders.clip_levels(linear))
+        self.assertIsNotNone(halos)
+        after = (linear + halos[0])[zone]
+        return (after[:, 1] - 0.5 * (after[:, 0] + after[:, 2])) / np.maximum(renders.lum(after), 1e-6)
+
+    def test_the_violet_of_overlapping_halos_is_taken_out_once(self) -> None:
+        rng = np.random.default_rng(3)
+        linear = np.full(self.SHAPE + (3,), 0.010) + rng.normal(0, 0.0005, self.SHAPE + (3,))
+        linear += self.star(self.BIG, 40.0, (6.0, 5.0, 6.4), 0.05, 40.0)
+        for centre in self.SMALL:
+            linear += self.star(centre, 6.0, (2.6, 2.2, 2.8), 0.03, 10.0)
+        linear = np.clip(linear, 0, None).astype(np.float32)
+        yy, xx = np.mgrid[: self.SHAPE[0], : self.SHAPE[1]]
+        nearest = np.min([np.hypot(yy - y, xx - x) for y, x in self.SMALL], axis=0)
+        zone = (nearest > 6) & (nearest < 30) & (np.hypot(yy - self.BIG[0], xx - self.BIG[1]) > 25)
+        green = self.greenness(linear, zone)
+        # The glow is violet (-0.46).  Before: +0.61 at the median and +1.25 at the 95th percentile, a green glow.
+        self.assertLess(abs(float(np.median(green))), 0.1, "neither violet nor green between the stars")
+        self.assertLess(float(np.percentile(green, 95)), 0.2, "no green patch between the stars")
+
+    def test_a_halo_alone_is_recoloured_whole(self) -> None:
+        linear = (np.full(self.SHAPE + (3,), 0.010) + self.star(self.BIG, 40.0, (6.0, 5.0, 6.4), 0.05, 40.0)).astype(np.float32)
+        yy, xx = np.mgrid[: self.SHAPE[0], : self.SHAPE[1]]
+        distance = np.hypot(yy - self.BIG[0], xx - self.BIG[1])
+        green = self.greenness(linear, (distance > 30) & (distance < 60))
+        self.assertLess(float(np.abs(green).max()), 0.05, "the violet glow of a star alone is gone, and no green is left")
 
 
 class SplitCleaning(unittest.TestCase):

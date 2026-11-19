@@ -443,6 +443,9 @@ export function planOptionView(
     pipelines: readonly Pipeline[];
     /** The pipelines chosen for each target of the night. */
     targetRenders: TargetRenders;
+    /** « L'image du plan ne contient pas cette nuit. … »: its image online
+     * leaves this night out (`planLeftOutText`), said after its line. */
+    leftOut?: string | null;
   },
 ): PlanOptionView {
   const { project, lines, gate, choices } = input;
@@ -556,10 +559,15 @@ export function planOptionView(
     projectId: project.projectId,
     state,
     ticked: open && !choices.off,
-    line: t("multiNight.planImage.line", {
-      name: planName(project),
-      nights: pluralText(t, locale, "multiNight.nights", nights.length),
-    }),
+    line: [
+      t("multiNight.planImage.line", {
+        name: planName(project),
+        nights: pluralText(t, locale, "multiNight.nights", nights.length),
+      }),
+      input.leftOut ?? null,
+    ]
+      .filter(Boolean)
+      .join(" "),
     groups,
     combined:
       open && combinedNights.length > 1

@@ -52,7 +52,10 @@ export function FoldersStep() {
             phase={scan.phase}
           />
           {scan.total > 0 && scan.current && (
-            <p className="as-detect-scan__current" title={scan.current}>
+            <p
+              className="as-detect-scan__current as-selectable"
+              title={scan.current}
+            >
               {displayPath(scan.current, homeOf(scan.current))}
             </p>
           )}
@@ -168,7 +171,7 @@ function FolderRow({
           title={folder ?? undefined}
         >
           <Icon name="folder" />
-          <span>
+          <span className="as-selectable">
             {folder ? displayPath(folder, homeOf(folder)) : t("detect.none")}
           </span>
         </span>

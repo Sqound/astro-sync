@@ -336,6 +336,7 @@ export function FilesStep({
                   void folderOpen(
                     inPlace[card.targetId]?.folder ??
                       `${detection.folder}/${card.folderName}`,
+                    detection.folder,
                   )
                 }
               >

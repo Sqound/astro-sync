@@ -160,6 +160,7 @@ export function SessionsScreen({
               ),
               loadImportClock(windowStorage(), session.id),
             ),
+            session.planId ?? null,
           ),
       },
       onRead: async ({ index, session, detail, view }) => {

@@ -687,6 +687,19 @@ pub trait UploadTransport {
     ) -> Result<PutOutcome, UploadError>;
     fn finalize(&self, token: &str, upload_id: &str) -> Result<FinalizeOutcome, UploadError>;
 
+    /// What the night holds online right now (`GET /v1/sessions/{id}/online`),
+    /// read at the moment an image that takes the place of another is sent.
+    /// `None` when it cannot be read (offline, a service that refuses): the
+    /// caller then takes the prudent choice. A transport that cannot read it
+    /// answers `None`.
+    fn night_online_now(
+        &self,
+        _token: &str,
+        _session_id: &str,
+    ) -> Option<crate::night_online::NightOnline> {
+        None
+    }
+
     /// Proposes the capture's metadata for a capture that exists
     /// (`PATCH /v1/captures/{id}`
     /// `{ "proposed": { "source": "astro-sync", … } }`), answering what the
@@ -805,6 +818,25 @@ impl UploadTransport for HttpUploadTransport {
             return Err(UploadError::SessionNotFound(upload_id.to_string()));
         }
         Err(refusal.into_error())
+    }
+
+    fn night_online_now(
+        &self,
+        token: &str,
+        session_id: &str,
+    ) -> Option<crate::night_online::NightOnline> {
+        let url = self.url(&format!("/api/v1/sessions/{session_id}/online"));
+        let token = token.to_owned();
+        let build: RequestFactory =
+            Arc::new(move |client| client.get(url.clone()).bearer_auth(&token));
+        let answer = self
+            .http
+            .send_safe(self.http.policy().attempt_timeout, &build)
+            .ok()?;
+        if !answer.is_success() {
+            return None;
+        }
+        serde_json::from_slice(&answer.body).ok()
     }
 
     fn put_chunk(
@@ -1412,6 +1444,18 @@ pub fn upload_entry<T: UploadTransport>(
     result
 }
 
+/// True when the answer shows the image arrived as a variant of a capture
+/// (not as the main image of a capture it made): the one case where the note
+/// « the space could not be read » is true.
+fn left_as_a_variant(response: &FinalizeResponse) -> bool {
+    let variant = response.variant.as_ref().map(|image| image.id.as_str());
+    let main = response
+        .capture
+        .as_ref()
+        .and_then(|capture| capture.main_image_id.as_deref());
+    matches!((variant, main), (Some(variant), Some(main)) if variant != main)
+}
+
 /// What the proposals after the fact answered.
 #[derive(Debug, Default)]
 struct Proposed {
@@ -1618,6 +1662,110 @@ fn upload_entry_inner<T: UploadTransport>(
     {
         metadata.capture_id = Some(capture_created_by(queue, first, entry.kind)?);
     }
+    // An image set that takes the place of a main image only does so when the
+    // service confirms, now, that the image it was made from is that main
+    // image: the queue's own memory of what it sent is never enough (the
+    // person may have chosen another main image online since).
+    let reset;
+    let entry = if metadata.placement.as_deref() == Some(crate::image_adjust::PLACEMENT_REPLACE)
+        && metadata.replaces_sha256.is_none()
+        && let Some(capture_id) = metadata.capture_id.clone()
+    {
+        let online = metadata
+            .session_id
+            .as_deref()
+            .and_then(|session_id| transport.night_online_now(token, session_id));
+        let chosen = crate::image_adjust::placement_at_send(
+            online.as_ref(),
+            &entry.source_path,
+            &capture_id,
+        );
+        let replaces = matches!(chosen, crate::image_adjust::SendPlacement::Replace);
+        match chosen {
+            crate::image_adjust::SendPlacement::Replace => {}
+            crate::image_adjust::SendPlacement::ReplaceVariant(original) => {
+                metadata.placement = None;
+                metadata.replaces_sha256 = Some(original);
+            }
+            crate::image_adjust::SendPlacement::Add => {
+                metadata.placement = Some(crate::image_adjust::PLACEMENT_ADD.to_string());
+            }
+        }
+        // A session an earlier version created already carries `replace`:
+        // it is dropped and created again with the confirmed choice.
+        if !replaces && entry.upload_id.is_some() {
+            queue.reset_for_restart(&entry.sha256)?;
+            reset = QueueEntry {
+                upload_id: None,
+                offset: 0,
+                ..entry.clone()
+            };
+            &reset
+        } else {
+            entry
+        }
+    } else {
+        entry
+    };
+    // The head image of a series that carries a wish about the main image: the
+    // space is asked now which capture it holds, and the image goes where that
+    // answer says (a variant, or as the service's rule). Not confirmed: it
+    // waits. An upload session opened already has been decided. A variant is
+    // proposed as a variant (its image's part only), whatever was queued.
+    let mut unconfirmed_variant = false;
+    let demoted;
+    let entry = if entry.upload_id.is_none()
+        && entry.target.variant_of.is_none()
+        && let Some(wish) = entry.target.main_wish.as_deref()
+        && let Some(session_id) = metadata.session_id.clone()
+    {
+        let online = transport.night_online_now(token, &session_id);
+        let series = entry
+            .target
+            .metadata
+            .as_ref()
+            .and_then(|proposals| proposals.series.as_ref());
+        let target_id = metadata.target_ids.first().map_or("", String::as_str);
+        match crate::main_choice::main_at_send(
+            wish,
+            online.as_ref(),
+            target_id,
+            series,
+            &entry.sha256,
+        ) {
+            crate::main_choice::MainAtSend::AsQueued => entry,
+            crate::main_choice::MainAtSend::VariantOf(capture_id) => {
+                demoted = QueueEntry {
+                    target: crate::upload_queue::EntryTarget {
+                        variant_of: Some(capture_id),
+                        ..entry.target.clone()
+                    },
+                    ..entry.clone()
+                };
+                metadata = build_metadata(&demoted, target);
+                &demoted
+            }
+            crate::main_choice::MainAtSend::Wait | crate::main_choice::MainAtSend::NewVariant => {
+                let reads = queue.count_unread_main(&entry.sha256)?;
+                if crate::main_choice::when_unread(reads)
+                    == crate::main_choice::MainAtSend::NewVariant
+                {
+                    // Never the main image on a state that is not confirmed:
+                    // a new variant of the capture, or a first capture.
+                    metadata.placement = Some(crate::image_adjust::PLACEMENT_ADD.to_string());
+                    unconfirmed_variant = true;
+                    entry
+                } else {
+                    return Err(UploadError::Transport(
+                        "the space could not say which image is the main one of the capture; trying again later"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+    } else {
+        entry
+    };
     let mut session = match reconcile_or_create(transport, queue, token, entry, &metadata) {
         // The capture this image is added to left the space: the one it
         // belongs to now is found, or made again, and the image tries once
@@ -1666,6 +1814,8 @@ fn upload_entry_inner<T: UploadTransport>(
                 queue.mark_completed(&entry.sha256, &response.capture_id)?;
                 if response.replaced {
                     queue.mark_replaced(&entry.sha256)?;
+                } else if unconfirmed_variant && left_as_a_variant(&response) {
+                    queue.mark_variant_unconfirmed(&entry.sha256)?;
                 }
                 on_progress(entry.size, entry.size);
                 return Ok(UploadOutcome {
@@ -1853,6 +2003,23 @@ fn already_sent<T: UploadTransport>(
 mod tests {
     use super::*;
     use crate::dry_run::{DryRunEntry, DryRunReport};
+
+    #[test]
+    fn the_unread_space_note_is_only_true_for_a_variant_of_an_existing_capture() {
+        let answer = |variant: Option<&str>, main: Option<&str>| FinalizeResponse {
+            variant: variant.map(|id| ImageRef { id: id.into() }),
+            capture: Some(CaptureRef {
+                main_image_id: main.map(str::to_string),
+                ..CaptureRef::default()
+            }),
+            ..FinalizeResponse::default()
+        };
+        assert!(left_as_a_variant(&answer(Some("v"), Some("m"))));
+        assert!(!left_as_a_variant(&answer(Some("m"), Some("m"))));
+        assert!(!left_as_a_variant(&answer(None, Some("m"))));
+        assert!(!left_as_a_variant(&FinalizeResponse::default()));
+    }
+
     use crate::package::AssetKind;
     use crate::scanner::FileClass;
     use std::cell::RefCell;
@@ -3181,6 +3348,7 @@ mod tests {
                 plan: None,
                 placement: None,
                 replaces_sha256: None,
+                main_wish: None,
             },
         };
         let run = UploadTarget {
@@ -3231,6 +3399,7 @@ mod tests {
                 }),
                 placement: None,
                 replaces_sha256: None,
+                main_wish: None,
             },
         };
         let head = serde_json::to_value(build_metadata(&plan_row(None), &UploadTarget::default()))
@@ -3319,6 +3488,7 @@ mod tests {
                     plan: None,
                     placement: None,
                     replaces_sha256: None,
+                    main_wish: None,
                 },
             }])
             .unwrap();
@@ -3506,6 +3676,7 @@ mod tests {
                     plan: None,
                     placement: None,
                     replaces_sha256: None,
+                    main_wish: None,
                 },
             }])
             .unwrap();

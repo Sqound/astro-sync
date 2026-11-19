@@ -141,8 +141,9 @@ pub struct AdjustValues {
     /// 0..100 %: diffraction spikes added on the bright stars (0: none). Light
     /// that is not in the person's data.
     pub spikes: f64,
-    /// 0..100: which stars get spikes, the brightest only (0) to the medium
-    /// ones too (100). Says nothing while `spikes` is 0, and is then 50.
+    /// -30..100: which stars get spikes, the brightest one alone (-30), the
+    /// brightest ones (0) to the medium ones too (100). 0..100 is the range
+    /// of the first settings and keeps its meaning. Says nothing while `spikes` is 0, and is then 50.
     pub spikes_reach: f64,
 }
 
@@ -190,7 +191,7 @@ impl AdjustValues {
             spikes_reach: if spikes == 0.0 {
                 Self::NEUTRAL.spikes_reach
             } else {
-                keep(self.spikes_reach, 50.0, 0.0, 100.0)
+                keep(self.spikes_reach, 50.0, -30.0, 100.0)
             },
         }
     }
@@ -735,6 +736,58 @@ pub fn place_replacements(online: &NightOnline, plans: &mut [ImagePlan]) {
                 reason: NotSent::AdjustedVariantOnline,
             }
         };
+    }
+}
+
+/// The value of `placement` that makes an image a new variant, never a
+/// replacement (`capture.schema.json`, `uploadMetadata.placement`).
+pub const PLACEMENT_ADD: &str = "add";
+
+/// Where an image set that was queued to take the place of a main image goes
+/// when it is really sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SendPlacement {
+    /// The service confirms the render it was made from is the capture's main
+    /// image: `placement: "replace"`.
+    Replace,
+    /// The render it was made from is now a variant of the capture: the image
+    /// set takes that variant's place (`replacesSha256`), the main image is
+    /// not touched.
+    ReplaceVariant(String),
+    /// Anything else (the render left the capture, is online elsewhere, the
+    /// night cannot be read): a new variant (`placement: "add"`), never a
+    /// replacement of the main image.
+    Add,
+}
+
+/// The decision of [`place_replacements`], taken again from what the night
+/// holds online **when the image set is sent**: `path` is the image set's
+/// PNG, `capture_id` the capture it was queued for. Only the render online as
+/// the main image of that very capture lets the image set replace it.
+#[must_use]
+pub fn placement_at_send(
+    online: Option<&NightOnline>,
+    path: &Path,
+    capture_id: &str,
+) -> SendPlacement {
+    let Some(online) = online else {
+        return SendPlacement::Add;
+    };
+    let Some(render) = adjusted_render_of(path) else {
+        return SendPlacement::Add;
+    };
+    let Some(original) = original_sha256(&render) else {
+        return SendPlacement::Add;
+    };
+    match online.image_with(&original) {
+        Some((capture, image)) if capture.id == capture_id => {
+            if image.main {
+                SendPlacement::Replace
+            } else {
+                SendPlacement::ReplaceVariant(original)
+            }
+        }
+        _ => SendPlacement::Add,
     }
 }
 

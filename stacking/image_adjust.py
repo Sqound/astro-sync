@@ -8,7 +8,8 @@ The settings, in the order they are applied:
 ``brightness``  -50..50: a power on the luminance, the blacks and the whites kept (0: the render's).
 ``colour``      0..3: a factor on the chroma of the signal, the sky left neutral (1: the render's).
 ``spikes``      0..100 %: diffraction spikes added to the bright stars, last of all (0: none).  ``spikesReach``
-                (0..100, 50 when ``spikes`` is 0) says which stars get them.  Not in the person's data: added light.
+                (-30..100, 50 when ``spikes`` is 0) says which stars get them: below 0 a number of stars, down to the
+                brightest alone.  Not in the person's data: added light.
 
 A setting at its neutral value is not applied at all, so an image with every setting neutral comes out
 unchanged to the bit.  Every operation but the smoothing and the spikes' search for the stars is one per pixel: the window applies them itself on
@@ -65,7 +66,7 @@ RANGES = {
     "brightness": (-50.0, 50.0),
     "colour": (0.0, 3.0),
     "spikes": (0.0, 100.0),
-    "spikesReach": (0.0, 100.0),
+    "spikesReach": (-30.0, 100.0),
 }
 # The strength of the smoothing at 100 %, in widths of the sky's noise (the study found that 1.1 already waxes).
 SMOOTHING_FULL = 2.0

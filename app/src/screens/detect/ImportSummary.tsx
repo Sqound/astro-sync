@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Icon } from "../../components/Icon";
 import { useImport } from "../../components/ImportProvider";
@@ -7,10 +7,12 @@ import { Notice } from "../../components/Notice";
 import { PaymentFailedNotice } from "../../components/PaymentFailedNotice";
 import { useSnackbar } from "../../components/Snackbar";
 import { offersOpener, useSpaceWeb } from "../../components/TabParts";
+import { Waiting } from "../../components/Waiting";
 import { WizardFoot } from "../../components/WizardFrame";
 import { useI18n } from "../../i18n";
 import {
   detectTreatmentsPrepare,
+  nightOnline,
   sessionsOrganisePlan,
   workingFolderGet,
   type Proposal,
@@ -35,13 +37,15 @@ import { formatError } from "../../lib/format";
 import { displayPath, homeOf } from "../../lib/home";
 import {
   footRule,
+  mainContextOf,
   recapLine,
   recapPlan,
   recapProgress,
   workingOutcome,
   type ImportState,
 } from "../../lib/importFlow";
-import { tidyNames, tidyStateOf } from "../../lib/tidy";
+import { mainGroups, type OnlineRead } from "../../lib/mainImage";
+import { oncePerSubject, tidyNames, tidyStateOf } from "../../lib/tidy";
 import { nightDay } from "../../lib/nights";
 import { summaryImageView } from "../../lib/summaryImages";
 import { formatMinutes, pluralText } from "../../lib/written";
@@ -148,11 +152,21 @@ export function ImportSummary({
   // What the working folder holds already: the treatments linked every frame
   // into it, so "Ranger" may have nothing left to do.
   const working = workingOutcome(state);
+  // Asked once per subject (the proposal, what was made, the mode, the
+  // destination), never again because something else of the import changed:
+  // the engine looks at every file on the disk for it.
+  const overviewAsked = useRef(oncePerSubject());
+  useEffect(() => {
+    const asked = overviewAsked.current;
+    return () => asked.end();
+  }, []);
   useEffect(() => {
     const held = state.proposal;
     const made = working;
     if (!held || !made) return;
-    let current = true;
+    const key = [held, made, tidyMode, tidyDestination];
+    const asked = overviewAsked.current;
+    if (!asked.begin(key)) return;
     const ids = made.outcome.sessions.map((s) => s.detectedId);
     void (async () => {
       try {
@@ -164,16 +178,44 @@ export function ImportSummary({
           ids,
           tidyNames(held, made.outcome),
         );
-        if (current) setOverview(tidyStateOf(plan));
+        if (asked.holds(key)) setOverview(tidyStateOf(plan));
       } catch {
         // Unknown: the option stays offered, the primary asks again.
-        if (current) setOverview(null);
+        if (asked.holds(key)) setOverview(null);
       }
     })();
+  }, [state.proposal, working, tidyMode, tidyDestination, setOverview]);
+  // What the space holds of the nights the import updates: « Garder l'image
+  // principale de votre espace » is read here, once per night, as the images
+  // appear. A night that cannot be read is said so, never guessed.
+  const setMainReads = imp.setMainReads;
+  const readSessions = [
+    ...new Set(
+      Object.values(mainContextOf(state).sessionOf).filter(
+        (id): id is string => !!id && mainContextOf(state).existing.has(id),
+      ),
+    ),
+  ].sort();
+  const readKey = readSessions.join("\u0000");
+  useEffect(() => {
+    if (!readKey) {
+      setMainReads(null);
+      return;
+    }
+    let current = true;
+    void Promise.all(
+      readKey.split("\u0000").map((id) =>
+        nightOnline(id)
+          .then((night): [string, OnlineRead] => [id, night])
+          .catch((): [string, OnlineRead] => [id, "failed"]),
+      ),
+    ).then((pairs) => {
+      if (current) setMainReads(Object.fromEntries(pairs));
+    });
     return () => {
       current = false;
     };
-  }, [state.proposal, working, tidyMode, tidyDestination, setOverview]);
+  }, [readKey, setMainReads]);
   // The session whose night folder is being made before its wizard opens.
   const [opening, setOpening] = useState<string | null>(null);
   const proposal = state.proposal;
@@ -185,6 +227,13 @@ export function ImportSummary({
   const rows = resultRows(proposal, created.outcome);
   const skipped = skippedRows(proposal, created.outcome);
   const images = summaryImages(state.made, state.storage);
+  const mainContext = mainContextOf(state);
+  const groups = mainGroups(
+    images,
+    state.ticked,
+    state.mainChoice,
+    mainContext,
+  );
   const cards = treatmentCards(proposal, created.outcome);
   const room = imageRoom(state.storage);
   const roomText = room
@@ -452,6 +501,10 @@ export function ImportSummary({
               ?.nights.map((night) => night.eveningDate) ?? []
           }
           adjustKey={adjustKey}
+          groups={groups}
+          mainContext={mainContext}
+          onChoose={imp.chooseMain}
+          choiceOpen={!state.sending && state.sent === null}
         />
         {room && (
           <div className="as-result__why">
@@ -486,11 +539,24 @@ export function ImportSummary({
       </Notice>
       <WizardFoot
         message={
-          <p className={helpTextClassName} role="status">
-            {(state.working || state.error
-              ? recapProgress(state, plan, t)
-              : null) ?? recapLine(plan, t, locale)}
-          </p>
+          // While the primary runs: the star and what is being done, in a
+          // line of the same height as the sentence it replaces.
+          <div className="as-recap-progress" aria-busy={state.sending}>
+            {state.sending ? (
+              <Waiting
+                size="inline"
+                label={
+                  recapProgress(state, plan, t, locale) ??
+                  recapLine(plan, t, locale)
+                }
+              />
+            ) : (
+              <p className={helpTextClassName} role="status">
+                {(state.error ? recapProgress(state, plan, t, locale) : null) ??
+                  recapLine(plan, t, locale)}
+              </p>
+            )}
+          </div>
         }
         previous={rule.previous !== null ? () => imp.goTo(3) : null}
         secondary={
@@ -526,6 +592,7 @@ export function ImportSummary({
                     )
                 : imp.finish,
             enabled: rule.primary.enabled,
+            busy: state.sending,
             icon:
               rule.primary.kind === "send" || rule.primary.kind === "createSend"
                 ? "upload"

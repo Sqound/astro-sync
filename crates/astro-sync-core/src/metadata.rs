@@ -31,7 +31,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::detection::{CalibrationCounts, NightDetection};
 use crate::night_online::NightOnline;
@@ -1304,30 +1304,92 @@ pub fn import_render_proposals(
     pipelines: Option<&PipelineList>,
     image_quality: bool,
 ) -> Option<Proposals> {
-    if !matches!(kind, ResultKind::Stacked) {
-        return None;
-    }
-    let stacked = image.parent()?;
-    if stacked.file_name()? != crate::working_folder::STACKED_DIR {
-        return None;
-    }
-    let target = stacked.parent()?;
-    let night_folder = target.parent()?;
-    let families = progression_images::target_families(night_folder, target.file_name()?.to_str()?);
-    let all = proposals_with(
+    ImportProposalSources::default().proposals(
         image,
         kind,
         render,
-        &families,
-        &calibration_in_folders(night_folder),
-        &Sources {
-            night_folder,
-            pipelines,
-            image_quality,
-        },
-    );
-    let proposals = if capture { all } else { all.image_part() };
-    (!proposals.is_empty()).then_some(proposals)
+        capture,
+        pipelines,
+        image_quality,
+    )
+}
+
+/// What the renders of one sending share, read once: the families of a
+/// target's light frames (the header of every frame of the target, through
+/// its links) and the calibration frames of a night (a walk of its
+/// `calibration/` folders). Without it each render ticked read them again:
+/// the wait of « Mise en file des images… » grew with the frames of the
+/// target times the images ticked.
+#[derive(Debug, Default)]
+pub struct ImportProposalSources {
+    families: std::collections::HashMap<PathBuf, Vec<crate::analysis::fits::AcquisitionFamily>>,
+    calibration: std::collections::HashMap<PathBuf, CalibrationCounts>,
+    /// How many times the frames of a target were read (what the cache
+    /// spares, counted for the tests).
+    pub frames_read: usize,
+}
+
+impl ImportProposalSources {
+    /// [`import_render_proposals`], the frames of a target and the
+    /// calibration of a night read once for the whole sending, and only when
+    /// what is proposed needs them: the acquisition, the sensor and the
+    /// calibration are the capture's (`capture`), the pixel scale is the
+    /// quality's (`image_quality`). A variant sent without its quality reads
+    /// no frame at all.
+    pub fn proposals(
+        &mut self,
+        image: &Path,
+        kind: ResultKind,
+        render: Option<&str>,
+        capture: bool,
+        pipelines: Option<&PipelineList>,
+        image_quality: bool,
+    ) -> Option<Proposals> {
+        if !matches!(kind, ResultKind::Stacked) {
+            return None;
+        }
+        let stacked = image.parent()?;
+        if stacked.file_name()? != crate::working_folder::STACKED_DIR {
+            return None;
+        }
+        let target = stacked.parent()?;
+        let night_folder = target.parent()?;
+        let target_name = target.file_name()?.to_str()?;
+        let families = if capture || image_quality {
+            if !self.families.contains_key(target) {
+                self.frames_read += 1;
+                self.families.insert(
+                    target.to_path_buf(),
+                    progression_images::target_families(night_folder, target_name),
+                );
+            }
+            self.families.get(target).cloned().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let calibration = if capture {
+            *self
+                .calibration
+                .entry(night_folder.to_path_buf())
+                .or_insert_with(|| calibration_in_folders(night_folder))
+        } else {
+            CalibrationCounts::default()
+        };
+        let all = proposals_with(
+            image,
+            kind,
+            render,
+            &families,
+            &calibration,
+            &Sources {
+                night_folder,
+                pipelines,
+                image_quality,
+            },
+        );
+        let proposals = if capture { all } else { all.image_part() };
+        (!proposals.is_empty()).then_some(proposals)
+    }
 }
 
 /// The frames of the night's `calibration/<darks|flats|dark-flats|biases>/`

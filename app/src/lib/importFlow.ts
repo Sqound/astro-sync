@@ -51,6 +51,15 @@ import {
   type TreatmentResult,
   type TreatmentTargetCard,
 } from "./detectTreatments.ts";
+import { renderOf } from "./importSend.ts";
+import {
+  keepChoices,
+  mainGroups,
+  mainPlan,
+  type MainContext,
+  type MainPick,
+  type OnlineRead,
+} from "./mainImage.ts";
 import type { TargetFinishes } from "./finish";
 import type { TargetRenders } from "./pipelineChoice";
 import { pluralText } from "./written.ts";
@@ -209,6 +218,12 @@ export interface ImportState {
   treatRefused: number;
   /** The images ticked in « Images à envoyer » (`imageKey`). */
   ticked: string[];
+  /** The image chosen as the main one of each target and series of poses
+   * (`groupKeyOfRow`): a card's key, or `KEEP`; absent: the default. */
+  mainChoice: Record<string, string>;
+  /** What the space said of each session that exists already, for « Garder
+   * l'image principale de votre espace ». */
+  mainReads: Record<string, OnlineRead>;
   sending: boolean;
   /** « Terminé »: the images that left (0 when none did). */
   sent: number | null;
@@ -225,6 +240,9 @@ export interface ImportState {
   tidyOverview: TidyState | null;
   /** The part of the primary that runs while `sending`. */
   working: RecapWork | null;
+  /** What that part is doing right now, as the engine says it (the image
+   * being prepared, of how many): `null` between two parts. */
+  workingStep: RecapStep | null;
   /** The run of the primary began before the sessions were created: its
    * button keeps its words (« Créer et envoyer ») while it runs. */
   runCreates: boolean;
@@ -258,6 +276,8 @@ export const NO_IMPORT: ImportState = {
   treatErrors: [],
   treatRefused: 0,
   ticked: [],
+  mainChoice: {},
+  mainReads: {},
   sending: false,
   sent: null,
   sentVariants: 0,
@@ -265,6 +285,7 @@ export const NO_IMPORT: ImportState = {
   tidy: NO_TIDY,
   tidyOverview: null,
   working: null,
+  workingStep: null,
   runCreates: false,
   report: NO_REPORT,
 };
@@ -328,6 +349,10 @@ export type ImportAction =
   /** « Continuer sans traitement » / « Continuer avec les images faites ». */
   | { type: "skip" }
   | { type: "toggleImage"; key: string }
+  /** The image chosen as the main one of a group (`KEEP`: the space's). */
+  | { type: "chooseMain"; group: string; value: string }
+  /** What the space said of the sessions it holds (`null`: asked again). */
+  | { type: "mainRead"; reads: Record<string, OnlineRead> | null }
   /** A choice on the list of a session's incidents. */
   | { type: "incidents"; sessionId: string; action: DraftAction }
   | { type: "tidyTick"; on: boolean }
@@ -336,6 +361,7 @@ export type ImportAction =
   | { type: "tidyOverview"; overview: TidyState | null }
   | { type: "sendStart" }
   | { type: "working"; working: RecapWork }
+  | { type: "workingStep"; step: RecapStep }
   | { type: "incidentsApplied"; sessionId: string; result: IncidentsResult }
   | { type: "tidyApplied"; result: TidyResult }
   /** The report of a night's logs, sent or not (by the session created). */
@@ -516,6 +542,8 @@ export function importReducer(
         treatErrors: action.errors,
         treatRefused: action.refused ?? 0,
         ticked,
+        mainChoice: {},
+        mainReads: {},
         // A run that ends opens the summary; one that was stopped stays on
         // « Traitements ».
         step: stopped ? 3 : 4,
@@ -549,19 +577,30 @@ export function importReducer(
       // The linear file is attached to the capture of an image of its target:
       // without any image ticked, it is unticked too.
       const left = tickedTargets(rows, next);
+      const ticked = next.filter(
+        (key) =>
+          !rows.some(
+            (item) =>
+              item.key === key &&
+              item.role === "file" &&
+              !left.has(item.targetId),
+          ),
+      );
+      // The main image that is not ticked any more falls back to the first one
+      // ticked of its group.
       return {
         ...state,
-        ticked: next.filter(
-          (key) =>
-            !rows.some(
-              (item) =>
-                item.key === key &&
-                item.role === "file" &&
-                !left.has(item.targetId),
-            ),
-        ),
+        ticked,
+        mainChoice: keepChoices(rows, ticked, state.mainChoice),
       };
     }
+    case "chooseMain":
+      return {
+        ...state,
+        mainChoice: { ...state.mainChoice, [action.group]: action.value },
+      };
+    case "mainRead":
+      return { ...state, mainReads: action.reads ?? {} };
     case "incidents": {
       const draft = draftReducer(
         state.incidents[action.sessionId] ?? EMPTY_DRAFT,
@@ -587,11 +626,19 @@ export function importReducer(
         ...state,
         sending: true,
         working: null,
+        workingStep: null,
         error: null,
         runCreates: state.created === null,
       };
     case "working":
-      return { ...state, working: action.working };
+      return { ...state, working: action.working, workingStep: null };
+    case "workingStep":
+      // Only while its part runs: a late word of the engine says nothing.
+      return state.sending &&
+        state.working !== null &&
+        stepStage(action.step) === state.working
+        ? { ...state, workingStep: action.step }
+        : state;
     case "incidentsApplied":
       return {
         ...state,
@@ -614,12 +661,19 @@ export function importReducer(
         },
       };
     case "sendFailed":
-      return { ...state, sending: false, working: null, error: action.error };
+      return {
+        ...state,
+        sending: false,
+        working: null,
+        workingStep: null,
+        error: action.error,
+      };
     case "sent":
       return {
         ...state,
         sending: false,
         working: null,
+        workingStep: null,
         sent: action.count,
         sentVariants: action.variants,
         step: 5,
@@ -696,6 +750,45 @@ export function provisionalIds(state: ImportState): string[] {
  * would create (provisional identifiers). */
 export function workingOutcome(state: ImportState): Created | null {
   return state.created ?? state.local;
+}
+
+/** The sessions the space holds already and the images of the import that
+ * belong to them: what « Garder l'image principale de votre espace » reads. A
+ * session still to create holds nothing. */
+export function mainContextOf(state: ImportState): MainContext {
+  const sessionOf: Record<string, string | null> = {};
+  const shaOf: Record<string, string> = {};
+  for (const row of summaryImages(state.made, state.storage)) {
+    const item = state.made.find(
+      (made) => made.targetId === row.targetId && made.path === row.path,
+    );
+    if (!item) continue;
+    sessionOf[row.key] =
+      item.send.kind === "night" ? item.send.sessionId : null;
+    shaOf[row.key] = renderOf(item.send).sha256;
+  }
+  const working = workingOutcome(state);
+  return {
+    sessionOf,
+    existing: new Set(
+      (working?.outcome.sessions ?? [])
+        .filter((session) => session.action === "updated")
+        .map((session) => session.sessionId),
+    ),
+    reads: state.mainReads,
+    shaOf,
+    variantsAllowed: !state.storage || state.storage.variantLimit > 0,
+  };
+}
+
+/** What each target and series sends as its main image, from what was chosen
+ * and what the space said (`mainGroups`, `mainPlan`). */
+export function mainPicksOf(state: ImportState): Record<string, MainPick> {
+  const rows = summaryImages(state.made, state.storage);
+  return mainPlan(
+    mainGroups(rows, state.ticked, state.mainChoice, mainContextOf(state)),
+    state.mainChoice,
+  );
 }
 
 /** A job of the import is running: nothing else may start, the thread and
@@ -1084,14 +1177,71 @@ export function recapProgress(
   state: ImportState,
   plan: RecapPlan,
   t: Translate,
+  locale = "en",
 ): string | null {
   const stages = recapStages(state, plan);
   const done = stages.filter(
     (stage) => stage !== state.working && stageDone(state, stage),
   );
   const parts = done.map((stage) => t(`import.recap.done.${stage}`));
-  if (state.working) parts.push(t(`import.recap.working.${state.working}`));
+  if (state.working)
+    parts.push(
+      recapStepText(state, t, locale) ??
+        t(`import.recap.working.${state.working}`),
+    );
   return parts.length > 0 ? parts.join(t("detect.join")) : null;
+}
+
+/** What a part of the primary is doing, as the engine says it. */
+export interface RecapStep {
+  step: string;
+  done?: number;
+  total?: number;
+}
+
+/** The part of the primary a word of the engine belongs to (`null`: a word
+ * this version does not know, left unsaid). */
+export function stepStage(step: RecapStep): RecapWork | null {
+  switch (step.step) {
+    case "service":
+    case "folders":
+      return "sessions";
+    case "prepare":
+    case "check":
+    case "queue":
+      return "send";
+    default:
+      return null;
+  }
+}
+
+/** The sentence of what the running part is doing right now: « Création de
+ * 3 sessions dans votre espace… », « Préparation de l'image 1 sur 2… ».
+ * `null` when the engine said nothing yet (the part's own sentence is said). */
+export function recapStepText(
+  state: ImportState,
+  t: Translate,
+  locale: string,
+): string | null {
+  const step = state.workingStep;
+  if (!step || !state.working || stepStage(step) !== state.working) return null;
+  const total = step.total ?? 0;
+  switch (step.step) {
+    case "service":
+      return total > 0
+        ? pluralText(t, locale, "import.recap.step.service", total)
+        : null;
+    case "folders":
+      return t("import.recap.step.folders");
+    case "prepare":
+      return total > 0 && step.done
+        ? t("import.recap.step.prepare", { done: step.done, total })
+        : null;
+    case "check":
+      return t("import.recap.step.check");
+    default:
+      return null;
+  }
 }
 
 /* ------------------------------- Pre-ticking ------------------------------ */

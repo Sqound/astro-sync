@@ -212,6 +212,37 @@ fn the_guide_and_the_readme_follow_the_rule_of_the_assistant_file() {
 }
 
 #[test]
+fn a_folder_that_is_not_there_is_refused_with_its_own_path() {
+    let _serial = serialized();
+    let harness = harness(fast());
+    let gone = unique_dir("night-commands-gone").join("a folder · with spaces");
+
+    // Nothing is opened: the refusal says which path, so the window can name it.
+    let refused = harness
+        .invoke(
+            "folder_open",
+            serde_json::json!({ "folder": gone.to_string_lossy() }),
+        )
+        .answer(Duration::from_secs(5))
+        .unwrap_err();
+    assert_eq!(refused["code"], "folder_missing");
+    assert_eq!(refused["message"], gone.to_string_lossy().as_ref());
+
+    // A file other than the Guide's own is no folder either.
+    let root = unique_dir("night-commands-file");
+    let other = root.join("notes.txt");
+    std::fs::write(&other, "x").unwrap();
+    let refused = harness
+        .invoke(
+            "folder_open",
+            serde_json::json!({ "folder": other.to_string_lossy() }),
+        )
+        .answer(Duration::from_secs(5))
+        .unwrap_err();
+    assert_eq!(refused["code"], "folder_missing");
+}
+
+#[test]
 fn the_working_folder_the_night_folder_and_its_detection() {
     let _serial = serialized();
     let harness = harness(fast());

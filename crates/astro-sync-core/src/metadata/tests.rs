@@ -1877,3 +1877,134 @@ fn the_series_of_a_render_is_its_recorded_total_exposure() {
     .unwrap();
     assert_eq!(recorded_series_seconds(&raw), Some(2400));
 }
+
+/// The renders of one sending share what is read of their target and night:
+/// the frames of the target are read once whatever the number of images, a
+/// variant sent without its quality reads none, and what is proposed is what
+/// each render proposed when it read everything by itself.
+#[test]
+fn the_renders_of_one_sending_read_the_frames_of_their_target_once() {
+    let night = night_with(true);
+    let list = pipelines::read_manifests(None, None, "en");
+    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let other = night
+        .folder
+        .join("M31/stacked/M31_2026-10-07_dualband-correction.tif");
+    let alone = |image: &Path, render: &str, capture: bool, quality: bool| {
+        import_render_proposals(
+            image,
+            ResultKind::Stacked,
+            Some(render),
+            capture,
+            Some(&list),
+            quality,
+        )
+    };
+
+    // A variant alone, its quality not sent: no frame read, the same proposals.
+    let mut sources = ImportProposalSources::default();
+    let variant = sources.proposals(
+        &other,
+        ResultKind::Stacked,
+        Some("dualband-correction"),
+        false,
+        Some(&list),
+        false,
+    );
+    assert_eq!(sources.frames_read, 0);
+    assert_eq!(variant, alone(&other, "dualband-correction", false, false));
+    assert!(variant.is_some());
+
+    // The capture and its variants, the quality sent: one reading for all.
+    let mut sources = ImportProposalSources::default();
+    for (image, render, capture) in [
+        (&raw, "raw", true),
+        (&other, "dualband-correction", false),
+        (&raw, "raw", false),
+    ] {
+        let shared = sources.proposals(
+            image,
+            ResultKind::Stacked,
+            Some(render),
+            capture,
+            Some(&list),
+            true,
+        );
+        assert_eq!(shared, alone(image, render, capture, true), "{render}");
+    }
+    assert_eq!(sources.frames_read, 1);
+}
+
+/// How long « Mise en file des images… » spends reading the frames of a
+/// target, measured: `cargo test -p astro-sync-core --lib
+/// queuing_time_by_frames -- --ignored --nocapture`. The frames are FITS
+/// files of synthesis (a header and 8 MB of pixels each would not change the
+/// figure: only the header is read); the renders weigh 8 MB and 45 MB.
+#[test]
+#[ignore = "a measure, not a check"]
+fn queuing_time_by_frames() {
+    use std::time::Instant;
+    let night = night();
+    let list = pipelines::read_manifests(None, None, "en");
+    let lights = night.folder.join("M31/lights");
+    let header = fs::read(lights.join("ha_0.fits")).unwrap();
+    for n in 0..1000 {
+        fs::write(lights.join(format!("more_{n:04}.fits")), &header).unwrap();
+    }
+    let stacked = night.folder.join("M31/stacked");
+    let png = stacked.join("M31_2026-10-07_raw.tif");
+    let big = stacked.join("M31_2026-10-07_dualband-correction.tif");
+    fs::write(&png, vec![7_u8; 8 << 20]).unwrap();
+    fs::write(&big, vec![9_u8; 45 << 20]).unwrap();
+    for (label, path) in [("8 MB", &png), ("45 MB", &big)] {
+        let start = Instant::now();
+        crate::scanner::file_sha256(path).unwrap();
+        eprintln!("sha256 of {label}: {:?}", start.elapsed());
+    }
+    let images = [(&png, "raw", true), (&big, "dualband-correction", false)];
+    let start = Instant::now();
+    for (image, render, capture) in images {
+        let _ = import_render_proposals(
+            image,
+            ResultKind::Stacked,
+            Some(render),
+            capture,
+            Some(&list),
+            true,
+        );
+    }
+    eprintln!(
+        "before: 2 images, 1 012 frames read for each: {:?}",
+        start.elapsed()
+    );
+    let start = Instant::now();
+    let mut sources = ImportProposalSources::default();
+    for (image, render, capture) in images {
+        let _ = sources.proposals(
+            image,
+            ResultKind::Stacked,
+            Some(render),
+            capture,
+            Some(&list),
+            true,
+        );
+    }
+    eprintln!(
+        "after: 2 images, 1 012 frames read once: {:?}",
+        start.elapsed()
+    );
+    let start = Instant::now();
+    let mut sources = ImportProposalSources::default();
+    let _ = sources.proposals(
+        &big,
+        ResultKind::Stacked,
+        Some("dualband-correction"),
+        false,
+        Some(&list),
+        false,
+    );
+    eprintln!(
+        "after: 1 variant, quality not sent, no frame read: {:?}",
+        start.elapsed()
+    );
+}

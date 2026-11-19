@@ -21,6 +21,9 @@ export interface ResumeRow {
   /** « À compléter : journaux ajoutés au dossier depuis l'envoi ». */
   line: string;
   step: WizardStep | null;
+  /** Complete, the image of its plan leaving it out: the badge says
+   * « Complète » and `line` the reserve. */
+  complete?: boolean;
 }
 
 export interface HomeInput {

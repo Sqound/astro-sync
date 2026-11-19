@@ -651,6 +651,7 @@ function CompareFrame({
     <div
       ref={frame}
       className="as-adjust__frame"
+      data-as-drag=""
       style={{ width: fit.width, height: fit.height }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

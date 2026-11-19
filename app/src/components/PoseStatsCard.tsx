@@ -225,7 +225,7 @@ export function PoseStatsCard({
       {run.status === "failed" && !stats && (
         <p className="as-poses__headline as-poses__headline--warning">
           <Icon name="warning" className="as-line__glyph" />
-          <span>
+          <span className="as-selectable">
             {t("poseStats.failed", { reason: formatError(t, run.error) })}
           </span>
         </p>

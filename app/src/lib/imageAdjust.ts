@@ -25,8 +25,8 @@ export interface AdjustValues {
   /** 0..100 %: diffraction spikes added to the bright stars (0: none). Light
    * that is not in the person's data. */
   spikes: number;
-  /** 0..100: which stars get spikes, the brightest only (0) to the medium
-   * ones too (100). Says nothing while `spikes` is 0, and is then 50. */
+  /** -30..100: which stars get spikes, the brightest one alone (-30), the
+   * brightest ones (0) to the medium ones too (100). Says nothing while `spikes` is 0, and is then 50. */
   spikesReach: number;
 }
 
@@ -109,7 +109,7 @@ export const ADJUST_SPECS: readonly AdjustSpec[] = [
   },
   {
     name: "spikesReach",
-    min: 0,
+    min: -30,
     max: 100,
     step: 5,
     titleKey: "adjust.spikes.reach.title",

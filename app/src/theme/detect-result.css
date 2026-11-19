@@ -134,8 +134,17 @@
 }
 
 .as-treat__pipelines {
+  display: flex;
+  align-items: center;
+  min-height: 1.5rem;
   color: var(--as-color-gold-accent);
   font-size: 0.8125rem;
+}
+
+/* The card's renders are being read: the star beside its sentence, in the
+   size of the line it gives way to. */
+.as-treat__pipelines--waiting .as-waiting__text {
+  font-size: inherit;
 }
 
 .as-treat__finish {
@@ -190,6 +199,60 @@
 
 .as-treat__series input {
   accent-color: var(--as-color-gold-accent);
+}
+
+/* A target and a series of poses: its head (« M45 · une capture, 4 images »
+   and the main image in one line), « Garder l'image principale de votre
+   espace » when the space holds the capture, then its cards. Each box has its
+   own border and the gap of the lists: none touches another. */
+.as-treat__group {
+  min-width: 0;
+  list-style: none;
+}
+
+.as-treat__group-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--as-space-sm);
+}
+
+.as-treat__group-head,
+.as-treat__keep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  min-width: 0;
+  border: 1px solid var(--as-color-border);
+  border-radius: var(--as-radius-md);
+  padding: var(--as-space-sm) var(--as-space-md);
+}
+
+.as-treat__group-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.as-treat__keep label,
+.as-treat__main-choice label {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: var(--as-space-sm);
+}
+
+.as-treat__keep input,
+.as-treat__main-choice input {
+  accent-color: var(--as-color-gold-accent);
+}
+
+/* « Image principale » under the boxes of a card: a radio, never a button,
+   with room above it and under it. */
+.as-treat__main-choice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--as-space-xs);
+  margin: var(--as-space-sm) 0;
 }
 
 .as-treat__image.is-full {

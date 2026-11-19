@@ -223,7 +223,9 @@ export function LogsScreen({
                   <button
                     type="button"
                     className={buttonClassName("link")}
-                    onClick={() => void folderOpen(`${night.folder}/logs`)}
+                    onClick={() =>
+                      void folderOpen(`${night.folder}/logs`, night.folder)
+                    }
                   >
                     <Icon name="folder" className="as-button__icon" />
                     {t("logs.openFolder")}

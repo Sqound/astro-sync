@@ -7,6 +7,7 @@
 
 import type { ImageToSend } from "./bridge";
 import { sendOrder, type SummaryImage } from "./detectTreatments.ts";
+import type { MainPick } from "./mainImage.ts";
 
 /** An image made by the treatments, how it would leave and the row of step 4
  * it stands for. */
@@ -36,31 +37,54 @@ export function renderOf(send: ImageToSend): {
 }
 
 /**
- * The images ticked, in the order they are queued: for each target, the head
- * (the first ticked of its rows, the natural render when it is ticked, since
- * the rows list it first) as a capture, then the others as its variants. A
- * variant of an image that cannot be found leaves as a capture.
+ * The images ticked, in the order they are queued: for each target and
+ * series, the head (the image chosen as the main one, else the first ticked of
+ * its rows, the natural render when it is ticked, since the rows list it
+ * first) as a capture, then the others as its variants. A variant of an image
+ * that cannot be found leaves as a capture. `picks` (`mainPlan`): a series
+ * whose images are all variants of a capture the space holds leaves with that
+ * capture (`variantOfCapture`), and a head says what the space must confirm
+ * as it leaves (`mainWish`).
  */
 export function importSends(
   rows: readonly SummaryImage[],
   made: readonly MadeImage[],
   ticked: readonly string[],
+  picks: Readonly<Record<string, MainPick>> = {},
 ): ImportSend[] {
-  return sendOrder(rows, ticked).map(({ row, variantOf }) => {
-    const item = made.find(
+  return sendOrder(rows, ticked, picks).map((item) => {
+    const { row, variantOf } = item;
+    const madeImage = made.find(
       (m) => m.targetId === row.targetId && m.path === row.path,
     );
-    if (!item) throw new Error(`No image was made for ${row.path}.`);
+    if (!madeImage) throw new Error(`No image was made for ${row.path}.`);
     const head =
       variantOf &&
       made.find(
         (m) => m.path === variantOf.path && m.targetId === variantOf.targetId,
       );
-    if (!head) return { row, send: item.send, variant: false };
+    if (item.variantOfCapture) {
+      // Every image of the series is a variant of a capture the space holds:
+      // its main image is never touched. The linear file is attached to it.
+      return {
+        row,
+        send: { ...madeImage.send, variantOfCapture: item.variantOfCapture },
+        variant: row.role !== "file",
+      };
+    }
+    if (!head) {
+      return {
+        row,
+        send: item.mainWish
+          ? { ...madeImage.send, mainWish: item.mainWish }
+          : madeImage.send,
+        variant: false,
+      };
+    }
     const variantOfSha256 = renderOf(head.send).sha256;
     return {
       row,
-      send: { ...item.send, variantOfSha256 },
+      send: { ...madeImage.send, variantOfSha256 },
       // The linear file is attached to the capture, not a variant of it.
       variant: row.role !== "file",
     };

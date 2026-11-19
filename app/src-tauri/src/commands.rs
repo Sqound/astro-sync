@@ -80,12 +80,47 @@ pub(crate) fn service_wait<R: Runtime>(app: &AppHandle<R>) -> (ServiceWait, Wait
 /// plain `fn`, which would run it on an async worker: measured, `reqwest`'s
 /// blocking client panics there in a debug build ("Cannot drop a runtime in
 /// a context where blocking is not allowed").
+///
+/// At most [`BLOCKING_AT_ONCE`] of them work at the same time; the others
+/// wait their turn without holding a thread. A page that asks the same thing
+/// hundreds of times (an effect that runs at every change of its state) then
+/// costs a queue of small waiting tasks, never hundreds of threads all
+/// reading the same disk.
 pub(crate) async fn run_blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, CommandError> + Send + 'static,
 ) -> Result<T, CommandError> {
-    tauri::async_runtime::spawn_blocking(work)
+    run_gated(&BLOCKING_GATE, work).await
+}
+
+/// How many commands may hold a blocking thread at once. Far above what the
+/// window asks in normal use (a handful, among them the long ones: a
+/// stacking, the uploads, a wait on the service), far below the runtime's
+/// own ceiling of 512 threads.
+pub(crate) const BLOCKING_AT_ONCE: usize = 48;
+
+static BLOCKING_GATE: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(BLOCKING_AT_ONCE);
+
+/// [`run_blocking`] behind a narrower gate of its own, for a command that
+/// reads many files and that the window may ask again before the first
+/// answer: the askings line up, they do not pile up on the disk.
+pub(crate) async fn run_gated<T: Send + 'static>(
+    gate: &'static tokio::sync::Semaphore,
+    work: impl FnOnce() -> Result<T, CommandError> + Send + 'static,
+) -> Result<T, CommandError> {
+    // Never closed: the gates are statics.
+    let permit = gate
+        .acquire()
         .await
-        .map_err(|error| CommandError::other(error.to_string()))?
+        .map_err(|error| CommandError::other(error.to_string()))?;
+    let answer = tauri::async_runtime::spawn_blocking(work).await;
+    drop(permit);
+    // A panic of the work ends this command with an error the window shows;
+    // the program goes on.
+    answer.map_err(|error| {
+        let said = astro_sync_core::error_report::scrub::clean(&error.to_string(), 300)
+            .unwrap_or_else(|| "panic".to_string());
+        CommandError::new("work_stopped", said)
+    })?
 }
 
 /// "Annuler" in the banner shown while the service starts: ends every wait

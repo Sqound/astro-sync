@@ -172,3 +172,70 @@ fn a_detection_given_the_person_s_data_reads_only_the_sessions_and_says_its_phas
     let _ = std::fs::remove_dir_all(&root);
     drop(harness.app);
 }
+
+/// « Mise en file des images… » says where it is: each image as it is
+/// prepared, of how many, then the rows written. Without it the window showed
+/// one sentence for the whole wait.
+#[test]
+fn queuing_the_images_of_an_import_says_which_one_it_prepares() {
+    use tauri::Listener;
+
+    let _serial = serialized();
+    let harness = harness(fast());
+    // Signed out: nothing is asked of a service (no « check » step).
+    let _ = std::fs::remove_file(harness.config_dir.join("settings.json"));
+    let steps: std::sync::Arc<std::sync::Mutex<Vec<crate::commands_detect::ImportProgressStep>>> =
+        std::sync::Arc::default();
+    let sink = std::sync::Arc::clone(&steps);
+    harness.app.listen(
+        crate::commands_detect::IMPORT_PROGRESS_EVENT,
+        move |event| {
+            sink.lock()
+                .unwrap()
+                .push(serde_json::from_str(event.payload()).unwrap());
+        },
+    );
+    let root = unique_dir("images-send-steps");
+    let stacked = root.join("night").join("M45").join("stacked");
+    std::fs::create_dir_all(&stacked).unwrap();
+    let image = |name: &str, digest: &str, of: Option<&str>| {
+        let path = stacked.join(name);
+        std::fs::write(&path, digest).unwrap();
+        serde_json::json!({
+            "kind": "night",
+            "sessionId": "session-1",
+            "targetId": "m45",
+            "render": { "pipelineId": "raw", "path": path, "sha256": digest, "size": digest.len() },
+            "variantOfSha256": of,
+        })
+    };
+    let first = "a".repeat(64);
+    let second = "b".repeat(64);
+    let outcome = harness
+        .invoke(
+            "detect_images_send",
+            serde_json::json!({ "images": [
+                image("M45_raw.png", &first, None),
+                image("M45_polished.png", &second, Some(&first)),
+            ] }),
+        )
+        .answer(Duration::from_secs(20))
+        .unwrap();
+    assert_eq!(outcome["inserted"], 2);
+    let said: Vec<(String, Option<usize>, Option<usize>)> = steps
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|s| (s.step.clone(), s.done, s.total))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            ("prepare".to_string(), Some(1), Some(2)),
+            ("prepare".to_string(), Some(2), Some(2)),
+            ("queue".to_string(), None, Some(2)),
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    drop(harness.app);
+}

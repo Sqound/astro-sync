@@ -145,7 +145,7 @@ export function ProcessingFiles() {
 
   const renderRow = (row: FileRowView) => (
     <div className="as-files__row" key={row.kind}>
-      <div className="as-files__name">
+      <div className="as-files__name as-selectable">
         <span>{row.name}</span>
         {row.note && <span className="as-files__note">{row.note}</span>}
       </div>
@@ -175,7 +175,7 @@ export function ProcessingFiles() {
           <div className="as-files">
             {view.rows.map(renderRow)}
             <div className="as-files__row as-files__row--total">
-              <div className="as-files__name">
+              <div className="as-files__name as-selectable">
                 <strong>{t("settings.processing.total.name")}</strong>
                 {view.total.note && (
                   <span className="as-files__note">{view.total.note}</span>
@@ -186,7 +186,7 @@ export function ProcessingFiles() {
               </strong>
             </div>
             <div className="as-files__row">
-              <div className="as-files__name">
+              <div className="as-files__name as-selectable">
                 <span>{t("settings.processing.user.name")}</span>
                 {view.reachable && (
                   <span className="as-files__note">
@@ -201,7 +201,7 @@ export function ProcessingFiles() {
           </div>
           <div className="as-files as-files--python">
             <div className="as-files__row">
-              <div className="as-files__name">
+              <div className="as-files__name as-selectable">
                 <span>{t("settings.processing.python.name")}</span>
                 <span className="as-files__note">
                   {t("settings.processing.python.note")}

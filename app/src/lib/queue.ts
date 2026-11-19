@@ -63,8 +63,11 @@ export function rowReason(t: Translate, entry: QueueEntry): string | null {
     case "completed":
       // The image replaced the one the capture had, the photo of the
       // session: the core marks the row `replaced`.
-      return entry.lastErrorCode === "replaced"
-        ? t("queue.replacedPhoto")
+      if (entry.lastErrorCode === "replaced") return t("queue.replacedPhoto");
+      // The space could not be read at the end of the wait: the image left
+      // as a new variant, the main image of the space untouched.
+      return entry.lastErrorCode === "variant_unconfirmed"
+        ? t("queue.variantUnconfirmed")
         : null;
     default:
       return null;

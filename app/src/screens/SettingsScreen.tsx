@@ -296,7 +296,7 @@ function GeneralTab({
         <div className="as-folder-row">
           <span className="as-folder-row__path">
             <Icon name="folder" />
-            <span className="as-folder-row__text">
+            <span className="as-folder-row__text as-selectable">
               {pathParts(shown).map((part, index) => (
                 <span key={index} className="as-folder-row__part">
                   {part}
@@ -308,12 +308,7 @@ function GeneralTab({
             type="button"
             className={buttonClassName("link")}
             disabled={!root}
-            onClick={() =>
-              root &&
-              void folderOpen(root).catch((caught: unknown) =>
-                setError(formatError(t, caught)),
-              )
-            }
+            onClick={() => root && void folderOpen(root)}
           >
             <Icon name="external" className="as-button__icon" />
             {t(openFolderKey())}
@@ -461,7 +456,7 @@ function GeneralTab({
       )}
 
       {buildInfo && (
-        <p className={helpTextClassName}>
+        <p className={`${helpTextClassName} as-selectable`}>
           {settingsVersionLine(t, buildInfo, locale)}
         </p>
       )}
@@ -477,7 +472,7 @@ function GeneralTab({
             <h2 id="working-folder-title" className="as-dialog__title">
               {t("settings.folder.confirmTitle")}
             </h2>
-            <p className="as-folder-row__path">
+            <p className="as-folder-row__path as-selectable">
               {displayPath(candidate, homeOf(candidate))}
             </p>
             <p className={helpTextClassName}>

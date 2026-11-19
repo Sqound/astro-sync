@@ -26,6 +26,7 @@ import {
   localWorkCancel,
   nightSendLogs,
   onDetectFound,
+  onImportProgress,
   onDetectPhase,
   onLocalWork,
   onPlanImage,
@@ -78,6 +79,7 @@ import {
   renderOf,
   variantCount,
 } from "../lib/importSend";
+import type { OnlineRead } from "../lib/mainImage";
 import { nightDay } from "../lib/nights";
 import { applyRecap, PlanNotCreated, type ApplyEnd } from "../lib/importApply";
 import { tidyNames, type TidyChoice, type TidyState } from "../lib/tidy";
@@ -87,6 +89,7 @@ import {
   NO_IMPORT,
   importPresence,
   importReducer,
+  mainPicksOf,
   provisionalIds,
   recapPlan,
   type ImportPresence,
@@ -141,6 +144,11 @@ export interface ImportApi {
   /** « Continuer sans traitement » / « Continuer avec les images faites ». */
   skipTreatments: () => void;
   toggleImage: (key: string) => void;
+  /** The image chosen as the main one of a target and series of poses
+   * (`groupKey`), or `KEEP`. */
+  chooseMain: (group: string, value: string) => void;
+  /** What the space said of the sessions it holds (`null`: asked again). */
+  setMainReads: (reads: Record<string, OnlineRead> | null) => void;
   /** A choice on the list of incidents of a session (a tick, an edit, a line
    * added by hand): kept in the store, written by the primary. */
   changeIncidents: (sessionId: string, action: DraftAction) => void;
@@ -763,11 +771,24 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       const rows = summaryImages(made, held.storage);
       // The first image ticked of a target is its capture; the others leave as
       // its variants (the capture goes first, the queue sends them in order).
-      const chosen = rendering ? importSends(rows, made, held.ticked) : [];
+      const chosen = rendering
+        ? importSends(rows, made, held.ticked, mainPicksOf(held))
+        : [];
       const variants = variantCount(chosen);
       const plan = recapPlan(held, t("incidents.mergeSeparator"));
       dispatch({ type: "sendStart" });
       void (async () => {
+        // What the engine says it is doing inside a part (the image being
+        // prepared, of how many), while the primary runs. Without it the
+        // sentence of the part is said, as before.
+        let quiet: (() => void) | null = null;
+        try {
+          quiet = await onImportProgress((step) =>
+            dispatch({ type: "workingStep", step }),
+          );
+        } catch {
+          quiet = null;
+        }
         const end = await applyRecap(
           {
             create: () => detectImportCreate(local.request, local.outcome),
@@ -852,6 +873,7 @@ export function ImportProvider({ children }: { children: ReactNode }) {
               dispatch({ type: "logsSent", sessionId, result }),
           },
         );
+        quiet?.();
         if (end.ok) {
           dispatch({ type: "sent", count: imageCount(chosen), variants });
           return;
@@ -874,6 +896,18 @@ export function ImportProvider({ children }: { children: ReactNode }) {
    * what else is ticked is still applied. */
   const finish = useCallback(() => apply(null), [apply]);
 
+  // The same functions for the whole life of the provider: a screen that
+  // lists one among the dependencies of an effect must not run that effect
+  // again at every change of the state.
+  const setMainReads = useCallback<ImportApi["setMainReads"]>(
+    (reads) => dispatch({ type: "mainRead", reads }),
+    [],
+  );
+  const setTidyOverview = useCallback<ImportApi["setTidyOverview"]>(
+    (overview) => dispatch({ type: "tidyOverview", overview }),
+    [],
+  );
+
   const api = useMemo<ImportApi>(
     () => ({
       state,
@@ -894,12 +928,14 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       stopTreatments,
       skipTreatments: () => dispatch({ type: "skip" }),
       toggleImage: (key) => dispatch({ type: "toggleImage", key }),
+      chooseMain: (group, value) =>
+        dispatch({ type: "chooseMain", group, value }),
+      setMainReads,
       changeIncidents: (sessionId, action) =>
         dispatch({ type: "incidents", sessionId, action }),
       tickTidy: (on) => dispatch({ type: "tidyTick", on }),
       chooseTidy: (choice) => dispatch({ type: "tidyChoice", choice }),
-      setTidyOverview: (overview) =>
-        dispatch({ type: "tidyOverview", overview }),
+      setTidyOverview,
       send,
       finish,
     }),
@@ -913,6 +949,8 @@ export function ImportProvider({ children }: { children: ReactNode }) {
       create,
       runTreatments,
       stopTreatments,
+      setMainReads,
+      setTidyOverview,
       send,
       finish,
     ],

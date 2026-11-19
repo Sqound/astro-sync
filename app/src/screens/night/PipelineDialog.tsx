@@ -6,6 +6,7 @@ import { PipelinesNote } from "../../components/PipelinesNote";
 import { SnapSlider } from "../../components/SnapSlider";
 import { StackFrameBlock } from "../../components/StackFrameBlock";
 import { TrustDialog } from "../../components/TrustDialog";
+import { Waiting } from "../../components/Waiting";
 import { useI18n } from "../../i18n";
 import {
   pipelineTrustSet,
@@ -63,6 +64,7 @@ export function PipelineDialog({
   target,
   pipelines,
   tools,
+  toolsRead = true,
   initial,
   finishDefault,
   initialFinishes,
@@ -79,6 +81,11 @@ export function PipelineDialog({
   target: DialogTarget;
   pipelines: readonly Pipeline[];
   tools: readonly ToolRow[];
+  /** The tools are read. When not yet, the pipelines are listed all the same
+   * and each card says that the tools are being checked: no pipeline is
+   * shown with a tool absent or present before it is known, and the choice
+   * cannot be validated meanwhile. Default: read. */
+  toolsRead?: boolean;
   initial: readonly string[];
   /** « Finition par défaut »: what a pipeline without its own finish takes. */
   finishDefault: PipelineFinish;
@@ -139,11 +146,13 @@ export function PipelineDialog({
     target,
     pipelines: listed,
     tools,
+    toolsPending: !toolsRead,
     selection,
     several,
     engine,
     progress,
   });
+  const canValidate = view.valid && toolsRead;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -219,6 +228,7 @@ export function PipelineDialog({
               onToggle={() => toggle(card.id)}
               onFlip={() => flip(card.id)}
               onInstall={onInstall}
+              toolsPending={!toolsRead}
               finish={
                 card.ticked && card.id !== NO_PROCESSING_ID ? (
                   <FinishRow
@@ -244,7 +254,7 @@ export function PipelineDialog({
               <button
                 type="button"
                 className={buttonClassName("link")}
-                disabled={!view.valid}
+                disabled={!canValidate}
                 onClick={() => onApplyAll(selection, ticked(), frameChoice)}
               >
                 {t("wizard.pipelines.applyAll")}
@@ -252,18 +262,22 @@ export function PipelineDialog({
             </div>
           )}
           <div className="as-pipeline-dialog__actions">
-            <p
-              className={
-                view.valid
-                  ? helpTextClassName
-                  : `${helpTextClassName} as-pipeline-dialog__why`
-              }
-            >
-              {!view.valid && (
-                <Icon name="warning" className="as-line__glyph" />
-              )}
-              {view.count}
-            </p>
+            {toolsRead ? (
+              <p
+                className={
+                  view.valid
+                    ? helpTextClassName
+                    : `${helpTextClassName} as-pipeline-dialog__why`
+                }
+              >
+                {!view.valid && (
+                  <Icon name="warning" className="as-line__glyph" />
+                )}
+                {view.count}
+              </p>
+            ) : (
+              <Waiting label={t("import.treat.toolsWait")} size="inline" />
+            )}
             <button
               type="button"
               className={buttonClassName("link")}
@@ -271,7 +285,7 @@ export function PipelineDialog({
             >
               {t("common.cancel")}
             </button>
-            {view.valid ? (
+            {canValidate ? (
               <button
                 type="button"
                 className={buttonClassName("primary")}
@@ -338,9 +352,12 @@ function PipelineCard({
   onToggle,
   onFlip,
   onInstall,
+  toolsPending,
   finish,
 }: {
   card: PipelineCardView;
+  /** The tools are not read yet: the line of the tools says so. */
+  toolsPending: boolean;
   several: boolean;
   open: boolean;
   name: string;
@@ -441,11 +458,15 @@ function PipelineCard({
         <span className="as-pipeline-card__label">
           {t("wizard.pipelines.tools")}
         </span>
-        <span className="as-pills">
-          {card.tools.map((pill) => (
-            <ToolPillView key={pill.id} pill={pill} onInstall={onInstall} />
-          ))}
-        </span>
+        {toolsPending ? (
+          <Waiting label={t("import.treat.toolsWait")} size="inline" />
+        ) : (
+          <span className="as-pills">
+            {card.tools.map((pill) => (
+              <ToolPillView key={pill.id} pill={pill} onInstall={onInstall} />
+            ))}
+          </span>
+        )}
         <span className="as-pipeline-card__produces">{card.produces}</span>
       </div>
       {open && (

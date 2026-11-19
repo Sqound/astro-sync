@@ -16,7 +16,8 @@ import {
   type SummaryImage,
   type TreatmentResult,
 } from "./detectTreatments.ts";
-import { summaryImageView } from "./summaryImages.ts";
+import { mainImageName, summaryImageView } from "./summaryImages.ts";
+import { groupKeyOfRow, mainGroups, type MainContext } from "./mainImage.ts";
 
 // « Images à envoyer » of the detection listed one image per target -- the
 // first pipeline's -- although every pipeline ticked had made its own. The
@@ -290,7 +291,25 @@ export { I18nProvider } from ${JSON.stringify(base + "i18n/index.tsx")};`,
   entry = await import(file.href);
 });
 
-function draw(rows: readonly SummaryImage[], ticked: string[] = []): string {
+/** Nothing known of the space: every group is alone in the world. */
+const NO_CONTEXT: MainContext = {
+  sessionOf: {},
+  existing: new Set(),
+  reads: {},
+  shaOf: {},
+  variantsAllowed: true,
+};
+
+function draw(
+  rows: readonly SummaryImage[],
+  ticked: string[] = [],
+  main: {
+    choices?: Record<string, string>;
+    context?: MainContext;
+    open?: boolean;
+  } = {},
+): string {
+  const context = main.context ?? NO_CONTEXT;
   return renderToStaticMarkup(
     createElement(
       entry.I18nProvider,
@@ -301,6 +320,10 @@ function draw(rows: readonly SummaryImage[], ticked: string[] = []): string {
         room: null,
         pipelineName,
         onToggle: () => undefined,
+        groups: mainGroups(rows, ticked, main.choices ?? {}, context),
+        mainContext: context,
+        onChoose: () => undefined,
+        choiceOpen: main.open ?? true,
       }),
     ),
   );
@@ -308,9 +331,9 @@ function draw(rows: readonly SummaryImage[], ticked: string[] = []): string {
 
 test("the Récapitulatif with two pipelines: two rows, each with its box, its path as a link and « Afficher dans le Finder »", () => {
   const html = flat(draw(summaryImages(TWO, storage())));
-  assert.equal((html.match(/<li /g) ?? []).length, 2);
+  assert.equal((html.match(/<li class="as-treat__image/g) ?? []).length, 2);
   assert.equal((html.match(/type="checkbox"/g) ?? []).length, 2);
-  assert.ok(!html.includes("disabled"), "both boxes open");
+  assert.ok(!/type="checkbox"[^>]*disabled/.test(html), "both boxes open");
   assert.ok(!/checked=""/.test(html), "nothing ticked by default");
   assert.match(html, /<strong>IC 1805<\/strong> · Rendu naturel/);
   assert.match(html, /3 nuits empilées · PNG · 44,4 Mo/);
@@ -340,7 +363,7 @@ test("the Récapitulatif with a size guard: the box is disabled, with the reason
   const html = flat(
     draw(summaryImages(TWO, storage({ maxFileBytes: 26_214_400 }))),
   );
-  assert.equal((html.match(/disabled/g) ?? []).length, 2);
+  assert.equal((html.match(/type="checkbox"[^>]*disabled/g) ?? []).length, 2);
   assert.match(html, /Trop lourde pour votre espace \(44,4 Mo &gt; 25,0 Mo\)/);
   assert.match(html, /Trop lourde pour votre espace \(44,6 Mo &gt; 25,0 Mo\)/);
 });
@@ -366,11 +389,14 @@ test("the flow keeps every render and every plan image it made, and sends the ca
   assert.match(flow, /for \(const plan of plans\)/);
   assert.match(flow, /for \(const render of first\.renders\)/);
   assert.match(flow, /summaryImages\(made, held\.storage\)/);
-  assert.match(flow, /importSends\(rows, made, held\.ticked\)/);
+  assert.match(
+    flow,
+    /importSends\(rows, made, held\.ticked, mainPicksOf\(held\)\)/,
+  );
   // The capture of a target goes first and the others name it, whatever the
   // kind of image (a night's render or a plan's).
   const sends = await source("../lib/importSend.ts");
-  assert.match(sends, /sendOrder\(rows, ticked\)/);
+  assert.match(sends, /sendOrder\(rows, ticked, picks\)/);
   assert.match(sends, /variantOfSha256/);
   assert.match(summary, /<SummaryImages/);
 });
@@ -419,7 +445,7 @@ test("every language says the new words of the list", async () => {
   assert.equal(
     flat(french["detect.send.noRoom"]),
     flat(
-      "Une capture par cible, ses variantes en dessous ; rien n’est envoyé sans votre case.",
+      "Une capture par cible, ses variantes en dessous. Rien n’est envoyé sans votre case.",
     ),
   );
 });
@@ -451,4 +477,278 @@ test("the row of a render's TIFF says « TIFF pleine résolution », a TIFF alon
       "TIFF seul · 19,1 Mo",
     ],
   );
+});
+
+/* ----------------------- The main image of a capture ----------------------- */
+
+// The screen of the choice, drawn as the window draws it (the markup is the
+// one the captures show): the group, its radios, its lines and the titles that
+// follow the choice.
+
+const FOUR = [
+  result("raw", 12_400_000),
+  result("polished", 12_400_000),
+  result("hoo", 12_400_000),
+  result("dualband-correction", 12_400_000),
+];
+names.polished = "Rendu soigné";
+names.hoo = "Palette HOO";
+const SESSION = "night-1";
+const digest = (pipelineId: string) => `d-${pipelineId}`.padEnd(64, "0");
+
+/** The four renders, as the import of an existing night draws them: `held`
+ * is what the space holds for the night (`images`: `[pipelineId, main]`). */
+function scene(
+  held: null | {
+    images: [string, boolean][];
+    visibility?: "private" | "public";
+    failed?: boolean;
+  },
+  choices: Record<string, string> = {},
+  open = true,
+  made: TreatmentResult[] = FOUR,
+) {
+  const rows = summaryImages(made, storage());
+  const ticked = rows.map((row) => row.key);
+  const context: MainContext = {
+    sessionOf: Object.fromEntries(rows.map((row) => [row.key, SESSION])),
+    existing: new Set(held ? [SESSION] : []),
+    reads: held
+      ? {
+          [SESSION]: held.failed
+            ? "failed"
+            : ({
+                sessionId: SESSION,
+                targets: [
+                  {
+                    targetId: "ic1805",
+                    name: "IC 1805",
+                    planned: true,
+                    captures: [
+                      {
+                        id: "cap-1",
+                        targetIds: ["ic1805"],
+                        source: "stacking",
+                        stage: "draft",
+                        visibility: held.visibility ?? "private",
+                        uploaded: true,
+                        createdAt: "2026-11-12T20:00:00Z",
+                        mainImage: held.images
+                          .filter(([, main]) => main)
+                          .map(([id]) => ({
+                            id,
+                            main: true,
+                            sha256: digest(id),
+                            byteSize: 1,
+                            originalName: `${id}.png`,
+                            source: "stacking",
+                            createdAt: "2026-11-12T20:00:00Z",
+                            skySolution: "missing",
+                          }))[0],
+                        imageCount: held.images.length,
+                        images: held.images.map(([id, main]) => ({
+                          id,
+                          main,
+                          sha256: digest(id),
+                          byteSize: 1,
+                          originalName: `${id}.png`,
+                          source: "stacking",
+                          createdAt: "2026-11-12T20:00:00Z",
+                          skySolution: "missing",
+                        })),
+                      },
+                    ],
+                  },
+                ],
+              } as never),
+        }
+      : {},
+    shaOf: Object.fromEntries(
+      rows.map((row) => [row.key, digest(row.pipelineId)]),
+    ),
+    variantsAllowed: true,
+  };
+  return { rows, html: flat(draw(rows, ticked, { choices, context, open })) };
+}
+
+const radios = (html: string) => html.match(/<input type="radio"[^>]*>/g) ?? [];
+const groupKey = (rows: readonly SummaryImage[]) => groupKeyOfRow(rows[0]);
+
+test("the default: one group named « Image principale », a radio on each card, the natural render main, nothing to read about the space", () => {
+  const { html } = scene(null);
+  assert.match(html, /IC 1805 · une capture, 4 images/);
+  assert.match(html, /Image principale : Rendu naturel/);
+  assert.match(html, /role="radiogroup" aria-labelledby="[^"]+:title"/);
+  const found = radios(html);
+  assert.equal(found.length, 4);
+  assert.equal(found.filter((input) => input.includes("checked")).length, 1);
+  assert.equal(found.filter((input) => input.includes("disabled")).length, 0);
+  assert.equal((html.match(/>Image principale<\/span>/g) ?? []).length, 4);
+  // One name for the four radios: a group.
+  assert.equal(new Set(found.map((i) => /name="([^"]+)"/.exec(i)![1])).size, 1);
+  assert.ok(!html.includes("Garder l’image principale"));
+  // The titles: the capture, then the variants of it.
+  assert.match(html, /<strong>IC 1805<\/strong> · Rendu naturel/);
+  assert.equal(
+    (html.match(/Variante de la capture de IC 1805/g) ?? []).length,
+    3,
+  );
+  // The subtitle of the list is two sentences.
+  assert.ok(!html.includes(" ; "));
+});
+
+test("a choice: the titles follow it, the order of the cards does not move", () => {
+  const rows = summaryImages(FOUR, storage());
+  const { html } = scene(null, { [groupKey(rows)]: rows[2].key });
+  assert.match(html, /Image principale : Palette HOO/);
+  assert.match(html, /<strong>IC 1805<\/strong> · Palette HOO/);
+  assert.match(
+    html,
+    /<strong>Variante de la capture de IC 1805<\/strong> · Rendu naturel/,
+  );
+  // Raw, polished, HOO, dual-band: the same order as without a choice.
+  const order = [
+    ...html.matchAll(
+      / · (Rendu naturel|Rendu soigné|Palette HOO|Correction bibande)</g,
+    ),
+  ].map((m) => m[1]);
+  assert.deepEqual(order, [
+    "Rendu naturel",
+    "Rendu soigné",
+    "Palette HOO",
+    "Correction bibande",
+  ]);
+});
+
+test("one image alone: a sentence and no choice", () => {
+  const { html } = scene(null, {}, true, [result("raw", 12_400_000)]);
+  assert.match(html, /IC 1805 · une capture, 1 image/);
+  assert.ok(
+    html.includes(flat("Une seule image : elle sera l’image principale.")),
+    "Une seule image : elle sera l’image principale.",
+  );
+  assert.equal(radios(html).length, 0);
+  assert.ok(!html.includes("radiogroup"));
+});
+
+test("the capture is online and private: « Garder » is ticked, with its render and its date, and the images are variants", () => {
+  const { html } = scene({ images: [["raw", true]] });
+  assert.match(html, /Garder l’image principale de votre espace/);
+  assert.match(html, /Rendu naturel · en ligne depuis le 12 nov\./);
+  assert.match(html, /Image principale : Rendu naturel/);
+  const found = radios(html);
+  assert.equal(found.length, 5, "the four cards and « Garder »");
+  assert.equal(found.filter((input) => input.includes("checked")).length, 1);
+  assert.equal(
+    (html.match(/Variante de la capture de IC 1805/g) ?? []).length,
+    4,
+  );
+  assert.ok(!html.includes("devient une variante"));
+  // The image that is the main one of the space already says so.
+  assert.match(html, /C’est déjà l’image principale de votre espace\./);
+});
+
+test("the deliberate gesture says what happens: the old image becomes a variant, the new one is the main image", () => {
+  const rows = summaryImages(FOUR, storage());
+  const { html } = scene(
+    { images: [["raw", true]] },
+    { [groupKey(rows)]: rows[1].key },
+  );
+  assert.ok(
+    html.includes(
+      flat(
+        "« Rendu naturel » devient une variante. « Rendu soigné » est l’image principale.",
+      ),
+    ),
+    "« Rendu naturel » devient une variante. « Rendu soigné » est l’image principale.",
+  );
+  assert.ok(
+    html.includes(flat("Image principale : Rendu soigné")),
+    "Image principale : Rendu soigné",
+  );
+  assert.match(html, /<strong>IC 1805<\/strong> · Rendu soigné/);
+});
+
+test("a public capture: the choice is closed and the sentence explains it", () => {
+  const { html } = scene({ images: [["raw", true]], visibility: "public" });
+  assert.ok(
+    html.includes(
+      flat(
+        "Capture publique : son image principale ne change pas depuis Astro Sync. Vos images arrivent en variantes. Changez l’image principale depuis votre espace.",
+      ),
+    ),
+    "Capture publique : son image principale ne change pas depuis Astro Sync. Vos images arrivent en variantes. Changez l’image principale depuis votre espace.",
+  );
+  const found = radios(html);
+  assert.equal(found.length, 4);
+  assert.ok(found.every((input) => input.includes("disabled")));
+  assert.ok(!found.some((input) => input.includes("checked")));
+  assert.ok(!html.includes("Garder l’image principale"));
+  assert.equal(
+    (html.match(/Variante de la capture de IC 1805/g) ?? []).length,
+    4,
+  );
+});
+
+test("the space could not be read: a grey line, today's choice", () => {
+  const { html } = scene({ images: [], failed: true });
+  assert.match(html, /État de votre espace non lu\./);
+  assert.ok(!html.includes("Garder l’image principale"));
+  assert.equal(radios(html).length, 4);
+});
+
+test("bytes online as a variant: the choice of that image is closed, and the card says why", () => {
+  const { html } = scene({
+    images: [
+      ["raw", true],
+      ["polished", false],
+    ],
+  });
+  assert.match(
+    html,
+    /Déjà en ligne en variante\. Changez l’image principale depuis votre espace\./,
+  );
+});
+
+test("an image not ticked cannot be chosen, and the card says so; nothing can be chosen while the images are sent", () => {
+  const rows = summaryImages(FOUR, storage());
+  const some = flat(
+    draw(rows, [rows[0].key, rows[1].key], { context: NO_CONTEXT }),
+  );
+  assert.equal(
+    (some.match(/Cochez cette image pour la choisir\./g) ?? []).length,
+    2,
+  );
+  const sending = scene(null, {}, false).html;
+  assert.ok(radios(sending).every((input) => input.includes("disabled")));
+});
+
+test("a sentence about the main image names a render by its name, and by the whole of it only when two renders of the group share the name", () => {
+  const plain = summaryImages(
+    [result("raw", 1_000_000), result("hoo", 1_000_000)],
+    storage(),
+  );
+  assert.equal(
+    mainImageName(fr, "fr", plain[1], plain, pipelineName),
+    "Palette HOO",
+  );
+  const twins = summaryImages(
+    [
+      result("raw", 1_000_000, {
+        path: `${FOLDER}/IC_1805_plan_raw_soft.png`,
+        contrast: 2,
+      }),
+      result("raw", 1_000_000, {
+        path: `${FOLDER}/IC_1805_plan_raw_strong.png`,
+        contrast: 3.6,
+      }),
+    ],
+    storage(),
+  );
+  assert.equal(twins.length, 2);
+  const both = twins.map((row) =>
+    mainImageName(fr, "fr", row, twins, pipelineName),
+  );
+  assert.notEqual(both[0], both[1]);
+  assert.match(both[1], /^Rendu naturel · /);
 });

@@ -3,6 +3,61 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.4 (2026-11-19)
+
+- The treatments step of the import shows that it is looking for the possible
+  treatments, its buttons wait for the list, and a failed read says so with a
+  retry.
+- « Edit » opens as soon as the treatments are listed. Its window says that it
+  is checking which tools are installed, and shows no tool as present or
+  missing before it knows.
+- Two wording fixes: the French share sheet and the Spanish TIFF warning.
+- Diffraction spikes: the choice of how many stars receive them now goes down
+  to the brightest star alone. Settings saved before draw exactly what they
+  drew.
+- Polished render: the bright stars no longer carry a purple ring, a blue ring
+  or a green glow. Their core is white and their halo fades into the nebula
+  without a sharp edge. The small stars no longer come out orange to brown: the
+  white balance is read on the field stars one by one, so a few very bright
+  stars of one colour no longer set it. Each star keeps a pale colour of its
+  own, from blue-white to orange, without a dark rim, and a blue reflection
+  nebula comes out blue instead of greenish. Redo a polished render to benefit
+  from it.
+- An adjusted image that is sent back no longer replaces the main image you
+  chose in your space.
+- « Images to send » lets you choose the main image of each capture, on its
+  cards. By default the main image already in your space stays. If your space
+  cannot be read for a while, the image is sent as a new variant and the main
+  image does not change. With two series of poses, the series that represents
+  the target is now named as such, apart from this choice.
+- Text in the window is no longer selected by accident: not while a slider or
+  the before and after curtain is dragged, wherever the pointer goes, and not
+  on titles, labels and buttons. File paths, error messages, versions and
+  identifiers, and text fields can still be selected and copied.
+- « Create and send » at the end of an import now shows the animated star and
+  says what it is doing: how many sessions your space is creating, which image
+  is being prepared and of how many. Queuing the images no longer starts the
+  processing script again and reads the frames of a target once.
+- A button that opens a folder, a file or a link no longer fails in silence. If
+  nothing can be opened, a message gives the path or the address and the reason
+  given by the system. « Open the working folder » falls back on the working
+  folder when the folder of the target is missing.
+- A session is marked « To complete » only when something really is missing,
+  what you asked for or what has not been sent yet. A final image added later
+  to a target that is already online no longer makes its session look
+  unfinished.
+- A night of a multi-night plan no longer asks for an image of its own once
+  the image of the plan is online: « Online » says « plan image » for each
+  night of the plan. What a session still owes now names its target, and the
+  sky annotations are counted on the images « Online » shows.
+- A night that joined a multi-night plan after its image was made stays
+  complete, and now says that the image of the plan does not include it and
+  that making the plan image again will.
+- The app no longer closes by itself during a long processing. The last step
+  of the import no longer asks the same questions again and again, and a task
+  that stops on an internal error now says so with a message and a way to run
+  it again, instead of closing the whole window.
+
 ## 1.1.3 (2026-11-18)
 
 - Diffraction spikes can be added to the bright stars as an optional effect in

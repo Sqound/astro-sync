@@ -21,6 +21,7 @@ import {
   useCapabilities,
 } from "./components/CapabilitiesProvider";
 import { ServiceWaitBanner } from "./components/ServiceWaitBanner";
+import { OpenFailureReporter } from "./components/OpenFailureReporter";
 import { SnackbarProvider } from "./components/Snackbar";
 import { ImportProvider, useImport } from "./components/ImportProvider";
 import { UploadsProvider, useUploads } from "./components/UploadsProvider";
@@ -391,6 +392,7 @@ export default function App() {
   return (
     <I18nProvider locale={bootLocale} onLocaleChange={handleLocaleChange}>
       <SnackbarProvider>
+        <OpenFailureReporter />
         <CapabilitiesProvider>
           <UploadsProvider>
             <ImportProvider>

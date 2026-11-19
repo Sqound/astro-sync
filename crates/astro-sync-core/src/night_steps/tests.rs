@@ -916,12 +916,12 @@ fn a_render_whose_tiff_is_online_is_online_and_its_tiff_is_never_missing() {
     // The resume never asks for the TIFF of a render: it is a choice.
     let resume = night_resume::resume_night(&before, &local, &[], None, 12);
     let to_send = resume.missing.iter().find_map(|m| match m {
-        night_resume::Missing::ImagesToSend { count } => Some(*count),
+        night_resume::Missing::ImagesToSend { count, .. } => Some(*count),
         _ => None,
     });
-    // Only the final TIFF is here and not online: the linear file, like the
-    // TIFF of a render, is a choice.
-    assert_eq!(to_send, Some(1));
+    // The target has an image online: the final TIFF here, the linear file
+    // and the TIFF of a render are choices, never owed.
+    assert_eq!(to_send, None);
 }
 
 /// With a finish chosen the stacker writes the render twice (bare and

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createTranslator } from "../i18n/locale.ts";
+import { SUPPORTED_LOCALES, createTranslator } from "../i18n/locale.ts";
 import { sendOrder, type SummaryImage } from "./detectTreatments.ts";
 import {
   defaultUntickedSeries,
@@ -93,10 +93,7 @@ test("the words of the banner and of a series line", () => {
   );
   assert.equal(
     flat(banner.main),
-    "Image principale\u00a0: la série de 3 h 34, la plus longue.".replaceAll(
-      "\u00a0",
-      " ",
-    ),
+    "La série de 3 h 34, la plus longue, représente la cible.",
   );
   assert.equal(
     flat(seriesRowText(fr, "fr", LONG)),
@@ -212,4 +209,21 @@ test("« Images à envoyer »: the first image of each series is a capture, not 
       [10, "variant"],
     ],
   );
+});
+
+test("two levels of choice never use the same words: the series stands for the target, the card for its series", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const t = createTranslator(locale);
+    const mainImage = t("detect.send.main.label").toLowerCase();
+    const series = [
+      t("series.banner.main", { duration: "3 h" }),
+      t("series.mainBadge"),
+    ];
+    for (const text of series) {
+      // The series says it represents the target; « Image principale » is
+      // the choice made on the cards, inside one series.
+      assert.ok(!text.toLowerCase().includes(mainImage), `${locale}: ${text}`);
+      assert.ok(!/[;\u2014]/.test(text), `${locale}: ${text}`);
+    }
+  }
 });

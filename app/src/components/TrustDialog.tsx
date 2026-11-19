@@ -36,7 +36,7 @@ export function TrustDialog({
         </h2>
         <p>{t("trust.question")}</p>
         {changed && <p className={helpTextClassName}>{t("trust.changed")}</p>}
-        <p className={helpTextClassName}>
+        <p className={`${helpTextClassName} as-selectable`}>
           {t("trust.details", { digest: shortDigest(sha256) })}
         </p>
         <div className="as-actions">

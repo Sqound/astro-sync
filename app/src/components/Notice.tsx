@@ -27,11 +27,14 @@ export function Notice({
   }
   return (
     <div
-      className={
-        icon
-          ? `${noticeClassName(tone)} as-notice--icon`
-          : noticeClassName(tone)
-      }
+      className={[
+        noticeClassName(tone),
+        icon ? "as-notice--icon" : "",
+        // An error or a warning is copied as it is read, to be sent or looked up.
+        tone === "error" || tone === "warning" ? "as-selectable" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       role={tone === "error" ? "alert" : "status"}
     >
       {icon && <Icon name={icon} className="as-notice__icon" />}

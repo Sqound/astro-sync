@@ -34,7 +34,7 @@ use astro_sync_core::metadata;
 use astro_sync_core::multi_night::{self, IntegrationMaster};
 use astro_sync_core::night_analysis::{self, NightAnalysis, NightAnalysisSent};
 use astro_sync_core::night_online::{NightOnline, NightOnlineTransport};
-use astro_sync_core::night_resume::{self, FolderState, NightLedger, NightResume};
+use astro_sync_core::night_resume::{self, FolderState, NightLedger, NightResume, PlanOnline};
 use astro_sync_core::night_service;
 use astro_sync_core::night_steps::{self, DataPaths, NightPrecheck, SentRecord};
 use astro_sync_core::pipeline_trust;
@@ -597,6 +597,10 @@ pub struct NightView {
     pub folder_trace: bool,
     pub detection: Option<NightDetection>,
     pub online: NightOnline,
+    /// The multi-night plans the night's targets work for, and whether each
+    /// has its image online: that image belongs to no night, so `online`
+    /// never lists it.
+    pub plans: Vec<PlanOnline>,
     pub resume: NightResume,
     pub treatments: Vec<TreatmentState>,
     /// The masters kept in the night's folder: « 1 intégration » in
@@ -649,11 +653,14 @@ fn local_night(
     })
 }
 
-/// The night's page (« Nuits », the wizard resumed).
+/// The night's page (« Nuits », the wizard resumed). `plan_id` is the plan
+/// of the night when it has one: its items name the multi-night plans its
+/// targets work for.
 #[tauri::command]
 pub async fn night_view<R: Runtime>(
     app: AppHandle<R>,
     session_id: String,
+    plan_id: Option<String>,
     input: DetectionInput,
 ) -> Result<NightView, CommandError> {
     let (cancel, progress) = local_work(&app);
@@ -672,12 +679,30 @@ pub async fn night_view<R: Runtime>(
             let folder_trace = ledger.is_some()
                 || kept.found_again.contains_key(&session_id)
                 || kept.followed.contains_key(&session_id);
-            let resume = night_resume::resume_night(
+            // A read beside the night's own: when it fails the night is told
+            // as a night of no multi-night plan.
+            let plans = multi_night::night_projects(
+                &transport,
+                &portal_url,
+                &token,
+                plan_id.as_deref(),
+                Some(&session_id),
+            )
+            .map(|side| {
+                night_resume::plans_online(
+                    &side,
+                    &session_id,
+                    input.night_started_at.as_deref(),
+                )
+            })
+            .unwrap_or_default();
+            let resume = night_resume::resume_night_with_plans(
                 &online,
                 &night.local,
                 &queue,
                 ledger.as_ref(),
                 storage.variant_limit,
+                &plans,
             );
             let rows = tool_rows(&app, &paths);
             let treatments = precheck::treatments(
@@ -700,6 +725,7 @@ pub async fn night_view<R: Runtime>(
                 folder_trace,
                 detection: night.detection,
                 online,
+                plans,
                 resume,
                 treatments,
                 integrations,
@@ -1358,15 +1384,50 @@ pub(crate) fn pipeline_list_of<R: Runtime>(
     let data = data_paths(paths);
     let (script, shipped) = stacking_resources(app);
     let environment = script.and_then(|script| StackingEnvironment::find(&paths.data_dir, &script));
-    pipelines::with_trust(
-        pipelines::list_pipelines(
-            environment.as_ref(),
-            shipped.as_deref(),
-            Some(&data.pipelines),
-            language,
-        ),
-        &pipeline_trust::load(&paths.data_dir),
-    )
+    let listed = pipelines::list_pipelines(
+        environment.as_ref(),
+        shipped.as_deref(),
+        Some(&data.pipelines),
+        language,
+    );
+    if let Ok(mut kept) = lists_kept().lock() {
+        kept.insert(kept_key(paths, language), listed.clone());
+    }
+    pipelines::with_trust(listed, &pipeline_trust::load(&paths.data_dir))
+}
+
+/// The lists read since the application started, by data folder and
+/// language: what [`pipeline_list_kept`] answers from.
+fn lists_kept() -> &'static std::sync::Mutex<std::collections::HashMap<String, PipelineList>> {
+    static KEPT: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, PipelineList>>,
+    > = std::sync::OnceLock::new();
+    KEPT.get_or_init(Default::default)
+}
+
+fn kept_key(paths: &AppPaths, language: &str) -> String {
+    format!("{}\u{0}{language}", paths.data_dir.display())
+}
+
+/// [`pipeline_list_of`] as it was last read in this language, without
+/// starting the stacking script again (several seconds each time, up to a
+/// minute): for a step that only needs the names and the texts of the
+/// pipelines the person just chose from, as the sending of the import does.
+/// Never read yet: read now. Each reading by « Traitements » or
+/// « Dépendances » renews what is kept.
+pub(crate) fn pipeline_list_kept<R: Runtime>(
+    app: &AppHandle<R>,
+    paths: &AppPaths,
+    language: &str,
+) -> PipelineList {
+    let kept = lists_kept()
+        .lock()
+        .ok()
+        .and_then(|kept| kept.get(&kept_key(paths, language)).cloned());
+    match kept {
+        Some(list) => pipelines::with_trust(list, &pipeline_trust::load(&paths.data_dir)),
+        None => pipeline_list_of(app, paths, language),
+    }
 }
 
 fn pipeline_sections_of<R: Runtime>(
@@ -1741,36 +1802,58 @@ pub async fn night_create<R: Runtime>(
 /// « Ouvrir le dossier des pipelines »: the folder where the
 /// person's own definitions go (`<données>/pipelines`), created when it does not
 /// exist yet, opened by the system. Nothing else is written.
+///
+/// Off the window's thread, like every command that touches the disk: a
+/// folder on a drive that is asleep must not freeze the window.
 #[tauri::command]
-pub fn pipelines_folder_open<R: Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
-    use tauri_plugin_opener::OpenerExt;
-    let paths = paths::resolve(&app)?;
-    let folder = data_paths(&paths).pipelines;
-    std::fs::create_dir_all(&folder).map_err(|e| CommandError::new("io_error", e.to_string()))?;
-    app.opener()
-        .open_path(folder.display().to_string(), None::<&str>)
-        .map_err(|e| CommandError::other(e.to_string()))
+pub async fn pipelines_folder_open<R: Runtime>(app: AppHandle<R>) -> Result<(), CommandError> {
+    run_blocking(move || {
+        let paths = paths::resolve(&app)?;
+        let folder = data_paths(&paths).pipelines;
+        std::fs::create_dir_all(&folder)
+            .map_err(|e| CommandError::new("io_error", e.to_string()))?;
+        open_by_system(&app, folder.display().to_string())
+    })
+    .await
 }
 
 /// « Ouvrir dans le Finder » / « l'Explorateur », « Ouvrir le dossier de
 /// M31 »: an existing folder opened by the system; « Ouvrir ASSISTANT-IA.md »
 /// (the Guide): that one file, opened by its usual application. Nothing is
-/// written.
+/// written. A folder that is not there is refused with `folder_missing`,
+/// whose message is the path itself, so the window can name it.
 #[tauri::command]
-pub fn folder_open<R: Runtime>(app: AppHandle<R>, folder: String) -> Result<(), CommandError> {
+pub async fn folder_open<R: Runtime>(
+    app: AppHandle<R>,
+    folder: String,
+) -> Result<(), CommandError> {
+    run_blocking(move || {
+        let path = PathBuf::from(&folder);
+        if !can_open(&path) {
+            return Err(CommandError::new("folder_missing", folder));
+        }
+        open_by_system(&app, folder)
+    })
+    .await
+}
+
+/// A folder, or the one file the Guide opens (`ASSISTANT-IA.md`).
+fn can_open(path: &Path) -> bool {
+    path.is_dir()
+        || (path.is_file()
+            && path
+                .file_name()
+                .is_some_and(|name| name == "ASSISTANT-IA.md"))
+}
+
+/// The system's own way to open a path (the Finder, the Explorer, the file
+/// manager). A refusal of the system is an error, never a silent nothing.
+fn open_by_system<R: Runtime>(app: &AppHandle<R>, path: String) -> Result<(), CommandError> {
     use tauri_plugin_opener::OpenerExt;
-    let path = PathBuf::from(&folder);
-    let assistant_file = path.is_file()
-        && path
-            .file_name()
-            .is_some_and(|name| name == "ASSISTANT-IA.md");
-    if !path.is_dir() && !assistant_file {
-        return Err(CommandError::new(
-            "folder_missing",
-            format!("{folder} is not a folder"),
-        ));
-    }
     app.opener()
-        .open_path(folder, None::<&str>)
-        .map_err(|e| CommandError::other(e.to_string()))
+        .open_path(path.clone(), None::<&str>)
+        .map_err(|e| CommandError {
+            details: Some(serde_json::json!({ "path": path })),
+            ..CommandError::new("open_failed", e.to_string())
+        })
 }

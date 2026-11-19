@@ -230,7 +230,7 @@ export function QueueScreen() {
                 className="as-uploads__item"
                 data-status={row.state}
               >
-                <span className="as-uploads__title">
+                <span className="as-uploads__title as-selectable">
                   {titleLine(t, locale, row)}
                 </span>
                 <span className="as-uploads__state">
@@ -366,7 +366,9 @@ function LiveItem({
   const { t, locale } = useI18n();
   return (
     <li className="as-uploads__item" data-status={row.status}>
-      <span className="as-uploads__title">{titleLine(t, locale, row)}</span>
+      <span className="as-uploads__title as-selectable">
+        {titleLine(t, locale, row)}
+      </span>
       <span className="as-uploads__state">
         {row.status === "uploading"
           ? progressLine(t, locale, row)
@@ -444,7 +446,9 @@ function HistoryItem({
       : null;
   return (
     <li className="as-uploads__item" data-status={row.state}>
-      <span className="as-uploads__title">{titleLine(t, locale, row)}</span>
+      <span className="as-uploads__title as-selectable">
+        {titleLine(t, locale, row)}
+      </span>
       <span className="as-uploads__state">
         <span
           className={badgeClassName(
@@ -453,7 +457,7 @@ function HistoryItem({
         >
           {t(`status.${row.state}`)}
         </span>
-        {reason && <span>{reason}</span>}
+        {reason && <span className="as-selectable">{reason}</span>}
         <span className={helpTextClassName}>
           {formatDateTime(row.at, locale)}
         </span>

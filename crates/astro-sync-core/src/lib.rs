@@ -166,6 +166,7 @@ pub mod multi_night;
 pub mod multi_night_attach;
 pub mod nfc;
 pub mod night_analysis;
+pub mod main_choice;
 pub mod night_online;
 pub mod night_resume;
 pub mod night_service;

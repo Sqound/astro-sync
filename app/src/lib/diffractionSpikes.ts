@@ -42,15 +42,37 @@ const ARMS = [
   [0, -1],
 ] as const;
 
-/** The flux of the faintest star that gets spikes at `reach` (0..100). */
-export function fluxThreshold(reach: number): number {
-  const t = Math.min(100, Math.max(0, reach)) / 100;
-  return FLUX_AT_REACH_0 * (FLUX_AT_REACH_100 / FLUX_AT_REACH_0) ** t;
+/** The lowest reach: below 0 the reach counts stars, from the stars of reach 0
+ * (the brightest ones) down to the single brightest one. */
+export const REACH_MIN = -30;
+
+/**
+ * The flux of the faintest star that gets spikes at `reach` (-30..100).
+ * From 0 to 100 it is a fixed brightness, a setting saved with such a reach
+ * draws what it always drew. Below 0 it is a number of stars, falling in equal
+ * ratios from the count at reach 0 to one star at the lowest reach, so the
+ * threshold is the flux of that many-th brightest star of `stars`.
+ */
+export function fluxThreshold(
+  reach: number,
+  stars: readonly SpikeStar[] = [],
+): number {
+  if (reach >= 0 || stars.length === 0) {
+    const t = Math.min(100, Math.max(0, reach)) / 100;
+    return FLUX_AT_REACH_0 * (FLUX_AT_REACH_100 / FLUX_AT_REACH_0) ** t;
+  }
+  const fluxes = stars.map((star) => star.flux).sort((a, b) => b - a);
+  let atZero = 0;
+  for (const flux of fluxes) if (flux >= FLUX_AT_REACH_0) atZero += 1;
+  const from = Math.max(1, atZero);
+  const share = (Math.max(REACH_MIN, reach) - REACH_MIN) / -REACH_MIN;
+  const wanted = Math.floor(from ** share + 0.5 + 1e-9);
+  return fluxes[Math.min(fluxes.length, Math.max(1, wanted)) - 1];
 }
 
 /** How many stars the reach lets through (the number the screen shows). */
 export function starCount(stars: readonly SpikeStar[], reach: number): number {
-  const threshold = fluxThreshold(reach);
+  const threshold = fluxThreshold(reach, stars);
   let count = 0;
   for (const star of stars) if (star.flux >= threshold) count += 1;
   return count;
@@ -75,7 +97,7 @@ export function spikeLayer(
   if (strength <= 0 || starFactor <= 0 || stars.length === 0) return null;
   const s = Math.min(strength, 100) / 100;
   const longSide = Math.max(width, height);
-  const threshold = fluxThreshold(reach);
+  const threshold = fluxThreshold(reach, stars);
   const out = new Float32Array(width * height * 3);
   let drawn = false;
   const tint = [0, 0, 0];

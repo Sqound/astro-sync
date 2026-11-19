@@ -46,6 +46,7 @@ pub fn install_panic_hook<R: Runtime>(app: &AppHandle<R>) {
     };
     let files = files_of(&paths);
     let version = app.package_info().version.to_string();
+    let journal = stops_journal(&paths);
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         previous(info);
@@ -59,6 +60,9 @@ pub fn install_panic_hook<R: Runtime>(app: &AppHandle<R>) {
             let stack = info
                 .location()
                 .map(|at| scrub::panic_location(at.file(), at.line(), at.column()));
+            // Kept on this computer whatever the reporting setting says: the
+            // next time the program stops, the reason can be read.
+            note_stop(&journal, &version, &message, stack.as_deref());
             let _ = error_report::record(
                 &files,
                 POLICY,
@@ -71,6 +75,44 @@ pub fn install_panic_hook<R: Runtime>(app: &AppHandle<R>) {
             );
         }));
     }));
+}
+
+/// `stops.log`, beside the queue of reports: one line per stop of a part of
+/// the program (a panic), the newest last.
+pub(crate) fn stops_journal(paths: &AppPaths) -> std::path::PathBuf {
+    paths.error_reports.with_file_name("stops.log")
+}
+
+/// The lines [`note_stop`] keeps.
+const STOPS_KEPT: usize = 50;
+
+/// Adds a line to the journal of stops: when (seconds since 1970, UTC), the
+/// version, what the panic said and where (`file.rs:line:column (crate)`).
+/// The message is cleaned like a report (no path, no name, no address) and
+/// the place never carries the path of a machine. Nothing here may fail the
+/// caller: a journal that cannot be written is skipped.
+pub(crate) fn note_stop(
+    journal: &std::path::Path,
+    version: &str,
+    message: &str,
+    place: Option<&str>,
+) {
+    let when = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let said = scrub::clean(message, 300).unwrap_or_else(|| "panic".to_string());
+    let line = format!(
+        "{when} astro-sync {version} panic: {said} {}",
+        place.unwrap_or("at unknown")
+    );
+    let before = std::fs::read_to_string(journal).unwrap_or_default();
+    let mut lines: Vec<&str> = before.lines().filter(|l| !l.is_empty()).collect();
+    lines.push(&line);
+    let from = lines.len().saturating_sub(STOPS_KEPT);
+    if let Some(parent) = journal.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(journal, lines[from..].join("\n") + "\n");
 }
 
 /// Sends what waits, on a thread of its own: the application does not wait

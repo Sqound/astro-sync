@@ -19,7 +19,13 @@ import type {
   PoseMeasure,
   PoseStats,
 } from "./poseStats.ts";
-import { openUrl } from "@tauri-apps/plugin-opener";
+export {
+  folderOpen,
+  openInBrowser,
+  pipelinesFolderOpen,
+  resultFileOpen,
+  resultFileReveal,
+} from "./openSystem.ts";
 
 import { SERVICE_EVENT, type ServiceEvent } from "./serviceWait";
 import { planFromCore, planToCore, type CorePlan } from "./imagePlans";
@@ -348,18 +354,6 @@ export type RendersUpload = "png" | "both";
  * pixel no night covers, the default), « Zone commune à toutes les nuits »,
  * « Tout le champ ». */
 export type PlanField = "clean" | "common" | "whole";
-
-/** « Ouvrir le dossier des pipelines »: the folder of the person's
- * own definitions, created when missing, opened by the system. */
-export function pipelinesFolderOpen(): Promise<void> {
-  return invoke<void>("pipelines_folder_open");
-}
-
-/** Opens a web address in the system browser (only `http(s)` addresses the
- * service or the space announced). */
-export function openInBrowser(url: string): Promise<void> {
-  return openUrl(url);
-}
 
 /* ------------------------------ Capabilities ------------------------------ */
 // `GET /v1/capabilities`, refreshed and cached by the core
@@ -1503,6 +1497,13 @@ export interface OnlineCapture {
   mainImage: OnlineImage | null;
   imageCount: number;
   images: OnlineImage[];
+  /** Its series of poses, when it was sent with one. */
+  series?: {
+    filter: string | null;
+    exposureSeconds: number;
+    gain?: number | null;
+    binning?: number;
+  } | null;
 }
 
 /** `night_online::NightOnline`. */
@@ -1538,10 +1539,11 @@ export type Missing =
   | { key: "finalImage"; targetId: string; name: string }
   | { key: "logsAdded" }
   | { key: "analysis" }
-  | { key: "skyAnnotations"; count: number }
+  | { key: "skyAnnotations"; count: number; targets?: string[] }
   | { key: "progression"; targetId: string }
-  | { key: "imagesToSend"; count: number }
-  | { key: "queuePending"; count: number };
+  | { key: "imagesToSend"; count: number; targets?: string[] }
+  | { key: "queuePending"; count: number }
+  | { key: "queueFailed"; count: number };
 
 /** `night_resume::NightResume`. */
 export interface NightResume {
@@ -1554,6 +1556,9 @@ export interface NightResume {
     | { kind: "replace"; previousSentAt: string }
     | { kind: "up_to_date" };
   skySolutions: unknown[];
+  /** The multi-night plans whose image online stands for a target of the
+   * night without holding it (absent from an older core). */
+  plansLeftOut?: PlanOnline[];
 }
 
 /** `precheck::Treatment`. */
@@ -1579,6 +1584,9 @@ export interface NightView {
   folderTrace: boolean;
   detection: NightDetection | null;
   online: NightOnline;
+  /** The multi-night plans the night's targets work for (absent from an
+   * older core). */
+  plans?: PlanOnline[];
   resume: NightResume;
   treatments: TreatmentState[];
   /** The masters kept in the night's folder. */
@@ -1589,11 +1597,29 @@ export function nightOnline(sessionId: string): Promise<NightOnline> {
   return invoke<NightOnline>("night_online", { sessionId });
 }
 
+/** `night_resume::PlanOnline`: a multi-night plan a target of the night
+ * works for. Its image is a capture of the plan, of no night: `NightOnline`
+ * never lists it. */
+export interface PlanOnline {
+  projectId: string;
+  targetId: string;
+  name: string;
+  imageOnline: boolean;
+  /** The image online does not hold this night (`not_combined`: the nights
+   * it combined do not name it), or may not (`made_before`: naming no
+   * night, it was made before the night began). Absent from an older
+   * core. */
+  nightLeftOut?: "not_combined" | "made_before" | null;
+}
+
+/** `planId` is the plan of the night (`SessionSummary.planId`): its items
+ * name the multi-night plans its targets work for. */
 export function nightView(
   sessionId: string,
   input: DetectionInput,
+  planId: string | null = null,
 ): Promise<NightView> {
-  return invoke<NightView>("night_view", { sessionId, input });
+  return invoke<NightView>("night_view", { sessionId, planId, input });
 }
 
 /** `GET /v1/sessions/{id}` as the service wrote it (`session.schema.json`,
@@ -1635,11 +1661,6 @@ export interface NightCreate {
 
 export function nightCreate(night: NightCreate): Promise<NightDetail> {
   return invoke<NightDetail>("night_create", { night });
-}
-
-/** Opens an existing folder in the Finder, the Explorer or the file manager. */
-export function folderOpen(folder: string): Promise<void> {
-  return invoke<void>("folder_open", { folder });
 }
 
 /** `assistant_prompt::PromptInput`. */
@@ -4085,6 +4106,27 @@ export function detectImportCreate(
   });
 }
 
+/** What step 4's primary is doing inside a stage (`commands_detect`'s
+ * `ImportProgressStep`): the service asked to create `total` sessions
+ * (`service`), the night folders renamed (`folders`), the image `done` of
+ * `total` prepared (`prepare`), the space asked what it still holds
+ * (`check`), the rows written (`queue`). */
+export interface ImportProgressStep {
+  step: string;
+  done?: number;
+  total?: number;
+}
+
+export const IMPORT_PROGRESS_EVENT = "import-progress";
+
+export function onImportProgress(
+  handler: (step: ImportProgressStep) => void,
+): Promise<UnlistenFn> {
+  return listen<ImportProgressStep>(IMPORT_PROGRESS_EVENT, (event) =>
+    handler(event.payload),
+  );
+}
+
 /** Step 4's second stage: the plan folders renamed after the plans created. */
 export function detectImportPlans(nights: Settled[]): Promise<Settled[]> {
   return invoke<Settled[]>("detect_import_plans", { nights });
@@ -4134,6 +4176,15 @@ export type ImageToSend =
        * capture this render is a variant of; `null`: this render is the
        * capture. */
       variantOfSha256?: string | null;
+      /** A capture of the space this render is a variant of, whatever its
+       * main image is (« Garder l'image principale de votre espace », a
+       * public capture): the main image is never touched. */
+      variantOfCapture?: string | null;
+      /** What the space must confirm as this render leaves: `over`, it was
+       * chosen as the main image of a capture the space holds; `keep`, the
+       * main image the space holds is not touched. Not confirmed: it leaves
+       * later, or as a variant (`main_choice.rs`). */
+      mainWish?: "keep" | "over" | null;
       /** The row of the render's TIFF (`render.fullResolution`); else its
        * PNG. */
       fullResolution?: boolean;
@@ -4158,17 +4209,6 @@ export function detectImagesSend(
   images: ImageToSend[],
 ): Promise<EnqueueOutcome> {
   return invoke<EnqueueOutcome>("detect_images_send", { images });
-}
-
-/** « Ouvrir »: an image of « Images à envoyer » opened by the system's usual
- * application. */
-export function resultFileOpen(path: string): Promise<void> {
-  return invoke<void>("result_file_open", { path });
-}
-
-/** « Afficher dans le Finder »: the image selected in its folder. */
-export function resultFileReveal(path: string): Promise<void> {
-  return invoke<void>("result_file_reveal", { path });
 }
 
 /** The PNG written beside a TIFF render to look at (the one with the curve of

@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 
 import { useGuideAsk } from "../components/GuideAskWindow";
 import { Icon } from "../components/Icon";
-import { Notice } from "../components/Notice";
 import { PageTop } from "../components/PageTop";
 import { useI18n } from "../i18n";
 import { folderOpen, workingFolderGet } from "../lib/bridge";
-import { formatError } from "../lib/format";
 import {
   ANCHOR_LABEL_KEY,
   EXAMPLE_NIGHT,
@@ -65,7 +63,6 @@ export function GuideScreen({
   );
   const [root, setRoot] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const guideAsk = useGuideAsk();
 
   useEffect(() => {
@@ -136,7 +133,6 @@ export function GuideScreen({
           </button>
         ))}
       </nav>
-      <Notice tone="error">{error}</Notice>
 
       <section
         id={sectionOf("structure")}
@@ -303,12 +299,7 @@ export function GuideScreen({
             type="button"
             className={buttonClassName("link")}
             disabled={!root}
-            onClick={() =>
-              root &&
-              void folderOpen(assistantFile(root)).catch((caught: unknown) =>
-                setError(formatError(t, caught)),
-              )
-            }
+            onClick={() => root && void folderOpen(assistantFile(root))}
           >
             <Icon name="book" className="as-button__icon" />
             {t("guide.openAssistant")}

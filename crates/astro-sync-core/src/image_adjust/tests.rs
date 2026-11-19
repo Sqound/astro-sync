@@ -626,7 +626,7 @@ fn a_night_whose_render_is_online_and_set_since_has_an_image_to_send() {
             .missing
             .iter()
             .find_map(|m| match m {
-                Missing::ImagesToSend { count } => Some(*count),
+                Missing::ImagesToSend { count, .. } => Some(*count),
                 _ => None,
             })
             .unwrap_or(0)
@@ -1318,6 +1318,12 @@ fn the_spikes_are_neutral_at_zero_whatever_the_reach() {
     assert_eq!(with_spikes(0.0, 90.0).clamped(), AdjustValues::NEUTRAL);
     assert!(!with_spikes(5.0, 50.0).is_neutral());
     assert_eq!(with_spikes(5.0, 10.0).clamped().spikes_reach, 10.0);
+    // The range goes down to the brightest star alone; reaches of 0 and more are unchanged.
+    assert_eq!(with_spikes(5.0, -20.0).clamped().spikes_reach, -20.0);
+    assert_eq!(with_spikes(5.0, -300.0).clamped().spikes_reach, -30.0);
+    for reach in [0.0, 5.0, 50.0, 95.0, 100.0] {
+        assert_eq!(with_spikes(5.0, reach).clamped().spikes_reach, reach);
+    }
 }
 
 #[test]
@@ -1374,4 +1380,201 @@ fn the_spikes_are_written_into_the_record_and_into_a_saved_setting() {
     let mut list = Vec::new();
     save_named(&mut list, "Croix", chosen).unwrap();
     assert_eq!(list[0].values, chosen);
+}
+
+/* ------------- Replacing the main image only when it still is ------------- */
+
+/// A night with one capture holding `images` (`(id, sha256, main)`).
+fn online_holding(capture: &str, images: &[(&str, &str, bool)]) -> NightOnline {
+    let images: Vec<serde_json::Value> = images
+        .iter()
+        .map(|(id, sha, main)| {
+            serde_json::json!({
+                "id": id, "main": main, "sha256": sha, "byteSize": 35,
+                "originalName": format!("{id}.png"), "source": "stacking",
+                "createdAt": "2026-11-14T20:00:00Z", "skySolution": "missing"
+            })
+        })
+        .collect();
+    let main = images.iter().find(|image| image["main"] == true).cloned();
+    serde_json::from_value(serde_json::json!({
+        "sessionId": "night-1",
+        "targets": [{
+            "targetId": "m31", "name": "M 31", "planned": true,
+            "captures": [{
+                "id": capture, "targetIds": ["m31"], "source": "stacking",
+                "stage": "draft", "visibility": "private", "uploaded": true,
+                "createdAt": "2026-11-14T20:00:00Z",
+                "mainImage": main,
+                "imageCount": images.len(),
+                "images": images,
+            }]
+        }],
+        "analysis": { "present": false, "stepCount": 0, "editedStepCount": 0 }
+    }))
+    .unwrap()
+}
+
+/// A transport that answers what the night holds online and records what the
+/// create step carried; the create is then refused, which ends the test.
+struct RecordingTransport {
+    online: Option<NightOnline>,
+    created: std::cell::RefCell<Vec<crate::uploader::UploadMetadata>>,
+}
+
+impl crate::uploader::UploadTransport for RecordingTransport {
+    fn create(
+        &self,
+        _token: &str,
+        metadata: &crate::uploader::UploadMetadata,
+    ) -> Result<crate::uploader::UploadSession, crate::uploader::UploadError> {
+        self.created.borrow_mut().push(metadata.clone());
+        Err(crate::uploader::UploadError::refusal(
+            400,
+            "stop_here",
+            "The test ends at the create step.",
+        ))
+    }
+    fn status(
+        &self,
+        _token: &str,
+        _upload_id: &str,
+    ) -> Result<crate::uploader::UploadSession, crate::uploader::UploadError> {
+        panic!("a session carrying `replace` is never resumed unconfirmed");
+    }
+    fn put_chunk(
+        &self,
+        _token: &str,
+        _upload_id: &str,
+        _offset: u64,
+        _chunk: &[u8],
+    ) -> Result<crate::uploader::PutOutcome, crate::uploader::UploadError> {
+        unreachable!()
+    }
+    fn finalize(
+        &self,
+        _token: &str,
+        _upload_id: &str,
+    ) -> Result<crate::uploader::FinalizeOutcome, crate::uploader::UploadError> {
+        unreachable!()
+    }
+    fn night_online_now(&self, _token: &str, _session_id: &str) -> Option<NightOnline> {
+        self.online.clone()
+    }
+}
+
+/// The render sent through the queue as the main image of `cap-1`, then set
+/// and queued again: its image set waits with `placement: "replace"`, as the
+/// queue's memory says the render was the main image.
+fn queued_image_set(
+    dir: &Path,
+) -> (
+    crate::upload_queue::UploadQueue,
+    crate::upload_queue::QueueEntry,
+    String,
+) {
+    let render = render_in(dir);
+    let render_sha = file_sha256(&render).unwrap();
+    let queue = crate::upload_queue::UploadQueue::open(&dir.join("queue.sqlite")).unwrap();
+    let files = [result(&render, &render_sha, None)];
+    queue.enqueue_results(&files).unwrap();
+    queue.mark_completed(&render_sha, "cap-1").unwrap();
+    let saved = set(&render, values());
+    queue.enqueue_results(&files).unwrap();
+    let entry = queue.find_by_sha256(&saved.sha256).unwrap().unwrap();
+    assert_eq!(entry.target.placement.as_deref(), Some(PLACEMENT_REPLACE));
+    (queue, entry, render_sha)
+}
+
+fn sent_with(
+    online: Option<NightOnline>,
+    queue: &crate::upload_queue::UploadQueue,
+    entry: &crate::upload_queue::QueueEntry,
+) -> crate::uploader::UploadMetadata {
+    let transport = RecordingTransport {
+        online,
+        created: Default::default(),
+    };
+    let target = crate::uploader::UploadTarget {
+        session_id: Some("night-1".into()),
+        ..Default::default()
+    };
+    let _ = crate::uploader::upload_entry(&transport, queue, "token", entry, &target, |_, _| {});
+    let created = transport.created.borrow();
+    assert_eq!(created.len(), 1);
+    created[0].clone()
+}
+
+#[test]
+fn an_image_set_never_replaces_a_main_image_chosen_online_since() {
+    let dir = tempfile_dir();
+    let (queue, entry, render_sha) = queued_image_set(dir.path());
+    // The person chose another render as the main image on the web: the
+    // render this image set was made from is a variant now.
+    let online = online_holding(
+        "cap-1",
+        &[
+            ("img-polished", "polished-digest", true),
+            ("img-natural", &render_sha, false),
+        ],
+    );
+    let sent = sent_with(Some(online), &queue, &entry);
+    assert_ne!(sent.placement.as_deref(), Some(PLACEMENT_REPLACE));
+    // It takes the place of its own render, the variant.
+    assert_eq!(sent.placement, None);
+    assert_eq!(sent.replaces_sha256.as_deref(), Some(render_sha.as_str()));
+    assert_eq!(sent.capture_id.as_deref(), Some("cap-1"));
+}
+
+#[test]
+fn an_image_set_replaces_the_main_image_when_the_service_confirms_it_is_the_render() {
+    let dir = tempfile_dir();
+    let (queue, entry, render_sha) = queued_image_set(dir.path());
+    let online = online_holding(
+        "cap-1",
+        &[
+            ("img-natural", &render_sha, true),
+            ("img-polished", "polished-digest", false),
+        ],
+    );
+    let sent = sent_with(Some(online), &queue, &entry);
+    assert_eq!(sent.placement.as_deref(), Some(PLACEMENT_REPLACE));
+    assert_eq!(sent.replaces_sha256, None);
+}
+
+#[test]
+fn an_image_set_is_added_never_replacing_when_the_night_cannot_be_read() {
+    let dir = tempfile_dir();
+    let (queue, entry, _) = queued_image_set(dir.path());
+    let sent = sent_with(None, &queue, &entry);
+    assert_eq!(sent.placement.as_deref(), Some(PLACEMENT_ADD));
+    assert_eq!(sent.replaces_sha256, None);
+}
+
+#[test]
+fn an_image_set_is_added_when_its_render_left_the_capture_online() {
+    let dir = tempfile_dir();
+    let (queue, entry, _) = queued_image_set(dir.path());
+    let online = online_holding("cap-1", &[("img-polished", "polished-digest", true)]);
+    let sent = sent_with(Some(online), &queue, &entry);
+    assert_eq!(sent.placement.as_deref(), Some(PLACEMENT_ADD));
+}
+
+#[test]
+fn a_session_opened_with_replace_by_an_earlier_version_is_created_again() {
+    let dir = tempfile_dir();
+    let (queue, entry, render_sha) = queued_image_set(dir.path());
+    queue.mark_progress(&entry.sha256, "up-old", 10).unwrap();
+    let entry = queue.find_by_sha256(&entry.sha256).unwrap().unwrap();
+    assert!(entry.upload_id.is_some());
+    let online = online_holding(
+        "cap-1",
+        &[
+            ("img-polished", "polished-digest", true),
+            ("img-natural", &render_sha, false),
+        ],
+    );
+    let sent = sent_with(Some(online), &queue, &entry);
+    assert_eq!(sent.placement, None);
+    assert_eq!(sent.replaces_sha256.as_deref(), Some(render_sha.as_str()));
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import { Icon } from "../../components/Icon";
 import { ShareSheet } from "../../components/ShareSheet";
@@ -30,7 +30,15 @@ import {
   seriesRowText,
   targetsWithSeries,
 } from "../../lib/seriesOfPoses";
-import { summaryImageView } from "../../lib/summaryImages";
+import { mainImageName, summaryImageView } from "../../lib/summaryImages";
+import {
+  KEEP,
+  onlineMainLabel,
+  sinceDate,
+  type MainContext,
+  type MainGroup,
+} from "../../lib/mainImage";
+import { pluralText } from "../../lib/written";
 import {
   badgeClassName,
   buttonClassName,
@@ -144,6 +152,10 @@ export function SummaryImages({
   onAdjust,
   nightDatesOf,
   adjustKey = 0,
+  groups,
+  mainContext,
+  onChoose,
+  choiceOpen = true,
 }: {
   rows: readonly SummaryImage[];
   ticked: readonly string[];
@@ -157,8 +169,20 @@ export function SummaryImages({
   nightDatesOf?: (targetId: string) => readonly string[];
   /** Changes when an image was set or brought back: the rows read again. */
   adjustKey?: number;
+  /** The groups of the list (a target and a series of poses: one capture),
+   * each with its main image resolved. */
+  groups: readonly MainGroup[];
+  mainContext: MainContext;
+  /** The image chosen as the main one of a group, or `KEEP`. */
+  onChoose: (group: string, value: string) => void;
+  /** The choice may change (not while the images are being sent). */
+  choiceOpen?: boolean;
 }) {
   const { t, locale } = useI18n();
+  const groupsId = useId();
+  const groupOf = new Map<string, MainGroup>();
+  for (const group of groups)
+    for (const card of group.cards) groupOf.set(card.key, group);
   // The image set of each PNG render, read on the disk: « Réglée », its
   // values, and its file in place of the render's.
   const [adjusted, setAdjusted] = useState<Record<string, AdjustState | null>>(
@@ -266,192 +290,236 @@ export function SummaryImages({
     }
     return items;
   };
-  return (
-    <>
-      <ul className="as-treat__images">
-        {rows.flatMap((row) => {
-          // The TIFF of a render is the second box of its PNG's card.
-          if (row.fullResolution && pngRowOf(row, rows)) return [];
-          const head = seriesHead(row) ?? [];
-          if (row.role === "file") {
-            return [
-              ...head,
-              <LinearLine
-                key={row.key}
-                row={row}
-                rows={rows}
-                ticked={ticked}
-                room={room}
-                pipelineName={pipelineName}
-                onToggle={onToggle}
-              />,
-            ];
-          }
-          // The render's card and the card of its TIFF in full resolution
-          // both say the file of the image set that leaves in their place.
-          const set = onAdjust ? rowAdjustment(row, adjusted) : null;
-          const tiffRow =
-            rows.find(
-              (other) =>
-                other.fullResolution &&
-                other.targetId === row.targetId &&
-                other.twinOf === row.path,
-            ) ?? null;
-          const tiffSet =
-            onAdjust && tiffRow ? rowAdjustment(tiffRow, adjusted) : null;
-          const view = summaryImageView(
-            t,
-            locale,
-            set ? { ...row, size: set.size } : row,
-            pipelineName,
-          );
-          const tiffView = tiffRow
-            ? summaryImageView(
-                t,
-                locale,
-                tiffSet ? { ...tiffRow, size: tiffSet.size } : tiffRow,
-                pipelineName,
-              )
-            : null;
-          const shown = set ? set.path : row.path;
-          const on = ticked.includes(row.key);
-          const open = canTickImage(row, rows, ticked, room);
-          const tiffOn = !!tiffRow && ticked.includes(tiffRow.key);
-          const tiffOpen =
-            !!tiffRow && canTickImage(tiffRow, rows, ticked, room);
-          const waitsForPng =
-            !!tiffRow && !tiffOn && tiffWaitsForPng(tiffRow, rows, ticked);
-          const name = row.path.split(/[\\/]/).pop() ?? row.path;
-          const classes = [
-            "as-treat__image",
-            row.role === "variant" ? "is-variant" : "",
-            open ? "" : "is-full",
-          ]
-            .filter(Boolean)
-            .join(" ");
-          return [
-            ...head,
-            <li key={row.key} className={classes} data-role={row.role}>
-              <Thumb
-                path={shown}
-                name={name}
-                cacheKey={set ? `${shown}#${set.sha256}` : undefined}
+  /** One card of « Images à envoyer »: the picture, the title, the boxes, the
+   * choice of the main image, the actions. */
+  const renderCard = (row: SummaryImage) => {
+    const group = groupOf.get(row.key);
+    // The titles follow the choice: the main image is « M45 », every
+    // other image of its group a variant of that capture.
+    const shownRole: SummaryImage["role"] =
+      group && group.cards.length > 1 && group.selected !== null
+        ? group.selected === row.key
+          ? "capture"
+          : "variant"
+        : group && (group.locked || group.selected === KEEP)
+          ? "variant"
+          : row.role;
+    // The render's card and the card of its TIFF in full resolution
+    // both say the file of the image set that leaves in their place.
+    const set = onAdjust ? rowAdjustment(row, adjusted) : null;
+    const tiffRow =
+      rows.find(
+        (other) =>
+          other.fullResolution &&
+          other.targetId === row.targetId &&
+          other.twinOf === row.path,
+      ) ?? null;
+    const tiffSet =
+      onAdjust && tiffRow ? rowAdjustment(tiffRow, adjusted) : null;
+    const view = summaryImageView(
+      t,
+      locale,
+      { ...row, ...(set ? { size: set.size } : {}), role: shownRole },
+      pipelineName,
+    );
+    const tiffView = tiffRow
+      ? summaryImageView(
+          t,
+          locale,
+          tiffSet ? { ...tiffRow, size: tiffSet.size } : tiffRow,
+          pipelineName,
+        )
+      : null;
+    const shown = set ? set.path : row.path;
+    const on = ticked.includes(row.key);
+    const open = canTickImage(row, rows, ticked, room);
+    const tiffOn = !!tiffRow && ticked.includes(tiffRow.key);
+    const tiffOpen = !!tiffRow && canTickImage(tiffRow, rows, ticked, room);
+    const waitsForPng =
+      !!tiffRow && !tiffOn && tiffWaitsForPng(tiffRow, rows, ticked);
+    const name = row.path.split(/[\\/]/).pop() ?? row.path;
+    const classes = [
+      "as-treat__image",
+      row.role === "variant" ? "is-variant" : "",
+      open ? "" : "is-full",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return (
+      <li key={row.key} className={classes} data-role={shownRole}>
+        <Thumb
+          path={shown}
+          name={name}
+          cacheKey={set ? `${shown}#${set.sha256}` : undefined}
+        />
+        <div className="as-treat__links">
+          <p className="as-send__title">
+            <strong>{view.title}</strong>
+            {set && (
+              <>
+                {" "}
+                <span className={badgeClassName("outline-gold")}>
+                  {t("adjust.badge.adjusted")}
+                </span>
+              </>
+            )}
+            {t("detect.join")}
+            {view.render}
+          </p>
+          {set && (
+            <span className="as-treat__meta as-treat__adjusted">
+              {adjustedLine(t, locale, set.values, set.quarterTurns)}
+            </span>
+          )}
+          {view.blocked ? (
+            <span className="as-treat__meta as-treat__why">{view.blocked}</span>
+          ) : (
+            !open && (
+              <span className="as-treat__meta">{t("detect.send.full")}</span>
+            )
+          )}
+          <fieldset className="as-send__formats">
+            <legend className="as-treat__meta">
+              {t("detect.send.toSend")}
+            </legend>
+            <label>
+              <input
+                type="checkbox"
+                checked={on}
+                disabled={!open}
+                onChange={() => onToggle(row.key)}
               />
-              <div className="as-treat__links">
-                <p className="as-send__title">
-                  <strong>{view.title}</strong>
-                  {set && (
-                    <>
-                      {" "}
-                      <span className={badgeClassName("outline-gold")}>
-                        {t("adjust.badge.adjusted")}
-                      </span>
-                    </>
-                  )}
-                  {t("detect.join")}
-                  {view.render}
-                </p>
-                {set && (
-                  <span className="as-treat__meta as-treat__adjusted">
-                    {adjustedLine(t, locale, set.values, set.quarterTurns)}
-                  </span>
-                )}
-                {view.blocked ? (
-                  <span className="as-treat__meta as-treat__why">
-                    {view.blocked}
-                  </span>
-                ) : (
-                  !open && (
-                    <span className="as-treat__meta">
-                      {t("detect.send.full")}
+              <span>{view.meta}</span>
+            </label>
+            {tiffRow && tiffView && (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={tiffOn}
+                    disabled={!tiffOpen}
+                    onChange={() => onToggle(tiffRow.key)}
+                  />
+                  <span>{tiffView.meta}</span>
+                  {tiffView.blocked && (
+                    <span className="as-treat__meta as-treat__why">
+                      {tiffView.blocked}
                     </span>
-                  )
-                )}
-                <fieldset className="as-send__formats">
-                  <legend className="as-treat__meta">
-                    {t("detect.send.toSend")}
-                  </legend>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      disabled={!open}
-                      onChange={() => onToggle(row.key)}
-                    />
-                    <span>{view.meta}</span>
-                  </label>
-                  {tiffRow && tiffView && (
-                    <>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={tiffOn}
-                          disabled={!tiffOpen}
-                          onChange={() => onToggle(tiffRow.key)}
-                        />
-                        <span>{tiffView.meta}</span>
-                        {tiffView.blocked && (
-                          <span className="as-treat__meta as-treat__why">
-                            {tiffView.blocked}
-                          </span>
-                        )}
-                        {waitsForPng && !tiffView.blocked && (
-                          <span className="as-treat__meta">
-                            {t("detect.send.tiffNeedsPng")}
-                          </span>
-                        )}
-                      </label>
-                      {tiffOn && <TiffWarning />}
-                    </>
                   )}
-                </fieldset>
-                {/* « Régler l'image »: never on « Sans traitement » nor on a
+                  {waitsForPng && !tiffView.blocked && (
+                    <span className="as-treat__meta">
+                      {t("detect.send.tiffNeedsPng")}
+                    </span>
+                  )}
+                </label>
+                {tiffOn && <TiffWarning />}
+              </>
+            )}
+          </fieldset>
+          {group && (
+            <MainChoice
+              row={row}
+              group={group}
+              name={`${groupsId}:${group.key}`}
+              open={choiceOpen}
+              onChoose={onChoose}
+            />
+          )}
+          {/* « Régler l'image »: never on « Sans traitement » nor on a
                   TIFF. Once set: « Régler à nouveau » and « Revenir au
                   rendu d'origine ». */}
-                {onAdjust && isAdjustable(row) && (
-                  <div className="as-treat__adjust-actions">
-                    <button
-                      type="button"
-                      className={`${buttonClassName("tertiary")} as-treat__adjust`}
-                      onClick={() => onAdjust(row, view.render)}
-                    >
-                      <Icon name="sliders" className="as-button__icon" />
-                      {t(set ? "adjust.again" : "adjust.open")}
-                    </button>
-                    {set && (
-                      <button
-                        type="button"
-                        className={`${buttonClassName("link")} as-treat__revert`}
-                        onClick={() =>
-                          void imageAdjustRevert(row.path)
-                            .catch(() => {})
-                            .then(() => setReverted((n) => n + 1))
-                        }
-                      >
-                        {t("adjust.revert")}
-                      </button>
-                    )}
-                  </div>
-                )}
-                <FilePlace path={shown} />
-                <div className="as-treat__share">
-                  <button
-                    type="button"
-                    className={buttonClassName("tertiary")}
-                    onClick={() => setSharing({ row, shown })}
-                  >
-                    <Icon name="external" className="as-button__icon" />
-                    {t("share.open")}
-                  </button>
-                  <span className={helpTextClassName}>
-                    {t("share.openNote")}
-                  </span>
-                </div>
-              </div>
-            </li>,
-          ];
-        })}
-      </ul>
+          {onAdjust && isAdjustable(row) && (
+            <div className="as-treat__adjust-actions">
+              <button
+                type="button"
+                className={`${buttonClassName("tertiary")} as-treat__adjust`}
+                onClick={() => onAdjust(row, view.render)}
+              >
+                <Icon name="sliders" className="as-button__icon" />
+                {t(set ? "adjust.again" : "adjust.open")}
+              </button>
+              {set && (
+                <button
+                  type="button"
+                  className={`${buttonClassName("link")} as-treat__revert`}
+                  onClick={() =>
+                    void imageAdjustRevert(row.path)
+                      .catch(() => {})
+                      .then(() => setReverted((n) => n + 1))
+                  }
+                >
+                  {t("adjust.revert")}
+                </button>
+              )}
+            </div>
+          )}
+          <FilePlace path={shown} />
+          <div className="as-treat__share">
+            <button
+              type="button"
+              className={buttonClassName("tertiary")}
+              onClick={() => setSharing({ row, shown })}
+            >
+              <Icon name="external" className="as-button__icon" />
+              {t("share.open")}
+            </button>
+            <span className={helpTextClassName}>{t("share.openNote")}</span>
+          </div>
+        </div>
+      </li>
+    );
+  };
+  // The items of the list, in order: the banner and the line of a series, then
+  // the group of its images (a target and a series: one capture) with the
+  // choice of its main image, then the linear file.
+  const items: ReactNode[] = [];
+  const grouped = new Set<string>();
+  for (const row of rows) {
+    // The TIFF of a render is the second box of its PNG's card.
+    if (row.fullResolution && pngRowOf(row, rows)) continue;
+    const head = seriesHead(row) ?? [];
+    if (row.role === "file") {
+      items.push(
+        ...head,
+        <LinearLine
+          key={row.key}
+          row={row}
+          rows={rows}
+          ticked={ticked}
+          room={room}
+          pipelineName={pipelineName}
+          onToggle={onToggle}
+        />,
+      );
+      continue;
+    }
+    const group = groupOf.get(row.key);
+    if (!group) {
+      items.push(...head, renderCard(row));
+      continue;
+    }
+    if (grouped.has(group.key)) continue;
+    grouped.add(group.key);
+    items.push(
+      ...head,
+      <MainGroupBlock
+        key={`group:${group.key}`}
+        id={`${groupsId}:${group.key}`}
+        group={group}
+        context={mainContext}
+        open={choiceOpen}
+        onChoose={onChoose}
+        renderOf={(card) =>
+          mainImageName(t, locale, card, group.cards, pipelineName)
+        }
+      >
+        {group.cards.map((card) => renderCard(card))}
+      </MainGroupBlock>,
+    );
+  }
+  return (
+    <>
+      <ul className="as-treat__images">{items}</ul>
       {sharing && (
         <ShareSheet
           row={sharing.row}
@@ -475,14 +543,14 @@ function FilePlace({ path }: { path: string }) {
         className="as-send__path"
         title={path}
         aria-label={`${t("detect.send.openTitle")} : ${path}`}
-        onClick={() => void resultFileOpen(path).catch(() => {})}
+        onClick={() => void resultFileOpen(path)}
       >
         {path}
       </button>
       <button
         type="button"
         className={buttonClassName("link")}
-        onClick={() => void resultFileReveal(path).catch(() => {})}
+        onClick={() => void resultFileReveal(path)}
       >
         {t(revealKey())}
       </button>
@@ -540,5 +608,151 @@ function LinearLine({
         </span>
       </label>
     </li>
+  );
+}
+
+/** The head of a target and series of poses and its images beneath it: « M45 ·
+ * une capture, 4 images », the main image in one line, and, when the space
+ * holds the capture already, « Garder l'image principale de votre espace ».
+ * The main image is chosen on the cards, with one radio each, all of one
+ * group named by that title (a screen reader reads « Image principale, groupe
+ * de boutons radio »). One image alone: a sentence, no choice. */
+function MainGroupBlock({
+  id,
+  group,
+  context,
+  open,
+  onChoose,
+  renderOf,
+  children,
+}: {
+  id: string;
+  group: MainGroup;
+  context: MainContext;
+  open: boolean;
+  onChoose: (group: string, value: string) => void;
+  renderOf: (card: SummaryImage) => string;
+  children: ReactNode;
+}) {
+  const { t, locale } = useI18n();
+  const online = group.online;
+  const capture = online.kind === "capture" ? online : null;
+  const first = group.cards[0];
+  const count = group.cards.length;
+  // The render named in the line of the main image: the card's, or, for the
+  // image the space holds, the card of the same bytes, else its file.
+  const heldName = capture?.main
+    ? onlineMainLabel(group, context, capture.main, renderOf)
+    : "";
+  const selectedCard =
+    group.selected && group.selected !== KEEP
+      ? group.cards.find((card) => card.key === group.selected)
+      : undefined;
+  const single = count === 1 && !group.keepOffered && !group.locked;
+  const current = single
+    ? t("detect.send.main.only")
+    : group.locked
+      ? t("detect.send.main.public")
+      : selectedCard
+        ? t("detect.send.main.current", { render: renderOf(selectedCard) })
+        : group.selected === KEEP && capture?.main
+          ? t("detect.send.main.current", { render: heldName })
+          : null;
+  // The deliberate gesture, written: what becomes of the image the space holds.
+  const swap =
+    group.keepOffered && selectedCard && capture?.main
+      ? t("detect.send.main.swap", {
+          old: heldName,
+          new: renderOf(selectedCard),
+        })
+      : null;
+  const choice = !single && !group.locked;
+  const titleId = `${id}:title`;
+  return (
+    <li className="as-treat__group" data-target={group.targetId}>
+      <div
+        className="as-treat__group-body"
+        role={choice ? "radiogroup" : undefined}
+        aria-labelledby={choice ? titleId : undefined}
+      >
+        <div className="as-treat__group-head">
+          <p className="as-treat__group-title" id={titleId}>
+            <strong>
+              {pluralText(t, locale, "detect.send.main.groupTitle", count, {
+                target: first.designation,
+              })}
+            </strong>
+          </p>
+          {current && <span className="as-treat__meta">{current}</span>}
+          {online.kind === "unread" && (
+            <span className="as-treat__meta">
+              {t("detect.send.main.unread")}
+            </span>
+          )}
+        </div>
+        {group.keepOffered && capture?.main && (
+          <div className="as-treat__keep">
+            <label>
+              <input
+                type="radio"
+                name={id}
+                checked={group.selected === KEEP}
+                disabled={!open}
+                onChange={() => onChoose(group.key, KEEP)}
+              />
+              <span>
+                <strong>{t("detect.send.main.keep")}</strong>
+                <span className="as-treat__meta">
+                  {t("detect.send.main.keepSince", {
+                    render: heldName,
+                    date: sinceDate(locale, capture.main.since),
+                  })}
+                </span>
+              </span>
+            </label>
+            {swap && <span className="as-treat__meta">{swap}</span>}
+          </div>
+        )}
+        <ul className="as-treat__images as-treat__group-images">{children}</ul>
+      </div>
+    </li>
+  );
+}
+
+/** « Image principale »: the radio of a card, one per group. Closed, and
+ * why, for an image that is not ticked, one whose bytes the space holds
+ * already, or on a public capture. */
+function MainChoice({
+  row,
+  group,
+  name,
+  open,
+  onChoose,
+}: {
+  row: SummaryImage;
+  group: MainGroup;
+  name: string;
+  open: boolean;
+  onChoose: (group: string, value: string) => void;
+}) {
+  const { t } = useI18n();
+  if (group.cards.length === 1 && !group.keepOffered && !group.locked)
+    return null;
+  const block = group.blocks[row.key];
+  const why = group.locked || !block ? null : t(`detect.send.main.${block}`);
+  return (
+    <div className="as-treat__main-choice">
+      <label>
+        <input
+          type="radio"
+          name={name}
+          checked={group.selected === row.key}
+          disabled={!open || group.locked || block !== undefined}
+          onChange={() => onChoose(group.key, row.key)}
+        />
+        <span>{t("detect.send.main.label")}</span>
+      </label>
+      {why && <span className="as-treat__meta">{why}</span>}
+    </div>
   );
 }

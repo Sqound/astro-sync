@@ -222,3 +222,37 @@ export function tidyReportLines(
   if (lines.length === 0) lines.push(t("import.done.tidy.nothing"));
   return lines;
 }
+
+/**
+ * One question to the engine per subject, however often the screen draws:
+ * `begin(key)` says whether `key` (compared part by part, by identity) differs
+ * from the one being asked or answered last, and takes it; `holds(key)` says
+ * whether an answer still belongs to the subject on the screen; `end()`
+ * forgets it (the screen left).
+ *
+ * The overview of « Ranger les fichiers » looks at every file of the import
+ * on the disk. Asked again at every change of the import's state (each frame
+ * of a stacking, each image prepared), hundreds of readings ran at once.
+ */
+export function oncePerSubject(): {
+  begin: (key: readonly unknown[]) => boolean;
+  holds: (key: readonly unknown[]) => boolean;
+  end: () => void;
+} {
+  let last: readonly unknown[] | null = null;
+  const same = (key: readonly unknown[]) =>
+    last !== null &&
+    last.length === key.length &&
+    last.every((part, index) => Object.is(part, key[index]));
+  return {
+    begin: (key) => {
+      if (same(key)) return false;
+      last = key;
+      return true;
+    },
+    holds: same,
+    end: () => {
+      last = null;
+    },
+  };
+}

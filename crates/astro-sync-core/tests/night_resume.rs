@@ -19,8 +19,8 @@ use astro_sync_core::gui_bridge::HttpPortalGuiTransport;
 use astro_sync_core::night_online::NightOnline;
 use astro_sync_core::night_resume::{
     AnalysisInputs, AnalysisPlan, FolderState, LocalImage, LocalTarget, Missing, NightLedger,
-    NightStatus, ResumeLocal, SolveFrom, WizardStep, analysis_inputs, fetch_original, load_ledger,
-    resume_night, save_ledger,
+    NightLeftOut, NightStatus, PlanOnline, ResumeLocal, SolveFrom, WizardStep, analysis_inputs,
+    fetch_original, load_ledger, plans_online, resume_night, resume_night_with_plans, save_ledger,
 };
 use astro_sync_core::service_wait::{WaitHooks, WakePolicy};
 use astro_sync_core::upload_queue::{EntryTarget, QueueEntry, QueueState, ResultKind};
@@ -54,6 +54,14 @@ fn final_image(target: &str, sha: char) -> LocalImage {
         size: 10,
         kind: ResultKind::Final,
         twin_sha256: None,
+    }
+}
+
+/// « N images to send », one per target named.
+fn to_send(targets: &[&str]) -> Missing {
+    Missing::ImagesToSend {
+        count: targets.len() as u64,
+        targets: targets.iter().map(|t| (*t).to_string()).collect(),
     }
 }
 
@@ -237,18 +245,18 @@ fn images_to_send_and_the_queue_reopen_the_summary() {
         analysis_inputs: Some("after".into()),
         progression_frames: BTreeMap::new(),
     };
-    // IC 1396's final is here, not online yet; a different M31 final is a
-    // variant only when the space keeps variants.
+    // IC 1396's final is here, not online yet: its target has no image
+    // online. A different M31 final is a choice, never owed.
     let local = here(vec![
         final_image("ngc7000", 'a'),
         final_image("ic1396", 'd'),
         final_image("m31", 'c'),
     ]);
     let with_variants = resume_night(&night, &local, &[], Some(&ledger), 12);
-    assert_eq!(with_variants.missing, [Missing::ImagesToSend { count: 2 }]);
+    assert_eq!(with_variants.missing, [to_send(&["ic1396"])]);
     assert_eq!(with_variants.step, Some(WizardStep::Recapitulatif));
     let without = resume_night(&night, &local, &[], Some(&ledger), 0);
-    assert_eq!(without.missing, [Missing::ImagesToSend { count: 1 }]);
+    assert_eq!(without.missing, [to_send(&["ic1396"])]);
 
     // Once enqueued (held by a full storage), the queue says it.
     let queue = [
@@ -423,4 +431,481 @@ fn the_original_is_fetched_resumed_from_its_part_and_checked() {
         PathBuf::from("/n/M31/final/m31.tif")
     );
     let _ = fs::remove_dir_all(&dir);
+}
+
+/* ----------- Renders produced here are choices, not debts ----------- */
+
+fn render(target: &str, sha: char, ext: &str, twin: Option<char>) -> LocalImage {
+    LocalImage {
+        target_id: target.into(),
+        path: PathBuf::from(format!("/n/{target}/stacked/{target}_{sha}.{ext}")),
+        sha256: sha.to_string().repeat(64),
+        size: 10,
+        kind: ResultKind::Stacked,
+        twin_sha256: twin.map(|c| c.to_string().repeat(64)),
+    }
+}
+
+/// A night with one planned target (NGC 7000) whose render `a` is online,
+/// its sky annotated, its analysis up to date.
+fn settled() -> (NightOnline, NightLedger) {
+    let mut night = online("night_in_progress.json");
+    night
+        .targets
+        .retain(|t| t.target_id.as_deref() == Some("ngc7000"));
+    let ledger = NightLedger {
+        analysis_inputs: Some("after".into()),
+        progression_frames: BTreeMap::new(),
+    };
+    (night, ledger)
+}
+
+/// Several renders of one integration, in PNG and TIFF, only one sent.
+fn many_renders() -> Vec<LocalImage> {
+    vec![
+        render("ngc7000", 'a', "png", Some('1')),
+        render("ngc7000", '1', "tif", Some('a')),
+        render("ngc7000", 'b', "png", Some('2')),
+        render("ngc7000", '2', "tif", Some('b')),
+        render("ngc7000", 'c', "png", None),
+        render("ngc7000", 'd', "png", None),
+    ]
+}
+
+#[test]
+fn renders_not_sent_do_not_keep_a_night_to_complete() {
+    let (night, ledger) = settled();
+    let local = here(many_renders());
+    for limit in [0, 12] {
+        let resume = resume_night(&night, &local, &[], Some(&ledger), limit);
+        assert_eq!(resume.missing, [], "variant limit {limit}");
+        assert_eq!(resume.status, NightStatus::Complete);
+    }
+}
+
+#[test]
+fn a_target_with_no_image_online_still_has_an_image_to_send() {
+    let mut night = online("night_in_progress.json");
+    night
+        .targets
+        .retain(|t| t.target_id.as_deref() == Some("ic1396"));
+    let ledger = NightLedger {
+        analysis_inputs: Some("after".into()),
+        progression_frames: BTreeMap::new(),
+    };
+    let local = here(
+        many_renders()
+            .into_iter()
+            .map(|mut i| {
+                i.target_id = "ic1396".into();
+                i
+            })
+            .collect(),
+    );
+    let resume = resume_night(&night, &local, &[], Some(&ledger), 12);
+    // One image is owed for the target, not one per render.
+    assert_eq!(resume.missing, [to_send(&["ic1396"])]);
+    assert_eq!(resume.status, NightStatus::ToComplete);
+}
+
+#[test]
+fn a_ticked_render_still_in_the_queue_is_pending_not_to_send() {
+    let mut night = online("night_in_progress.json");
+    night
+        .targets
+        .retain(|t| t.target_id.as_deref() == Some("ic1396"));
+    let ledger = NightLedger {
+        analysis_inputs: Some("after".into()),
+        progression_frames: BTreeMap::new(),
+    };
+    let local = here(vec![
+        render("ic1396", 'e', "png", None),
+        render("ic1396", 'f', "png", None),
+    ]);
+    let queue = [row('e', QueueState::Queued, &night.session_id)];
+    let resume = resume_night(&night, &local, &queue, Some(&ledger), 12);
+    assert_eq!(resume.missing, [Missing::QueuePending { count: 1 }]);
+}
+
+#[test]
+fn a_failed_or_refused_sending_is_said() {
+    let (night, ledger) = settled();
+    let local = here(many_renders());
+    let queue = [
+        row('c', QueueState::Failed, &night.session_id),
+        row('d', QueueState::Refused, &night.session_id),
+        // Another night's, and one whose bytes are online meanwhile.
+        row('b', QueueState::Failed, "another-night"),
+        row('a', QueueState::Failed, &night.session_id),
+    ];
+    let resume = resume_night(&night, &local, &queue, Some(&ledger), 12);
+    assert_eq!(resume.missing, [Missing::QueueFailed { count: 2 }]);
+    assert_eq!(resume.sentence(), "To complete: 2 uploads not sent");
+}
+
+#[test]
+fn sky_annotations_are_owed_for_images_online_only() {
+    let (mut night, ledger) = settled();
+    let local = here(many_renders());
+    night.targets[0].captures[0].images[0].sky_solution = "missing".into();
+    let resume = resume_night(&night, &local, &[], Some(&ledger), 12);
+    // The renders never sent add nothing: one image online lacks it.
+    assert_eq!(
+        resume.missing,
+        [Missing::SkyAnnotations {
+            count: 1,
+            targets: vec!["ngc7000".into()]
+        }]
+    );
+}
+
+/* ------ The image of a multi-night plan is its nights' image online ------ */
+
+const PLAN: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+const NIGHTS: [&str; 3] = [
+    "bbbbbbbb-0000-4000-8000-000000000001",
+    "bbbbbbbb-0000-4000-8000-000000000002",
+    "bbbbbbbb-0000-4000-8000-000000000003",
+];
+
+/// The multi-night plan of IC 1396 as the service answers it
+/// (`GET /v1/projects/{id}`), its image online or not: a capture of the plan,
+/// which no night's `…/online` lists. Read for the night `session`.
+fn plan_of_ic1396(combined: Option<&[&str]>, session: &str) -> Vec<PlanOnline> {
+    plan_image_of_ic1396(
+        combined.map(|nights| serde_json::json!(nights)),
+        session,
+        Some("2026-08-24T19:30:00.000Z"),
+    )
+}
+
+/// The same plan, its image online naming `combined` (an array, or nothing),
+/// made on 20 Aug, for the night `session` that began at `started_at`.
+fn plan_image_of_ic1396(
+    combined: Option<serde_json::Value>,
+    session: &str,
+    started_at: Option<&str>,
+) -> Vec<PlanOnline> {
+    let mut capture = serde_json::json!({
+        "id": "cccccccc-0000-4000-8000-000000000001",
+        "createdAt": "2026-08-20T10:00:00.000Z",
+        "totalsByFilter": [],
+        "render": "natural"
+    });
+    if let Some(nights) = combined {
+        capture["combinedNightIds"] = nights;
+    }
+    let project = serde_json::json!({
+        "id": PLAN,
+        "target": { "targetId": "ic1396", "name": "IC 1396" },
+        "integrations": [],
+        "planCapture": capture,
+    });
+    plans_online(
+        &astro_sync_core::multi_night::NightMultiNight {
+            evening_date: None,
+            projects: astro_sync_core::multi_night::project_of(&project, "ic1396")
+                .into_iter()
+                .collect(),
+        },
+        session,
+        started_at,
+    )
+}
+
+/// The plan of IC 1396 without its image online.
+fn plan_of_ic1396_without_image(session: &str) -> Vec<PlanOnline> {
+    let project = serde_json::json!({
+        "id": PLAN,
+        "target": { "targetId": "ic1396", "name": "IC 1396" },
+        "integrations": [],
+        "planCapture": null,
+    });
+    plans_online(
+        &astro_sync_core::multi_night::NightMultiNight {
+            evening_date: None,
+            projects: astro_sync_core::multi_night::project_of(&project, "ic1396")
+                .into_iter()
+                .collect(),
+        },
+        session,
+        None,
+    )
+}
+
+/// One night of the plan: `targets` planned, nothing of IC 1396 online for
+/// the night itself, its analysis in place.
+fn plan_night(session: &str, targets: &[&str]) -> (NightOnline, NightLedger) {
+    let mut night = online("night_in_progress.json");
+    night.session_id = session.into();
+    night
+        .targets
+        .retain(|t| targets.contains(&t.target_id.as_deref().unwrap_or_default()));
+    let ledger = NightLedger {
+        analysis_inputs: Some("after".into()),
+        progression_frames: BTreeMap::new(),
+    };
+    (night, ledger)
+}
+
+#[test]
+fn the_three_nights_of_a_plan_whose_image_is_online_are_complete() {
+    // The image of the plan combined the three nights; each night kept its
+    // own render in its folder, never sent.
+    for session in NIGHTS {
+        let plans = plan_of_ic1396(Some(&NIGHTS), session);
+        let (night, ledger) = plan_night(session, &["ic1396"]);
+        let local = here(vec![render("ic1396", 'e', "png", None)]);
+        // Without the plan, the night's own render is asked for.
+        let alone = resume_night(&night, &local, &[], Some(&ledger), 12);
+        assert_eq!(alone.missing, [to_send(&["ic1396"])]);
+        let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+        assert_eq!(resume.missing, [], "night {session}");
+        assert_eq!(resume.status, NightStatus::Complete);
+        assert_eq!(resume.step, None);
+    }
+}
+
+#[test]
+fn a_night_the_image_of_its_plan_did_not_combine_owes_no_image_either() {
+    // The plan has its image online, made before this night joined it: what
+    // is owed then is the plan's image again, never an image of the night.
+    let plans = plan_of_ic1396(Some(&NIGHTS[..2]), NIGHTS[2]);
+    let (night, ledger) = plan_night(NIGHTS[2], &["ic1396"]);
+    let local = here(vec![render("ic1396", 'e', "png", None)]);
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    assert_eq!(resume.status, NightStatus::Complete);
+    assert_eq!(resume.missing, []);
+}
+
+/* -- A night the image of its plan does not hold: complete, and said so -- */
+
+#[test]
+fn the_nights_the_image_of_the_plan_combined_are_complete_without_reserve() {
+    // The image combined the first two nights: they are complete, nothing
+    // said beside.
+    for session in &NIGHTS[..2] {
+        let plans = plan_of_ic1396(Some(&NIGHTS[..2]), session);
+        assert_eq!(plans[0].night_left_out, None);
+        let (night, ledger) = plan_night(session, &["ic1396"]);
+        let local = here(vec![render("ic1396", 'e', "png", None)]);
+        let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+        assert_eq!(resume.status, NightStatus::Complete);
+        assert_eq!(resume.plans_left_out, []);
+        assert_eq!(resume.step, None);
+        assert_eq!(resume.sentence(), "Complete");
+    }
+}
+
+#[test]
+fn a_night_the_image_of_the_plan_did_not_combine_is_said_left_out() {
+    // Criterion (a): the nights the image combined do not name the third.
+    let plans = plan_of_ic1396(Some(&NIGHTS[..2]), NIGHTS[2]);
+    assert_eq!(plans[0].night_left_out, Some(NightLeftOut::NotCombined));
+    let (night, ledger) = plan_night(NIGHTS[2], &["ic1396"]);
+    let local = here(vec![render("ic1396", 'e', "png", None)]);
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    // Nothing owed: not « To complete ».
+    assert_eq!(resume.status, NightStatus::Complete);
+    assert_eq!(resume.missing, []);
+    assert_eq!(resume.plans_left_out.len(), 1);
+    assert_eq!(resume.plans_left_out[0].project_id, PLAN);
+    // The wizard reopens where the image of the plan is made again.
+    assert_eq!(resume.step, Some(WizardStep::Traitements));
+    assert_eq!(
+        resume.sentence(),
+        "Complete: the image of the plan of IC 1396 does not hold this night"
+    );
+}
+
+#[test]
+fn the_combined_nights_win_over_the_dates() {
+    // A night that began after the image was made, but which the image
+    // names (the clocks disagree): it holds the night.
+    let plans = plan_image_of_ic1396(
+        Some(serde_json::json!(NIGHTS)),
+        NIGHTS[2],
+        Some("2026-08-24T19:30:00.000Z"),
+    );
+    assert_eq!(plans[0].night_left_out, None);
+    // And a night the image does not name, though it began before the
+    // image was made: left out.
+    let plans = plan_image_of_ic1396(
+        Some(serde_json::json!(&NIGHTS[..1])),
+        NIGHTS[1],
+        Some("2026-08-12T19:30:00.000Z"),
+    );
+    assert_eq!(plans[0].night_left_out, Some(NightLeftOut::NotCombined));
+}
+
+#[test]
+fn an_image_naming_no_night_and_older_than_the_night_may_not_hold_it() {
+    // Criterion (b), when the image names no night: made on 20 Aug.
+    for combined in [None, Some(serde_json::json!([]))] {
+        // A night that began after: it may not hold it.
+        let later = plan_image_of_ic1396(
+            combined.clone(),
+            NIGHTS[2],
+            Some("2026-08-24T19:30:00.000Z"),
+        );
+        assert_eq!(later[0].night_left_out, Some(NightLeftOut::MadeBefore));
+        let (night, ledger) = plan_night(NIGHTS[2], &["ic1396"]);
+        let local = here(vec![render("ic1396", 'e', "png", None)]);
+        let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &later);
+        assert_eq!(resume.status, NightStatus::Complete);
+        assert_eq!(resume.plans_left_out.len(), 1);
+        assert_eq!(
+            resume.sentence(),
+            "Complete: the image of the plan of IC 1396 may not hold this night"
+        );
+        // A night that began before: nothing said.
+        let earlier = plan_image_of_ic1396(
+            combined.clone(),
+            NIGHTS[0],
+            Some("2026-08-09T19:30:00.000Z"),
+        );
+        assert_eq!(earlier[0].night_left_out, None);
+        // The start of the night unknown: nothing said.
+        let unknown = plan_image_of_ic1396(combined, NIGHTS[2], None);
+        assert_eq!(unknown[0].night_left_out, None);
+    }
+}
+
+#[test]
+fn a_night_still_owing_an_image_stays_to_complete_with_its_plan_left_out() {
+    // The third night owes M31 an image: « To complete » comes first, the
+    // plan left out is kept beside.
+    let plans = plan_of_ic1396(Some(&NIGHTS[..2]), NIGHTS[2]);
+    let (mut night, ledger) = plan_night(NIGHTS[2], &["ic1396", "m31"]);
+    for target in &mut night.targets {
+        target.captures.clear();
+    }
+    let local = here(vec![
+        render("ic1396", 'e', "png", None),
+        render("m31", 'f', "png", None),
+    ]);
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    assert_eq!(resume.status, NightStatus::ToComplete);
+    assert_eq!(resume.missing, [to_send(&["m31"])]);
+    assert_eq!(resume.step, Some(WizardStep::Recapitulatif));
+    assert_eq!(resume.plans_left_out.len(), 1);
+}
+
+#[test]
+fn a_plan_target_with_nothing_here_owes_no_final_image() {
+    let plans = plan_of_ic1396(Some(&NIGHTS), NIGHTS[0]);
+    let (night, ledger) = plan_night(NIGHTS[0], &["ic1396"]);
+    let local = here(vec![]);
+    let alone = resume_night(&night, &local, &[], Some(&ledger), 12);
+    assert!(matches!(alone.missing[..], [Missing::FinalImage { .. }]));
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    assert_eq!(resume.missing, []);
+}
+
+#[test]
+fn a_plan_without_its_image_online_leaves_the_night_to_complete() {
+    let plans = plan_of_ic1396_without_image(NIGHTS[0]);
+    assert!(!plans[0].image_online);
+    assert_eq!(plans[0].night_left_out, None);
+    let (night, ledger) = plan_night(NIGHTS[0], &["ic1396"]);
+    let local = here(vec![render("ic1396", 'e', "png", None)]);
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    assert_eq!(resume.missing, [to_send(&["ic1396"])]);
+}
+
+#[test]
+fn a_second_target_of_a_plan_night_is_still_owed_and_named() {
+    // A night of the plan that also shot NGC 7000 (its image online) and M31
+    // (a render here, nothing online): only M31 is owed.
+    let plans = plan_of_ic1396(Some(&NIGHTS[..2]), NIGHTS[1]);
+    let (mut night, ledger) = plan_night(NIGHTS[1], &["ic1396", "m31"]);
+    for target in &mut night.targets {
+        target.captures.clear();
+    }
+    let local = here(vec![
+        render("ic1396", 'e', "png", None),
+        render("m31", 'f', "png", None),
+    ]);
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &plans);
+    assert_eq!(resume.missing, [to_send(&["m31"])]);
+    assert_eq!(resume.status, NightStatus::ToComplete);
+    assert_eq!(resume.step, Some(WizardStep::Recapitulatif));
+}
+
+#[test]
+fn a_single_night_without_image_online_names_its_target() {
+    let (night, ledger) = plan_night(NIGHTS[0], &["ic1396"]);
+    let local = here(vec![render("ic1396", 'e', "png", None)]);
+    // The plan of another target changes nothing.
+    let mut other = plan_of_ic1396(Some(&NIGHTS), NIGHTS[0]);
+    other[0].target_id = "m31".into();
+    let resume = resume_night_with_plans(&night, &local, &[], Some(&ledger), 12, &other);
+    assert_eq!(resume.missing, [to_send(&["ic1396"])]);
+}
+
+#[test]
+fn a_short_night_with_a_render_here_and_nothing_online_stays_to_complete() {
+    // Six minutes of poses, a render the stacker wrote all the same, no log:
+    // the engine cannot tell the render is of no use, so it names the target
+    // and the person decides.
+    let (mut night, _) = plan_night(NIGHTS[0], &["ic1396"]);
+    night.analysis.present = false;
+    let local = ResumeLocal {
+        folder: FolderState::Found,
+        targets: vec![target("ic1396", 82)],
+        logs: 0,
+        images: vec![render("ic1396", 'e', "png", None)],
+        analysis_inputs: None,
+    };
+    let resume = resume_night(&night, &local, &[], None, 12);
+    assert_eq!(resume.missing, [to_send(&["ic1396"])]);
+    assert_eq!(resume.status, NightStatus::ToComplete);
+}
+
+/// NGC 7000 online with its main image and three variants.
+fn with_variants(solved: [&str; 4]) -> (NightOnline, NightLedger) {
+    let (mut night, ledger) = settled();
+    let capture = &mut night.targets[0].captures[0];
+    let main = capture.images[0].clone();
+    for (index, sha) in ['7', '8', '9'].into_iter().enumerate() {
+        let mut variant = main.clone();
+        variant.id = format!("variant-{index}");
+        variant.main = false;
+        variant.sha256 = sha.to_string().repeat(64);
+        capture.images.push(variant);
+    }
+    capture.image_count = 4;
+    for (image, state) in capture.images.iter_mut().zip(solved) {
+        image.sky_solution = state.into();
+    }
+    capture.main_image = Some(capture.images[0].clone());
+    (night, ledger)
+}
+
+#[test]
+fn sky_annotations_are_counted_on_the_main_image_of_each_capture() {
+    // « Online » says « 1 image »: one image lacks its annotations, not four.
+    let (night, ledger) = with_variants(["missing"; 4]);
+    let local = here(many_renders());
+    let resume = resume_night(&night, &local, &[], Some(&ledger), 12);
+    assert_eq!(
+        resume.missing,
+        [Missing::SkyAnnotations {
+            count: 1,
+            targets: vec!["ngc7000".into()]
+        }]
+    );
+    assert_eq!(resume.sentence(), "To complete: sky annotations of 1 image");
+    // The pass that solves it solves the variants too.
+    assert_eq!(resume.sky_solutions.len(), 4);
+}
+
+#[test]
+fn a_variant_without_annotations_does_not_keep_a_night_to_complete() {
+    let (night, ledger) = with_variants(["present", "present", "missing", "present"]);
+    let local = here(many_renders());
+    let resume = resume_night(&night, &local, &[], Some(&ledger), 12);
+    assert_eq!(resume.missing, []);
+    assert_eq!(resume.status, NightStatus::Complete);
+    assert_eq!(resume.sky_solutions.len(), 1);
 }

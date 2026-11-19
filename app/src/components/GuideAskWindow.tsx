@@ -210,11 +210,8 @@ export function useGuideAsk(): {
   }
 
   async function openGuide(path: string) {
-    try {
-      await folderOpen(path);
-    } catch (error) {
-      notify({ tone: "error", text: say(error) });
-    }
+    // A refusal is said by the window's own report (path included).
+    await folderOpen(path);
   }
 
   let content: React.ReactNode = null;

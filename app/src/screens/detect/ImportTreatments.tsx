@@ -6,6 +6,10 @@ import { useImport } from "../../components/ImportProvider";
 import { Notice } from "../../components/Notice";
 import { ProgressFrame } from "../../components/ProgressFrame";
 import { offersOpener, useSpaceWeb } from "../../components/TabParts";
+import {
+  CardPipelines,
+  PipelinesReadNotice,
+} from "../../components/CardPipelines";
 import { WizardFoot } from "../../components/WizardFrame";
 import { useNow } from "../../hooks/useNow";
 import { useI18n } from "../../i18n";
@@ -44,8 +48,12 @@ import {
   type PipelineFinish,
 } from "../../lib/finish";
 import { NO_PROCESSING_ID, rendersOf } from "../../lib/pipelineChoice";
+import {
+  pipelinesActions,
+  type PipelinesStatus,
+} from "../../lib/pipelinesRead";
 import { progressFrameView } from "../../lib/treatmentProgress";
-import { formatError } from "../../lib/format";
+import { reportOpenFailure } from "../../lib/openFailure";
 import { pluralText } from "../../lib/written";
 import { buttonClassName, helpTextClassName } from "../../theme";
 import { PipelineDialog } from "../night/PipelineDialog";
@@ -73,23 +81,49 @@ export function treatmentsLine(
 }
 
 /** The pipelines of this computer, its tools and its polishing engine, and
- * the name of a pipeline as the person reads it. */
+ * the name of a pipeline as the person reads it. The pipelines and the tools
+ * are read apart (the script of the stacking answers after a while, the tools
+ * are asked for their version): the cards and the window of a target
+ * take the pipelines as they come; the window says that the tools are still
+ * read (`toolsRead`) until they are. */
 export function usePipelines() {
   const { locale } = useI18n();
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [tools, setTools] = useState<ToolRow[]>([]);
   const [engine, setEngine] = useState<PolishedEngine>("graxpert-ai");
+  const [status, setStatus] = useState<PipelinesStatus>("loading");
+  const [toolsRead, setToolsRead] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    void Promise.allSettled([toolsDetect(), pipelinesList(locale)]).then(
-      ([rows, list]) => {
-        if (rows.status === "fulfilled") setTools(rows.value);
-        if (list.status === "fulfilled") setPipelines(list.value.pipelines);
-      },
-    );
+    let cancelled = false;
+    setStatus((current) => (current === "ready" ? current : "loading"));
+    setToolsRead(false);
+    pipelinesList(locale)
+      .then((list) => {
+        if (cancelled) return;
+        setPipelines(list.pipelines);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("failed");
+      });
+    toolsDetect()
+      .then((rows) => {
+        if (!cancelled) setTools(rows);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setToolsRead(true);
+      });
     void localSettingsGet()
-      .then((settings) => setEngine(settings.polishedEngine ?? "graxpert-ai"))
+      .then((settings) => {
+        if (!cancelled) setEngine(settings.polishedEngine ?? "graxpert-ai");
+      })
       .catch(() => undefined);
-  }, [locale]);
+    return () => {
+      cancelled = true;
+    };
+  }, [locale, attempt]);
   const pipelineName = (id: string) => {
     const pipeline = pipelines.find((p) => p.id === id);
     return (
@@ -103,6 +137,14 @@ export function usePipelines() {
     setTools,
     engine,
     pipelineName,
+    status,
+    /** The tools are read too: the window of a target may open. */
+    toolsRead,
+    /** « Réessayer »: read again. */
+    reload: () => {
+      setStatus("loading");
+      setAttempt((current) => current + 1);
+    },
   };
 }
 
@@ -120,8 +162,22 @@ export function ImportTreatments() {
   const imp = useImport();
   const { state } = imp;
   const offers = offersOpener(web, locale);
-  const { pipelines, setPipelines, tools, setTools, engine, pipelineName } =
-    usePipelines();
+  const {
+    pipelines,
+    setPipelines,
+    tools,
+    setTools,
+    engine,
+    pipelineName,
+    status,
+    toolsRead,
+    reload,
+  } = usePipelines();
+  // The cards are there at once; what each one will run is not known until
+  // the pipelines are read, and nothing starts or opens on a list not read.
+  // The tools are read apart: the window of a target says it itself while
+  // they are asked for their version.
+  const actions = pipelinesActions(status, pipelines.length);
   // The stacking is local and never gated by the offer: the capabilities
   // are read again on entering the step for the room of the space only.
   const { refresh } = useCapabilities();
@@ -151,7 +207,6 @@ export function ImportTreatments() {
     };
   }, []);
   const [dialog, setDialog] = useState<TreatmentTargetCard | null>(null);
-  const [openError, setOpenError] = useState<string | null>(null);
   const proposal = state.proposal;
   // The sessions are not created yet: the cards are what would be.
   const local = workingOutcome(state);
@@ -178,18 +233,22 @@ export function ImportTreatments() {
   const runningCard = cards.find(
     (card) => card.designation === running?.target,
   );
+  // The folder of the target when it is there, else the working folder:
+  // the click always opens one, or says why none opened (a snackbar, the
+  // path in it).
   const openFolder = () => {
-    setOpenError(null);
     void (async () => {
       try {
+        const root = (await workingFolderGet()).root;
         const folder = folderToOpen(
           state.folders,
           runningCard?.targetId ?? null,
-          (await workingFolderGet()).root,
+          root,
         );
-        if (folder) await folderOpen(folder);
+        if (folder)
+          await folderOpen(folder, ...(folder === root ? [] : [root]));
       } catch (caught) {
-        setOpenError(formatError(t, caught));
+        reportOpenFailure({ kind: "folder", target: "", caught });
       }
     })();
   };
@@ -244,7 +303,10 @@ export function ImportTreatments() {
       ) : (
         <p className={helpTextClassName}>{t("import.treat.none")}</p>
       )}
-      <ul className="as-treat__cards">
+      {cards.length > 0 && (
+        <PipelinesReadNotice zone={actions.zone} onRetry={reload} />
+      )}
+      <ul className="as-treat__cards" aria-busy={status === "loading"}>
         {cards.map((card) => {
           const on = chosen.includes(card.targetId);
           return (
@@ -279,9 +341,12 @@ export function ImportTreatments() {
                   </span>
                   {/* The renders chosen, by name: never a
                       bare « Choisir les pipelines ». */}
-                  <span className="as-treat__pipelines">
-                    {pipelinesOf(card).map(pipelineName).join(t("detect.join"))}
-                  </span>
+                  <CardPipelines
+                    status={status}
+                    names={pipelinesOf(card)
+                      .map(pipelineName)
+                      .join(t("detect.join"))}
+                  />
                   {changedFinishes(
                     state.finishes,
                     card.targetId,
@@ -302,7 +367,7 @@ export function ImportTreatments() {
               <button
                 type="button"
                 className={buttonClassName("tertiary")}
-                disabled={running !== null}
+                disabled={running !== null || !actions.edit}
                 onClick={() => setDialog(card)}
               >
                 {t("import.treat.edit")}
@@ -312,7 +377,6 @@ export function ImportTreatments() {
         })}
       </ul>
       <Notice tone="error">{state.treatErrors.join(" ")}</Notice>
-      <Notice tone="warning">{openError}</Notice>
       {running && state.frame && (
         <div className="as-treat__running">
           <ProgressFrame
@@ -352,7 +416,7 @@ export function ImportTreatments() {
                 ? pluralText(t, locale, "detect.treat.start", chosen.length)
                 : t("detect.treat.startNone"),
             onClick: launch,
-            enabled: rule.primary.enabled,
+            enabled: rule.primary.enabled && actions.launch,
             className: "as-treat__primary",
           }
         }
@@ -370,6 +434,7 @@ export function ImportTreatments() {
           }}
           pipelines={pipelines}
           tools={tools}
+          toolsRead={toolsRead}
           initial={pipelinesOf(dialog)}
           finishDefault={finishDefault}
           initialFinishes={state.finishes?.[dialog.targetId] ?? {}}

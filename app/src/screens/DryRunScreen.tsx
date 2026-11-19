@@ -162,7 +162,7 @@ export function DryRunScreen() {
                   <th scope="col">{t("dryRun.columnSha256")}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="as-selectable">
                 {report.entries.map((entry) => (
                   <tr key={entry.sourceRelativePath}>
                     <td>{entry.sourceRelativePath}</td>

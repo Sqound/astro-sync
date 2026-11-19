@@ -163,7 +163,10 @@ function source(relative: string) {
 
 test("the primary of step 4 queues through importSends and step 5 is told how many variants left", () => {
   const provider = source("components/ImportProvider.tsx");
-  assert.match(provider, /importSends\(rows, made, held\.ticked\)/);
+  assert.match(
+    provider,
+    /importSends\(rows, made, held\.ticked, mainPicksOf\(held\)\)/,
+  );
   assert.match(provider, /variantCount\(chosen\)/);
   assert.match(
     provider,

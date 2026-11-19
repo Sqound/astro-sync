@@ -172,7 +172,7 @@ function SnackCard({
 
   return (
     <div
-      className={`as-snackbar as-snackbar--${snack.tone}`}
+      className={`as-snackbar as-snackbar--${snack.tone} as-selectable`}
       role={roleOf(snack.tone)}
       data-mode={snack.mode}
       onMouseEnter={() => setHeld(true)}

@@ -14,6 +14,7 @@ import type {
   NightDetection,
   NightOnline,
   NightView,
+  PlanOnline,
   SessionSummary,
 } from "./bridge";
 import { pluralText } from "./written.ts";
@@ -237,17 +238,53 @@ const SOURCE_KEY: Record<string, string> = {
   web: "nights.online.fromWeb",
 };
 
-/** « En ligne »: the captures, their sky annotations and the analysis. */
+/** « En ligne »: the captures, their sky annotations and the analysis; and
+ * « image du plan » when a multi-night plan of the night has its image
+ * online (one image for the whole plan, of no night: the night's captures
+ * never count it). */
 export function onlineLine(
   t: Translate,
   locale: string,
   online: NightOnline,
+  plans: readonly PlanOnline[] = [],
 ): string {
   const captures = online.targets.flatMap((target) =>
     target.captures.map((capture) => ({ target, capture })),
   );
   const count = captures.length;
   const analysis = online.analysis.present;
+  const planImages = new Set(
+    plans.filter((plan) => plan.imageOnline).map((plan) => plan.projectId),
+  ).size;
+  if (planImages > 0) {
+    // One plan whose image leaves the night out: « image du plan sans cette
+    // nuit » (or « d'avant cette nuit », when the image names no night).
+    const leftOut =
+      planImages === 1
+        ? (plans.find((plan) => plan.imageOnline)?.nightLeftOut ?? null)
+        : null;
+    const planImage =
+      leftOut === "not_combined"
+        ? t("nights.online.planImageWithout")
+        : leftOut === "made_before"
+          ? t("nights.online.planImageBefore")
+          : pluralText(t, locale, "nights.online.planImage", planImages);
+    const annotatedHere =
+      count > 0 &&
+      captures.every(({ capture }) =>
+        (capture.mainImage ? [capture.mainImage] : capture.images).every(
+          (image) => image.skySolution === "present",
+        ),
+      );
+    return [
+      count > 0 ? pluralText(t, locale, "nights.online.images", count) : null,
+      planImage,
+      annotatedHere ? t("nights.online.annotations") : null,
+      analysis ? t("nights.online.analysis") : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   if (count === 0 && !analysis) return t("nights.online.nothing");
   const annotated =
     count > 0 &&
@@ -277,7 +314,51 @@ export function onlineLine(
   return parts.join(" · ");
 }
 
-export type NightState = "not_started" | "to_complete" | "complete";
+/** `plan_left_out`: complete (nothing is owed), but the image online of
+ * a multi-night plan of the night does not hold it, or may not
+ * ([`planLeftOutText`]). */
+export type NightState =
+  "not_started" | "to_complete" | "complete" | "plan_left_out";
+
+/** Why the images online of the night's plans leave it out: `not_combined`
+ * when one of them does not name it, `made_before` when one, naming no
+ * night, is older than the night; `null` when every one holds it. */
+function leftOutReason(
+  plans: readonly PlanOnline[] | undefined,
+): "not_combined" | "made_before" | null {
+  const reasons = (plans ?? [])
+    .filter((plan) => plan.imageOnline)
+    .map((plan) => plan.nightLeftOut ?? null);
+  if (reasons.includes("not_combined")) return "not_combined";
+  if (reasons.includes("made_before")) return "made_before";
+  return null;
+}
+
+/** « L'image du plan ne contient pas cette nuit. Refaites l'image du plan
+ * pour l'inclure. »: said of a night the image online of its plan leaves
+ * out. « peut-être » when the image names no night and is only older than
+ * the night. `null` when every image of its plans holds it. */
+export function planLeftOutText(
+  t: Translate,
+  plans: readonly PlanOnline[] | undefined,
+): string | null {
+  const reason = leftOutReason(plans);
+  if (reason === null) return null;
+  return t(
+    reason === "not_combined"
+      ? "nights.state.planLeftOut.notCombined"
+      : "nights.state.planLeftOut.madeBefore",
+  );
+}
+
+/** The state a night shows: « Complète » with the reserve of a plan whose
+ * image leaves it out. */
+export function nightState(resume: NightView["resume"]): NightState {
+  return resume.status === "complete" &&
+    leftOutReason(resume.plansLeftOut) !== null
+    ? "plan_left_out"
+    : resume.status;
+}
 
 /** What a night misses, in the order the sheet lists it: the final
  * images first, then the sky annotations, then the analysis. `context`
@@ -302,6 +383,20 @@ export function missingText(
   } else if (finals.length > 1) {
     parts.push(pluralText(t, locale, "nights.missing.finals", finals.length));
   }
+  // « 1 image à envoyer (IC 1396) »: which targets a count is about, when
+  // the engine names them and the night knows their names.
+  const named = (what: string, targets: readonly string[] | undefined) => {
+    const known = [
+      ...new Set(
+        (targets ?? [])
+          .map((id) => names.get(id) ?? "")
+          .filter((name) => name !== ""),
+      ),
+    ];
+    return known.length > 0
+      ? t("nights.missing.named", { what, targets: known.join(", ") })
+      : what;
+  };
   for (const item of missing) {
     switch (item.key) {
       case "noTarget":
@@ -318,7 +413,12 @@ export function missingText(
         );
         break;
       case "skyAnnotations":
-        parts.push(pluralText(t, locale, "nights.missing.sky", item.count));
+        parts.push(
+          named(
+            pluralText(t, locale, "nights.missing.sky", item.count),
+            item.targets,
+          ),
+        );
         break;
       default:
         break;
@@ -341,9 +441,16 @@ export function missingText(
   }
   for (const item of missing) {
     if (item.key === "imagesToSend") {
-      parts.push(pluralText(t, locale, "nights.missing.toSend", item.count));
+      parts.push(
+        named(
+          pluralText(t, locale, "nights.missing.toSend", item.count),
+          item.targets,
+        ),
+      );
     } else if (item.key === "queuePending") {
       parts.push(pluralText(t, locale, "nights.missing.queue", item.count));
+    } else if (item.key === "queueFailed") {
+      parts.push(pluralText(t, locale, "nights.missing.failed", item.count));
     }
   }
   return parts.join(", ");
@@ -436,14 +543,16 @@ export function nightRow(
       targetNames(view?.online),
     ),
     local: view ? localLine(t, locale, view) : null,
-    online: view ? onlineLine(t, locale, view.online) : null,
+    online: view ? onlineLine(t, locale, view.online, view.plans) : null,
     // A held row does not announce a state of its own (« Complète », « À
     // compléter »): its message is the state.
-    state: held ? null : (view?.resume.status ?? null),
+    state: held ? null : view ? nightState(view.resume) : null,
     missing:
       !held && view && view.resume.status === "to_complete"
         ? missingText(t, locale, view.resume.missing, names)
-        : null,
+        : !held && view && nightState(view.resume) === "plan_left_out"
+          ? planLeftOutText(t, view.resume.plansLeftOut)
+          : null,
     reading: input.reading ?? false,
     held,
     heldMessage: held ? t("nights.held.debrief") : null,

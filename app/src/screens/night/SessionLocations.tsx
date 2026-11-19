@@ -92,7 +92,7 @@ function LocationBox({
           title={folder ?? undefined}
         >
           <Icon name="folder" />
-          <span>
+          <span className="as-selectable">
             {folder
               ? displayPath(folder, homeOf(folder))
               : t(`wizard.folder.${slot}.none`)}

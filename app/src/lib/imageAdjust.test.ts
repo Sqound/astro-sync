@@ -11,6 +11,7 @@ import {
   adjustedList,
   canonicalValues,
   cleanValues,
+  clampValue,
   importText,
   isChanged,
   isAdjustable,
@@ -374,7 +375,29 @@ test("the spikes are off by default, and the reach alone is not a change", () =>
     blackPoint: 8,
   });
   assert.equal(cleanValues({ spikes: 400, spikesReach: -3 }).spikes, 100);
-  assert.equal(cleanValues({ spikes: 40, spikesReach: -3 }).spikesReach, 0);
+  assert.equal(cleanValues({ spikes: 40, spikesReach: -3 }).spikesReach, -5);
+  // The range goes down to the brightest star alone, and no further; a reach saved
+  // before (0 and more) is read back as it was.
+  assert.equal(cleanValues({ spikes: 40, spikesReach: -300 }).spikesReach, -30);
+  for (const reach of [0, 5, 50, 95, 100]) {
+    assert.equal(
+      cleanValues({ spikes: 40, spikesReach: reach }).spikesReach,
+      reach,
+    );
+  }
+  assert.equal(clampValue("spikesReach", -28), -30);
+});
+
+test("the slider of the reach goes from the brightest star alone to the medium stars in steps of 5", () => {
+  const spec = ADJUST_SPECS.find((item) => item.name === "spikesReach")!;
+  assert.equal(spec.min, -30);
+  assert.equal(spec.max, 100);
+  assert.equal(spec.step, 5);
+  // The default stays where it was.
+  assert.equal(NEUTRAL.spikesReach, 50);
+  assert.equal(clampValue("spikesReach", -30), -30);
+  assert.equal(clampValue("spikesReach", -27), -25);
+  assert.equal(clampValue("spikesReach", 3), 5);
 });
 
 test("the spikes say what they are in the words of the planche, last in the line", () => {
@@ -384,6 +407,10 @@ test("the spikes say what they are in the words of the planche, last in the line
   assert.equal(spikesGroupText(t, "fr", withSpikes(60)), "Ajoutées, 60 %");
   assert.equal(reachText(t, "fr", 50, 63), "Brillantes · 63 étoiles");
   assert.equal(reachText(t, "fr", 0, 1), "Les plus brillantes · 1 étoile");
+  assert.equal(reachText(t, "fr", -30, 1), "Les plus brillantes · 1 étoile");
+  assert.equal(reachText(t, "fr", -20, 3), "Les plus brillantes · 3 étoiles");
+  assert.equal(reachText(t, "fr", -30, 1), "Les plus brillantes · 1 étoile");
+  assert.equal(reachText(t, "fr", -20, 3), "Les plus brillantes · 3 étoiles");
   assert.equal(
     reachText(t, "fr", 100, 220),
     "Jusqu’aux moyennes · 220 étoiles",

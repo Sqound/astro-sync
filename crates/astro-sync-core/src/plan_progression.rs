@@ -292,6 +292,7 @@ pub fn plan_progression_results(
                 plan: None,
                 placement: None,
                 replaces_sha256: None,
+                main_wish: None,
             },
         })
         .collect()

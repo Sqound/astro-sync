@@ -433,7 +433,7 @@ export function NightWizard({
     const ticket = viewReads.begin();
     setChecking(true);
     try {
-      const next = await nightView(sessionId, input);
+      const next = await nightView(sessionId, input, planId);
       if (!viewReads.isLatest(ticket)) return null;
       setView(next);
       setViewFailed(false);
@@ -446,7 +446,7 @@ export function NightWizard({
     } finally {
       if (viewReads.isLatest(ticket)) setChecking(false);
     }
-  }, [input, sessionId, t, viewReads]);
+  }, [input, sessionId, planId, t, viewReads]);
 
   // The view once the night is known; the phase it opens at.
   useEffect(() => {

@@ -6,7 +6,7 @@ import { useCapabilities } from "../../components/CapabilitiesProvider";
 import { Icon } from "../../components/Icon";
 import { Notice } from "../../components/Notice";
 import { PoseDiscard } from "../../components/PoseDiscard";
-import { longitudeOf } from "../../lib/nights";
+import { longitudeOf, planLeftOutText } from "../../lib/nights";
 import { posesOf } from "../../lib/poseStats";
 import {
   measuresLine,
@@ -375,6 +375,12 @@ export function TreatmentsStep({
             choices: planChoices(project.projectId),
             pipelines: context.pipelines,
             targetRenders: choices.targetRenders,
+            leftOut: planLeftOutText(
+              t,
+              view?.resume.plansLeftOut?.filter(
+                (plan) => plan.projectId === project.projectId,
+              ),
+            ),
           }),
         )
       : [];

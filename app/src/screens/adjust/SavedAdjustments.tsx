@@ -251,7 +251,7 @@ export function SavedAdjustments({
                     </div>
                     {renaming.error && (
                       <p
-                        className={`${helpTextClassName} as-adjust__saved-error`}
+                        className={`${helpTextClassName} as-adjust__saved-error as-selectable`}
                       >
                         {renaming.error}
                       </p>
@@ -333,7 +333,9 @@ export function SavedAdjustments({
           </ul>
           <p className={helpTextClassName}>{t("adjust.saved.listHelp")}</p>
           {error && (
-            <p className={`${helpTextClassName} as-adjust__saved-error`}>
+            <p
+              className={`${helpTextClassName} as-adjust__saved-error as-selectable`}
+            >
               {error}
             </p>
           )}
@@ -453,7 +455,7 @@ function SavedBelow({
         </div>
         <p
           id={`${nameId}-help`}
-          className={`${helpTextClassName}${nameError ? " as-adjust__saved-error" : ""}`}
+          className={`${helpTextClassName}${nameError ? " as-adjust__saved-error as-selectable" : ""}`}
         >
           {nameError ?? t("adjust.saved.values", { list: valuesText })}
         </p>
@@ -473,7 +475,9 @@ function SavedBelow({
           {t("adjust.saved.import")}
         </button>
         {error && (
-          <p className={`${helpTextClassName} as-adjust__saved-error`}>
+          <p
+            className={`${helpTextClassName} as-adjust__saved-error as-selectable`}
+          >
             {error}
           </p>
         )}

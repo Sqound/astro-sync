@@ -30,7 +30,7 @@ export function BuildVersion() {
   if (info === null) return null;
   return (
     <p
-      className="as-sidebar__version"
+      className="as-sidebar__version as-selectable"
       title={menuVersionTitle(t, info, locale)}
     >
       {menuVersionLine(t("app.title"), info)}
