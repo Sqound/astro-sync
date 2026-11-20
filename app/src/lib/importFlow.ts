@@ -62,6 +62,7 @@ import {
 } from "./mainImage.ts";
 import type { TargetFinishes } from "./finish";
 import type { TargetRenders } from "./pipelineChoice";
+import { waitText } from "./space.ts";
 import { pluralText } from "./written.ts";
 import {
   NO_TIDY,
@@ -637,7 +638,7 @@ export function importReducer(
       return state.sending &&
         state.working !== null &&
         stepStage(action.step) === state.working
-        ? { ...state, workingStep: action.step }
+        ? { ...state, workingStep: keptPacket(state.workingStep, action.step) }
         : state;
     case "incidentsApplied":
       return {
@@ -1197,6 +1198,10 @@ export interface RecapStep {
   step: string;
   done?: number;
   total?: number;
+  /** `servicePacket`: the last night of the packet that leaves. */
+  upTo?: number;
+  /** `serviceWait`: the seconds before the service is asked again. */
+  seconds?: number;
 }
 
 /** The part of the primary a word of the engine belongs to (`null`: a word
@@ -1204,6 +1209,8 @@ export interface RecapStep {
 export function stepStage(step: RecapStep): RecapWork | null {
   switch (step.step) {
     case "service":
+    case "servicePacket":
+    case "serviceWait":
     case "folders":
       return "sessions";
     case "prepare":
@@ -1231,6 +1238,18 @@ export function recapStepText(
       return total > 0
         ? pluralText(t, locale, "import.recap.step.service", total)
         : null;
+    case "servicePacket":
+      return total > 0 && step.upTo
+        ? t("import.recap.step.servicePacket", {
+            from: (step.done ?? 0) + 1,
+            to: step.upTo,
+            total,
+          })
+        : null;
+    case "serviceWait":
+      return t("uploads.row.waiting", {
+        wait: waitText(t, step.seconds ?? 1),
+      });
     case "folders":
       return t("import.recap.step.folders");
     case "prepare":
@@ -1242,6 +1261,40 @@ export function recapStepText(
     default:
       return null;
   }
+}
+
+/** A wait of the service keeps where the packets were (`done`, `upTo`,
+ * `total`), so the bar does not vanish during the countdown. */
+function keptPacket(held: RecapStep | null, step: RecapStep): RecapStep {
+  if (
+    step.step !== "serviceWait" ||
+    (held?.step !== "servicePacket" && held?.step !== "serviceWait")
+  )
+    return step;
+  return {
+    step: step.step,
+    seconds: step.seconds,
+    done: held.done,
+    total: held.total,
+    upTo: held.upTo,
+  };
+}
+
+/** How far « Création des sessions… » is, 0–100, when the import leaves in
+ * several packets: the nights of the packets through, of all (`null`: one
+ * packet, or another part). The bar stays where it was while the service is
+ * busy. */
+export function recapPercent(state: ImportState): number | null {
+  const step = state.workingStep;
+  if (
+    state.working !== "sessions" ||
+    (step?.step !== "servicePacket" && step?.step !== "serviceWait") ||
+    step.upTo === undefined
+  )
+    return null;
+  const total = step.total ?? 0;
+  if (total <= 0) return null;
+  return Math.floor(((step.done ?? 0) * 100) / total);
 }
 
 /* ------------------------------- Pre-ticking ------------------------------ */
@@ -1324,7 +1377,9 @@ export function importPresence(state: ImportState): ImportPresence {
         : null
       : job === "treat" && state.frame?.overall != null
         ? Math.floor(state.frame.overall)
-        : null;
+        : job === "create"
+          ? recapPercent(state)
+          : null;
   return {
     shown: state.alive && (state.scan !== null || state.proposal !== null),
     waiting: job === null && state.sent === null,

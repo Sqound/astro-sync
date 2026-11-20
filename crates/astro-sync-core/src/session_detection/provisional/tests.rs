@@ -1,5 +1,7 @@
 use super::*;
 use crate::plan_image::plan_folder;
+use crate::session_detection::create::create_sessions;
+use crate::session_detection::create::packets::{NIGHTS_PER_PACKET, PacketRun};
 use crate::session_detection::{
     DetectedTarget, MultiNightGroup, MultiNightNight, PlaceCandidate, PlaceProposal, TargetSource,
     prepare_treatments,
@@ -126,7 +128,11 @@ impl BulkCreateTransport for FakeSpace {
     fn create_bulk(&self, _: &str, _: &str, body: &Value) -> Result<Value, GuiBridgeError> {
         self.calls.set(self.calls.get() + 1);
         if self.fail_next.replace(false) {
-            return Err(GuiBridgeError::Transport("cut".into()));
+            // A refusal: nothing went through, and nothing is asked again.
+            return Err(GuiBridgeError::Refused {
+                code: "internal_error".into(),
+                message: "cut".into(),
+            });
         }
         let replayed = self.bodies.borrow().iter().any(|b| b == body);
         self.bodies.borrow_mut().push(body.clone());
@@ -543,6 +549,12 @@ fn the_stages_run_in_order_and_a_second_try_skips_what_went_through() {
             &all,
             progress,
             &mut |stage| seen.push(stage),
+            &mut PacketRun {
+                on_event: &mut |_| {},
+                sleep: &|_| {},
+                memory: None,
+                size: NIGHTS_PER_PACKET,
+            },
         );
         (seen, result.err().map(|(stage, _)| stage))
     };

@@ -2060,7 +2060,13 @@ export interface ToolRow {
   page: string | null;
   licence: string | null;
   /** The automatic download for this system, if the registry has one. */
-  download?: { url: string; sha256: string; bytes: number | null } | null;
+  download?: {
+    url: string;
+    /** Further https addresses of the same file, tried in order. */
+    mirrors?: string[];
+    sha256: string;
+    bytes: number | null;
+  } | null;
   /** What the person downloads for this system, in bytes. */
   downloadBytes?: number | null;
   /** Bytes of an interrupted download kept (« Reprendre le
@@ -4108,13 +4114,17 @@ export function detectImportCreate(
 
 /** What step 4's primary is doing inside a stage (`commands_detect`'s
  * `ImportProgressStep`): the service asked to create `total` sessions
- * (`service`), the night folders renamed (`folders`), the image `done` of
+ * (`service`), the nights `done + 1` to `upTo` of `total` leaving in a packet
+ * (`servicePacket`), the service busy, asked again in `seconds`
+ * (`serviceWait`), the night folders renamed (`folders`), the image `done` of
  * `total` prepared (`prepare`), the space asked what it still holds
  * (`check`), the rows written (`queue`). */
 export interface ImportProgressStep {
   step: string;
   done?: number;
   total?: number;
+  upTo?: number;
+  seconds?: number;
 }
 
 export const IMPORT_PROGRESS_EVENT = "import-progress";

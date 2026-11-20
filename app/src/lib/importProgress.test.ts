@@ -6,7 +6,9 @@ import { createTranslator, SUPPORTED_LOCALES } from "../i18n/locale.ts";
 import { applyRecap, type ApplyDeps, type ApplyInput } from "./importApply.ts";
 import {
   NO_IMPORT,
+  importPresence,
   importReducer,
+  recapPercent,
   recapProgress,
   recapStepText,
   stepStage,
@@ -87,6 +89,79 @@ test("« Création des sessions… » says how many sessions the space is creati
     recapProgress(state, PLAN, t, "fr"),
     "Mise à jour des dossiers des nuits…",
   );
+});
+
+test("an import of several packets says which nights leave, of how many, with its bar", () => {
+  let state = play(sending, [
+    { type: "working", working: "sessions" },
+    { type: "workingStep", step: { step: "service", total: 40 } },
+  ]);
+  // One packet (or before the first): no bar.
+  assert.equal(recapPercent(state), null);
+  state = play(state, [
+    {
+      type: "workingStep",
+      step: { step: "servicePacket", done: 10, upTo: 20, total: 40 },
+    },
+  ]);
+  // (`t` writes the no-break spaces as plain ones.)
+  assert.equal(
+    recapProgress(state, PLAN, fr, "fr"),
+    "Création des sessions\u00a0: nuits 11 à 20 sur 40…",
+  );
+  assert.equal(recapPercent(state), 25);
+  assert.equal(importPresence(state).percent, 25);
+  // The service busy: the countdown, the bar where it was.
+  state = play(state, [
+    { type: "workingStep", step: { step: "serviceWait", seconds: 12 } },
+  ]);
+  assert.equal(
+    plain(recapProgress(state, PLAN, fr, "fr") ?? ""),
+    plain("En attente du service\u00a0: nouvel essai dans 12\u00a0s"),
+  );
+  assert.equal(recapPercent(state), 25);
+  state = play(state, [
+    { type: "workingStep", step: { step: "serviceWait", seconds: 11 } },
+  ]);
+  assert.match(recapProgress(state, PLAN, t, "fr") ?? "", /dans 11 s$/);
+  assert.equal(recapPercent(state), 25);
+  state = play(state, [
+    {
+      type: "workingStep",
+      step: { step: "servicePacket", done: 30, upTo: 40, total: 40 },
+    },
+  ]);
+  assert.equal(recapPercent(state), 75);
+  assert.match(
+    recapProgress(state, PLAN, t, "fr") ?? "",
+    /nuits 31 à 40 sur 40…$/,
+  );
+  // A wait of a one-packet import: the countdown, no bar.
+  state = play(sending, [
+    { type: "working", working: "sessions" },
+    { type: "workingStep", step: { step: "service", total: 3 } },
+    { type: "workingStep", step: { step: "serviceWait", seconds: 5 } },
+  ]);
+  assert.match(
+    recapProgress(state, PLAN, t, "fr") ?? "",
+    /nouvel essai dans 5 s$/,
+  );
+  assert.equal(recapPercent(state), null);
+  assert.equal(stepStage({ step: "servicePacket" }), "sessions");
+  assert.equal(stepStage({ step: "serviceWait" }), "sessions");
+});
+
+test("the packets' sentence exists in every language, with its three numbers", () => {
+  for (const locale of SUPPORTED_LOCALES) {
+    const said = createTranslator(locale)("import.recap.step.servicePacket", {
+      from: 11,
+      to: 20,
+      total: 40,
+    });
+    for (const number of ["11", "20", "40"])
+      assert.ok(said.includes(number), `${locale}: ${said}`);
+    assert.ok(!said.includes("{"), `${locale}: ${said}`);
+  }
 });
 
 test("« Mise en file des images… » says which image is being prepared, of how many", () => {
@@ -240,7 +315,12 @@ test("the foot shows the star beside the sentence and in the greyed button while
     foot,
     /className="as-recap-progress" aria-busy=\{state\.sending\}/,
   );
-  assert.match(foot, /state\.sending \? \(\s*<Waiting\s+size="inline"/);
+  assert.match(foot, /state\.sending \? \(\s*(<>\s*)?<Waiting\s+size="inline"/);
+  // Several packets: the app's own bar beside the star, no new component.
+  assert.match(
+    foot,
+    /recapPercent\(state\) !== null && \(\s*<div\s+className=\{`\$\{progressClassName\.track\} as-recap-progress__bar`\}\s+role="progressbar"/,
+  );
   assert.match(foot, /busy: state\.sending/);
   const frame = readFileSync(
     new URL("../components/WizardFrame.tsx", import.meta.url),

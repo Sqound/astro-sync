@@ -40,6 +40,7 @@ import {
   mainContextOf,
   recapLine,
   recapPlan,
+  recapPercent,
   recapProgress,
   workingOutcome,
   type ImportState,
@@ -53,6 +54,7 @@ import {
   badgeClassName,
   buttonClassName,
   helpTextClassName,
+  progressClassName,
 } from "../../theme";
 import { usePipelines } from "./ImportTreatments";
 import { OrganiseDialog } from "./OrganiseDialog";
@@ -543,13 +545,31 @@ export function ImportSummary({
           // line of the same height as the sentence it replaces.
           <div className="as-recap-progress" aria-busy={state.sending}>
             {state.sending ? (
-              <Waiting
-                size="inline"
-                label={
-                  recapProgress(state, plan, t, locale) ??
-                  recapLine(plan, t, locale)
-                }
-              />
+              <>
+                <Waiting
+                  size="inline"
+                  label={
+                    recapProgress(state, plan, t, locale) ??
+                    recapLine(plan, t, locale)
+                  }
+                />
+                {/* An import of several packets: the nights through, of
+                    all. */}
+                {recapPercent(state) !== null && (
+                  <div
+                    className={`${progressClassName.track} as-recap-progress__bar`}
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={recapPercent(state) ?? undefined}
+                  >
+                    <div
+                      className={progressClassName.fill}
+                      style={{ width: `${recapPercent(state)}%` }}
+                    />
+                  </div>
+                )}
+              </>
             ) : (
               <p className={helpTextClassName} role="status">
                 {(state.error ? recapProgress(state, plan, t, locale) : null) ??

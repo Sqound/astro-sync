@@ -465,7 +465,7 @@ pub struct ReferenceStarsArgs {
     /// The tyc2.dat file of the Tycho-2 catalogue.
     #[arg(long, conflicts_with = "download_tycho2")]
     pub tycho2: Option<PathBuf>,
-    /// Download Tycho-2 from VizieR (CDS, I/259): about 25 MB once the list is made.
+    /// Download Tycho-2 from VizieR (CDS, I/259, or one of its official mirrors): about 25 MB once the list is made.
     #[arg(long)]
     pub download_tycho2: bool,
     /// Your agreement to the download of Tycho-2 (without it, nothing is downloaded).

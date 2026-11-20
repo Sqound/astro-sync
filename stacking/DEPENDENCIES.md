@@ -112,12 +112,25 @@ SHA-256 **computed on the real file** (2026-10-10) and by its size.
 - **Licences.** The program: **MPL-2.0** (declared by the project on
   SourceForge, recalled by the binary itself: "License MPL 2.0, Webpage:
   www.hnsky.org"). The MPL-2.0 allows redistribution; Astro Sync
-  redistributes nothing anyway: it downloads from the official source,
-  as the person would. The index: an extract of the **Gaia DR3** catalogue
+  redistributes no program: it downloads it from the official source, as the
+  person would. The index: an extract of the **Gaia DR3** catalogue
   (ESA / DPAC) in the HNSKY/ASTAP format, put online freely by the project
   with the sole request to acknowledge the use of Gaia ("We acknowledge the
-  usage of the Gaia database", `readme astap.txt`); no clause forbids
-  downloading by a third party. The Gaia credit is in the index's sheet.
+  usage of the Gaia database" and "The Gaia data are open and free to use,
+  provided credit is given to 'ESA/Gaia/DPAC'", `acknowledgement of
+databases.txt` in the project's repository). The project's own page and
+  SourceForge are the first source. So that the download does not depend on
+  one server, the registry may list a **second source** for the index
+  (`mirrors`): an unchanged copy of the very same file (same SHA-256, same
+  size) on the download host of the Astro Sync project, tried only when the
+  first source fails. The Dependencies tab credits it beside the index: the
+  ASTAP project and its author, the page `https://www.hnsky.org/astap.htm`,
+  the file kept unchanged, and the acknowledgement of the Gaia data ("This
+  work has made use of data from the European Space Agency (ESA) mission
+  Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data
+  Processing and Analysis Consortium (DPAC,
+  https://www.cosmos.esa.int/web/gaia/dpac/consortium)", credit
+  "ESA/Gaia/DPAC").
 - **macOS, quarantine and Gatekeeper.** The file is downloaded by the
   application itself (not by a browser or by the Finder): it does **not** carry
   the `com.apple.quarantine` attribute, and Gatekeeper only checks the

@@ -3,6 +3,38 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.1.5 (2026-11-20)
+
+- Reference stars: installing them works again. The server of the CDS that
+  Astro Sync asked for the Tycho-2 catalogue answers with an error, and the
+  request itself used column names that VizieR no longer serves. Astro Sync
+  now asks with the current names and, when the CDS does not answer, tries
+  the other official installations of VizieR one after the other. Whatever
+  the server, the finished list is checked against the expected number of
+  stars and its digest, so every server gives the very same file.
+- ASTAP star database (D20): the list of dependencies can now give a second
+  address for the same file, tried only when the official source fails and
+  checked against the same digest. A partly downloaded file is resumed but
+  never trusted. No second address is listed in this version: the database
+  still comes from the official source of the ASTAP project. The Dependencies
+  tab now credits the database: the ASTAP project and its page, and the Gaia
+  data (Credit: ESA/Gaia/DPAC).
+- Credit and licence of the Tycho-2 catalogue corrected: « Credit: ESA », and
+  the licence is CC BY-NC 3.0 IGO, which covers non-commercial use only.
+- The sessions of an import are created ten nights at a time instead of all in
+  one request. « Creating the sessions » shows which nights are being created
+  and of how many, with a progress bar. A long import no longer runs into the
+  time limit of one request, and is no longer sent a second time while the
+  service is still writing the first.
+- When the service is busy, Astro Sync waits as long as the service asks, then
+  a little longer each time, and counts down the seconds before it tries
+  again. A night is never created twice: after a failure halfway, a new try
+  sends only the nights that did not go through. After Astro Sync was closed,
+  the service recognizes the nights it already created.
+- Simplified and traditional Chinese: three messages about folders, files and
+  links that could not be opened now use the same form of address as the rest
+  of the application.
+
 ## 1.1.4 (2026-11-19)
 
 - The treatments step of the import shows that it is looking for the possible

@@ -884,6 +884,29 @@ impl HttpPortalGuiTransport {
         Err(refusal(&answer))
     }
 
+    /// [`Self::read_json`], with what a refusal said of itself: the status
+    /// and the `Retry-After` the service asked for (`None` for both when no
+    /// answer came at all). Used by the packets of « Création des sessions… »
+    /// (`session_detection::create::packets`) to tell « busy, ask again in
+    /// N s » (`503` `service_starting`, `429`) from a real refusal.
+    pub(crate) fn read_json_answered<T: serde::de::DeserializeOwned>(
+        &self,
+        build: &RequestFactory,
+    ) -> Result<T, (GuiBridgeError, Option<u16>, Option<u64>)> {
+        let answer = self
+            .http
+            .send_safe(self.http.policy().attempt_timeout, build)
+            .map_err(|failure| (GuiBridgeError::from(failure), None, None))?;
+        if answer.is_success() {
+            return parse_body(&answer).map_err(|error| (error, Some(answer.status), None));
+        }
+        Err((
+            refusal(&answer),
+            Some(answer.status),
+            answer.retry_after_seconds,
+        ))
+    }
+
     /// Sends a write that must not be repeated (a creation) once, after
     /// waking the service, and reads its JSON answer; a refusal keeps its
     /// code (`POST /v1/targets/personal`).

@@ -505,6 +505,12 @@ export function dependencyRows(
         action = partialBytes ? "resume" : "install";
       }
     }
+    if (id === "astap" && !download) {
+      // The credit of the star database (Gaia DR3 as ASTAP packs it): beside
+      // the database, offered or installed (a running or failed download
+      // keeps its own lines).
+      lines = [...lines, t("deps.line.databaseCredit")];
+    }
     rows.push({
       id,
       name,

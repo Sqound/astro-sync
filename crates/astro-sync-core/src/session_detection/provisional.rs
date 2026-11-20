@@ -48,7 +48,8 @@ use crate::working_folder::{
     write_night_identity,
 };
 
-use super::create::{BulkCreateTransport, bulk_body, create_sessions, outcome_of};
+use super::create::packets::{PacketRun, create_sessions_by_packets};
+use super::create::{BulkCreateTransport, bulk_body, outcome_of};
 use super::{BulkCreateOutcome, BulkCreateRequest, DetectedSession, Proposal, SessionMatch};
 
 /* ------------------------------ The identifiers --------------------------- */
@@ -765,6 +766,7 @@ pub fn run_import_stages<T: BulkCreateTransport>(
     stages: &[ImportStage],
     progress: &mut ImportProgress,
     on_stage: &mut dyn FnMut(ImportStage),
+    packets: &mut PacketRun<'_>,
 ) -> Result<(), (ImportStage, StageError)> {
     for stage in [
         ImportStage::Sessions,
@@ -785,9 +787,21 @@ pub fn run_import_stages<T: BulkCreateTransport>(
         on_stage(stage);
         match stage {
             ImportStage::Sessions => {
-                let created = create_sessions(transport, base_url, token, request)
-                    .map_err(|e| (stage, e.into()))?;
-                record_created(root, provisional, &created).map_err(|e| (stage, e.into()))?;
+                // Each packet's nights are recorded as soon as it went
+                // through: a failure further on keeps them.
+                let created = create_sessions_by_packets(
+                    transport,
+                    base_url,
+                    token,
+                    request,
+                    packets,
+                    &mut |part| {
+                        record_created(root, provisional, part)
+                            .map(|_| ())
+                            .map_err(StageError::from)
+                    },
+                )
+                .map_err(|e| (stage, e))?;
                 progress.created = Some(created);
             }
             ImportStage::Nights => {

@@ -90,6 +90,13 @@
   margin: 0;
 }
 
+/* « Création des sessions : nuits 11 à 20 sur 40… »: the bar of the nights
+   through, beside the sentence, in the same line. */
+.as-recap-progress__bar {
+  flex: 0 0 8rem;
+  margin-inline-start: var(--as-space-md);
+}
+
 .as-wizard-foot__row {
   display: flex;
   flex-wrap: wrap;

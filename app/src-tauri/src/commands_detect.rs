@@ -36,7 +36,9 @@ pub const DETECT_PHASE_EVENT: &str = "detect-phase";
 
 /// What step 4's primary is doing inside a stage, for the window to say it
 /// instead of a sentence that never changes: the service asked to create the
-/// sessions (`service`, `total` of them), the night folders renamed
+/// sessions (`service`, `total` of them), an import of more than one packet
+/// (`servicePacket`: the nights `done + 1` to `upTo` of `total` leave), the
+/// service busy (`serviceWait`: a new try in `seconds`), the night folders renamed
 /// (`folders`), each image prepared (`prepare`, `done` of `total`), the space
 /// asked what it still holds (`check`), the rows written (`queue`).
 pub const IMPORT_PROGRESS_EVENT: &str = "import-progress";
@@ -49,6 +51,12 @@ pub struct ImportProgressStep {
     pub done: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total: Option<usize>,
+    /// `servicePacket`: the last night of the packet that leaves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub up_to: Option<usize>,
+    /// `serviceWait`: the seconds before the new try.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u64>,
 }
 
 fn say_step<R: Runtime>(app: &AppHandle<R>, step: &str, done: Option<usize>, total: Option<usize>) {
@@ -58,8 +66,47 @@ fn say_step<R: Runtime>(app: &AppHandle<R>, step: &str, done: Option<usize>, tot
             step: step.to_string(),
             done,
             total,
+            up_to: None,
+            seconds: None,
         },
     );
+}
+
+/// What the packets of « Création des sessions… » say: one packet, the
+/// sentence of before (« Création de 3 sessions… », `to_create`); several, the
+/// nights that leave of how many; the service busy, the countdown.
+fn say_packet<R: Runtime>(app: &AppHandle<R>, event: PacketEvent, to_create: usize) {
+    let step = match event {
+        PacketEvent::Sending { packets: 1, .. } => {
+            return say_step(app, "service", None, Some(to_create));
+        }
+        PacketEvent::Sending {
+            from, to, total, ..
+        } => ImportProgressStep {
+            step: "servicePacket".into(),
+            done: Some(from - 1),
+            total: Some(total),
+            up_to: Some(to),
+            seconds: None,
+        },
+        PacketEvent::Waiting { seconds } => ImportProgressStep {
+            step: "serviceWait".into(),
+            done: None,
+            total: None,
+            up_to: None,
+            seconds: Some(seconds),
+        },
+    };
+    let _ = app.emit(IMPORT_PROGRESS_EVENT, step);
+}
+
+/// The packets that went through in this run of the application: a new
+/// « Créer » after a failure halfway never sends them again (after a restart
+/// they are sent again and the service replays them).
+static SENT_PACKETS: SentPackets = SentPackets::new();
+
+fn packet_sleep(duration: std::time::Duration) {
+    std::thread::sleep(duration);
 }
 
 /// The rights of the account, from the capabilities kept and whether the
@@ -333,12 +380,16 @@ pub async fn sessions_organise<R: Runtime>(
 
 /* ------------------------------ The creation ------------------------------ */
 
+use astro_sync_core::session_detection::create::packets::{
+    self as packets, PacketEvent, PacketRun, SentPackets,
+};
 use astro_sync_core::session_detection::{BulkCreateOutcome, BulkCreateRequest};
 
 /// « Créer … »: the proposal as ticked, written by the service's
-/// `POST /v1/sessions/bulk` in one idempotent call (a retry replays); the
-/// elements it refuses come back in `skipped` with their code. The same call
-/// as `astro-sync detect-sessions --create` on the command line.
+/// `POST /v1/sessions/bulk` by packets of ten nights, each idempotent (a
+/// retry replays, a packet through is kept for this run); the elements it
+/// refuses come back in `skipped` with their code. The same calls as
+/// `astro-sync detect-sessions --create` on the command line.
 #[tauri::command]
 pub async fn sessions_create_bulk<R: Runtime>(
     app: AppHandle<R>,
@@ -346,11 +397,19 @@ pub async fn sessions_create_bulk<R: Runtime>(
 ) -> Result<BulkCreateOutcome, CommandError> {
     run_blocking(move || {
         let (portal, token) = require_portal_and_token(&app)?;
-        Ok(session_detection::create_sessions(
+        let mut run = PacketRun {
+            on_event: &mut |_| {},
+            sleep: &packet_sleep,
+            memory: Some(&SENT_PACKETS),
+            size: packets::NIGHTS_PER_PACKET,
+        };
+        Ok(packets::create_sessions_by_packets(
             &transport(&app)?,
             &portal,
             &token,
             &request,
+            &mut run,
+            &mut |_| Ok::<(), astro_sync_core::gui_bridge::GuiBridgeError>(()),
         )?)
     })
     .await
@@ -431,6 +490,20 @@ pub async fn detect_import_create<R: Runtime>(
         let (portal, token) = require_portal_and_token(&app)?;
         let (root, queue) = root_and_queue(&app)?;
         let mut progress = ImportProgress::default();
+        // The sessions the space creates (the ones it holds already are only
+        // completed).
+        let to_create = provisional
+            .sessions
+            .iter()
+            .filter(|s| astro_sync_core::working_folder::is_provisional(&s.session_id))
+            .count();
+        let mut say = |event| say_packet(&app, event, to_create);
+        let mut run = PacketRun {
+            on_event: &mut say,
+            sleep: &packet_sleep,
+            memory: Some(&SENT_PACKETS),
+            size: packets::NIGHTS_PER_PACKET,
+        };
         provisional::run_import_stages(
             &transport(&app)?,
             &portal,
@@ -442,19 +515,11 @@ pub async fn detect_import_create<R: Runtime>(
             &[ImportStage::Sessions, ImportStage::Nights],
             &mut progress,
             &mut |stage| match stage {
-                ImportStage::Sessions => {
-                    // The sessions the space creates (the ones it holds
-                    // already are only completed).
-                    let to_create = provisional
-                        .sessions
-                        .iter()
-                        .filter(|s| astro_sync_core::working_folder::is_provisional(&s.session_id))
-                        .count();
-                    say_step(&app, "service", None, Some(to_create));
-                }
+                ImportStage::Sessions => say_step(&app, "service", None, Some(to_create)),
                 ImportStage::Nights => say_step(&app, "folders", None, None),
                 ImportStage::Plans => {}
             },
+            &mut run,
         )
         .map_err(|(stage, error)| stage_error(stage, error))?;
         Ok(ImportCreated {

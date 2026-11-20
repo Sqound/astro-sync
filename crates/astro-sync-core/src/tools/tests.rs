@@ -259,8 +259,375 @@ impl ToolFetcher for FakeServer {
 fn offer(file: &[u8]) -> Download {
     Download {
         url: "https://downloads.example.invalid/astap/astap_cli_2026.10.zip?x=1".to_string(),
+        mirrors: Vec::new(),
         sha256: format!("{:x}", Sha256::digest(file)),
         bytes: Some(file.len() as u64),
+    }
+}
+
+/// What one address answers in a test: nothing, a file, or a file cut after
+/// some bytes. Every request is recorded as (address, start).
+#[derive(Clone)]
+enum Answer {
+    Refused,
+    File(Vec<u8>),
+    Cut(Vec<u8>, usize),
+}
+
+struct ManyServers {
+    answers: BTreeMap<String, Answer>,
+    asked: Mutex<Vec<(String, u64)>>,
+}
+
+impl ManyServers {
+    fn new(answers: &[(&str, Answer)]) -> Self {
+        Self {
+            answers: answers
+                .iter()
+                .map(|(url, answer)| ((*url).to_string(), answer.clone()))
+                .collect(),
+            asked: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn asked(&self) -> Vec<(String, u64)> {
+        self.asked.lock().unwrap().clone()
+    }
+}
+
+impl ToolFetcher for ManyServers {
+    fn fetch(&self, url: &str, from: u64) -> Result<Fetched, String> {
+        self.asked.lock().unwrap().push((url.to_string(), from));
+        match self.answers.get(url) {
+            None | Some(Answer::Refused) => Err("connection refused".to_string()),
+            Some(Answer::File(file)) => Ok(Fetched {
+                start: from,
+                total: Some(file.len() as u64),
+                body: Box::new(CutReader {
+                    bytes: file[from as usize..].to_vec(),
+                    at: 0,
+                    cut: None,
+                }),
+            }),
+            Some(Answer::Cut(file, cut)) => Ok(Fetched {
+                start: from,
+                total: Some(file.len() as u64),
+                body: Box::new(CutReader {
+                    bytes: file[from as usize..].to_vec(),
+                    at: 0,
+                    cut: Some(*cut),
+                }),
+            }),
+        }
+    }
+}
+
+const OFFICIAL: &str = "https://downloads.example.invalid/astap/astap_cli_2026.10.zip?x=1";
+const SECOND: &str = "https://mirror.example.invalid/astro-sync/data/copy-0000.zip";
+
+fn offer_with_mirror(file: &[u8]) -> Download {
+    Download {
+        mirrors: vec![SECOND.to_string()],
+        ..offer(file)
+    }
+}
+
+fn sample_file() -> Vec<u8> {
+    (0..10_000_u32).map(|i| (i % 251) as u8).collect()
+}
+
+#[test]
+fn without_a_mirror_only_the_official_address_is_ever_asked() {
+    // A registry entry that does not know the field (every entry today)
+    // reads as one source and behaves as before.
+    let parsed: Download = serde_json::from_str(&format!(
+        "{{\"url\": \"{OFFICIAL}\", \"sha256\": \"{}\"}}",
+        "a".repeat(64)
+    ))
+    .unwrap();
+    assert!(parsed.mirrors.is_empty());
+    assert!(!serde_json::to_string(&parsed).unwrap().contains("mirrors"));
+
+    let dir = TempDir::new("tools-no-mirror");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::Refused),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let download = offer(&file);
+    assert!(matches!(
+        download_tool(
+            dir.path(),
+            "astap",
+            Some(&download),
+            &servers,
+            None,
+            &mut |_| {}
+        ),
+        Err(DownloadFailure::Interrupted { .. })
+    ));
+    assert_eq!(servers.asked(), vec![(OFFICIAL.to_string(), 0)]);
+}
+
+#[test]
+fn the_official_address_comes_first_and_the_mirror_is_not_asked_when_it_works() {
+    let dir = TempDir::new("tools-official-first");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::File(file.clone())),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(servers.asked(), vec![(OFFICIAL.to_string(), 0)]);
+}
+
+#[test]
+fn a_refused_official_address_falls_back_on_the_mirror_with_the_same_digest() {
+    let dir = TempDir::new("tools-fallback-refused");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::Refused),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    // The file keeps the name of the official address, so that it is
+    // unpacked as a ZIP whatever the source was.
+    assert!(done.path.ends_with("tools/astap/astap_cli_2026.10.zip"));
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(
+        servers.asked(),
+        vec![(OFFICIAL.to_string(), 0), (SECOND.to_string(), 0)]
+    );
+}
+
+#[test]
+fn a_wrong_file_from_the_official_address_is_dropped_and_the_mirror_starts_from_zero() {
+    let dir = TempDir::new("tools-fallback-digest");
+    let file = sample_file();
+    let wrong: Vec<u8> = file.iter().map(|b| b.wrapping_add(1)).collect();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::File(wrong)),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(
+        servers.asked(),
+        vec![(OFFICIAL.to_string(), 0), (SECOND.to_string(), 0)]
+    );
+}
+
+#[test]
+fn a_stop_halfway_resumes_on_the_mirror_and_the_digest_decides() {
+    let dir = TempDir::new("tools-fallback-resume");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::Cut(file.clone(), 4_000)),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(
+        servers.asked(),
+        vec![(OFFICIAL.to_string(), 0), (SECOND.to_string(), 4_000)]
+    );
+}
+
+#[test]
+fn bytes_kept_from_another_source_that_do_not_fit_are_never_glued() {
+    // The first source sent bytes of another file before it stopped: the
+    // mirror resumes after them, the glued file has the wrong digest, the
+    // `.part` is deleted and the mirror is asked again from zero.
+    let dir = TempDir::new("tools-fallback-glue");
+    let file = sample_file();
+    let other: Vec<u8> = file.iter().map(|b| b.wrapping_add(7)).collect();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::Cut(other, 3_000)),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(
+        servers.asked(),
+        vec![
+            (OFFICIAL.to_string(), 0),
+            (SECOND.to_string(), 3_000),
+            (SECOND.to_string(), 0)
+        ]
+    );
+    assert!(
+        !dir.path()
+            .join("tools/astap/astap_cli_2026.10.zip.part")
+            .exists()
+    );
+}
+
+#[test]
+fn when_no_source_answers_the_failure_is_the_last_one_and_the_part_is_kept() {
+    let dir = TempDir::new("tools-fallback-none");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::Cut(file.clone(), 2_000)),
+        (SECOND, Answer::Refused),
+    ]);
+    let failure = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap_err();
+    assert!(matches!(
+        failure,
+        DownloadFailure::Interrupted {
+            kept_bytes: 2_000,
+            ..
+        }
+    ));
+    assert_eq!(
+        fs::metadata(dir.path().join("tools/astap/astap_cli_2026.10.zip.part"))
+            .unwrap()
+            .len(),
+        2_000
+    );
+}
+
+#[test]
+fn a_cancellation_does_not_try_the_next_source() {
+    let dir = TempDir::new("tools-fallback-cancel");
+    let file = sample_file();
+    let servers = ManyServers::new(&[
+        (OFFICIAL, Answer::File(file.clone())),
+        (SECOND, Answer::File(file.clone())),
+    ]);
+    let cancel = CancelFlag::new();
+    cancel.cancel();
+    let failure = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer_with_mirror(&file)),
+        &servers,
+        Some(&cancel),
+        &mut |_| {},
+    )
+    .unwrap_err();
+    assert!(matches!(failure, DownloadFailure::Cancelled { .. }));
+    assert_eq!(servers.asked().len(), 1);
+}
+
+#[test]
+fn a_part_as_long_as_the_file_is_finished_or_dropped_never_asked_past_its_end() {
+    let dir = TempDir::new("tools-full-part");
+    let file = sample_file();
+    let part = dir.path().join("tools/astap/astap_cli_2026.10.zip.part");
+    fs::create_dir_all(part.parent().unwrap()).unwrap();
+    // Complete and right: renamed, nothing fetched.
+    fs::write(&part, &file).unwrap();
+    let servers = ManyServers::new(&[(OFFICIAL, Answer::File(file.clone()))]);
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert!(servers.asked().is_empty());
+    // Complete but wrong: dropped, fetched again from zero.
+    fs::remove_file(&done.path).unwrap();
+    fs::write(&part, vec![0_u8; file.len()]).unwrap();
+    let done = download_tool(
+        dir.path(),
+        "astap",
+        Some(&offer(&file)),
+        &servers,
+        None,
+        &mut |_| {},
+    )
+    .unwrap();
+    assert_eq!(fs::read(&done.path).unwrap(), file);
+    assert_eq!(servers.asked(), vec![(OFFICIAL.to_string(), 0)]);
+}
+
+#[test]
+fn a_registry_mirror_is_another_https_address_and_the_embedded_one_stays_official_first() {
+    let digest = "a".repeat(64);
+    let entry = |mirrors: &str| {
+        REGISTRY_JSON.replacen(
+            "\"page\": \"https://siril.org/download/\"",
+            &format!(
+                "\"page\": \"https://siril.org/download/\", \"downloads\": {{\"macos-arm64\": {{\"url\": \"https://example.invalid/siril.dmg\", \"sha256\": \"{digest}\", \"mirrors\": {mirrors}}}}}"
+            ),
+            1,
+        )
+    };
+    assert!(parse_registry(&entry("[\"https://dl.example.invalid/siril-x.dmg\"]")).is_ok());
+    assert!(parse_registry(&entry("[]")).is_ok());
+    assert!(parse_registry(&entry("[\"http://dl.example.invalid/siril-x.dmg\"]")).is_err());
+    assert!(parse_registry(&entry("[\"https://example.invalid/siril.dmg\"]")).is_err());
+    assert!(
+        parse_registry(&entry(
+            "[\"https://a.invalid/1\", \"https://a.invalid/2\", \"https://a.invalid/3\", \"https://a.invalid/4\"]"
+        ))
+        .is_err()
+    );
+    // Whatever mirrors the registry carries, the official address stays
+    // the first source, and a mirror is another https address of the file
+    // kept under the project's data path.
+    for entry in &registry().dependencies {
+        for download in entry.downloads.values() {
+            assert!(download.url.starts_with("https://"), "{}", download.url);
+            for mirror in &download.mirrors {
+                assert!(mirror.starts_with("https://"), "{mirror}");
+                assert_ne!(mirror, &download.url);
+                assert!(mirror.contains("/astro-sync/data/"), "{mirror}");
+            }
+        }
     }
 }
 

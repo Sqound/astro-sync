@@ -97,7 +97,13 @@ fn one_or_many<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Download {
+    /// The first source: the official one.
     pub url: String,
+    /// Further https addresses of the very same file (same SHA-256, same
+    /// size), tried in order when the one above fails for any reason. An
+    /// entry without any behaves as it always did: one source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
     pub sha256: String,
     #[serde(default)]
     pub bytes: Option<u64>,
@@ -199,10 +205,24 @@ pub fn parse_registry(text: &str) -> Result<Registry, String> {
                     entry.id
                 ));
             }
+            if download.mirrors.len() > MAX_MIRRORS
+                || download
+                    .mirrors
+                    .iter()
+                    .any(|mirror| !mirror.starts_with("https://") || *mirror == download.url)
+            {
+                return Err(format!(
+                    "dependency {:?}: a mirror is another https URL (at most {MAX_MIRRORS})",
+                    entry.id
+                ));
+            }
         }
     }
     Ok(registry)
 }
+
+/// How many mirrors a download may list beside its official address.
+const MAX_MIRRORS: usize = 3;
 
 /// The systems a download may be given for.
 pub const SYSTEMS: [&str; 4] = ["macos-arm64", "macos-x64", "windows-x64", "linux-x64"];
@@ -1134,6 +1154,15 @@ fn sha256_of(path: &Path) -> std::io::Result<String> {
 
 /// Downloads `download` into `<data>/tools/<id>/`, resuming a `.part` left
 /// by an earlier try, and keeps it only when its SHA-256 is the registry's.
+///
+/// The official address is tried first, then each mirror in order, on any
+/// failure of the connection or of the bytes (a refused request, a stop, a
+/// short file, a wrong digest). The same digest is required whatever the
+/// source, and the local file is named after the official address. A `.part`
+/// is resumed on whichever source comes next, but its bytes are never
+/// trusted: when the finished file has the wrong digest, the `.part` is
+/// deleted and the source is asked again from zero before the next source is
+/// tried. A cancellation or a local write error stops everything.
 pub fn download_tool(
     data_dir: &Path,
     id: &str,
@@ -1150,31 +1179,82 @@ pub fn download_tool(
     fs::create_dir_all(&dir).map_err(io)?;
     let name = file_name_of(&download.url);
     let done = dir.join(&name);
+    let finished = |path: PathBuf, bytes: u64, already_there: bool| Downloaded {
+        path,
+        sha256: download.sha256.clone(),
+        bytes,
+        already_there,
+    };
     if done.is_file() && sha256_of(&done).map_err(io)? == download.sha256 {
         let bytes = fs::metadata(&done).map_err(io)?.len();
-        return Ok(Downloaded {
-            path: done,
-            sha256: download.sha256.clone(),
-            bytes,
-            already_there: true,
-        });
+        return Ok(finished(done, bytes, true));
     }
     let part = dir.join(format!("{name}.part"));
-    let from = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-    let fetched =
-        fetcher
-            .fetch(&download.url, from)
-            .map_err(|detail| DownloadFailure::Interrupted {
-                kept_bytes: from,
-                total: download.bytes,
-                detail,
-            })?;
+    // A `.part` as long as the whole file asks for a range past its end,
+    // which servers refuse: it is the file, or it is garbage.
+    if let (Some(expected), Ok(kept)) = (download.bytes, fs::metadata(&part))
+        && kept.len() >= expected
+    {
+        if kept.len() == expected && sha256_of(&part).map_err(io)? == download.sha256 {
+            fs::rename(&part, &done).map_err(io)?;
+            return Ok(finished(done, expected, false));
+        }
+        let _ = fs::remove_file(&part);
+    }
+    let mut last = None;
+    for source in std::iter::once(&download.url).chain(&download.mirrors) {
+        let from = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let mut result = fetch_into_part(source, download, &part, from, fetcher, cancel, progress);
+        if from > 0 && matches!(result, Err(DownloadFailure::DigestMismatch)) {
+            // The bytes kept from an earlier source or try were not this
+            // file's: the `.part` is gone, start this source over.
+            result = fetch_into_part(source, download, &part, 0, fetcher, cancel, progress);
+        }
+        match result {
+            Ok(bytes) => {
+                fs::rename(&part, &done).map_err(io)?;
+                return Ok(finished(done, bytes, false));
+            }
+            Err(
+                failure @ (DownloadFailure::Interrupted { .. } | DownloadFailure::DigestMismatch),
+            ) => {
+                last = Some(failure);
+            }
+            Err(other) => return Err(other),
+        }
+    }
+    Err(last.unwrap_or(DownloadFailure::NoAutomaticDownload))
+}
+
+/// One source, from byte `from` of the `.part`: the bytes written when the
+/// file is complete and has the registry's digest. A wrong digest deletes
+/// the `.part`.
+fn fetch_into_part(
+    source: &str,
+    download: &Download,
+    part: &Path,
+    from: u64,
+    fetcher: &dyn ToolFetcher,
+    cancel: Option<&CancelFlag>,
+    progress: &mut dyn FnMut(DownloadProgress),
+) -> Result<u64, DownloadFailure> {
+    let io = |error: std::io::Error| DownloadFailure::Io {
+        detail: error.to_string(),
+    };
+    let fetched = fetcher
+        .fetch(source, from)
+        .map_err(|detail| DownloadFailure::Interrupted {
+            kept_bytes: from,
+            total: download.bytes,
+            detail,
+        })?;
+    let resumed = fetched.start == from && from > 0;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .write(true)
-        .append(fetched.start == from && from > 0)
-        .truncate(!(fetched.start == from && from > 0))
-        .open(&part)
+        .append(resumed)
+        .truncate(!resumed)
+        .open(part)
         .map_err(io)?;
     let total = fetched.total.or(download.bytes);
     let mut bytes = fetched.start.min(from);
@@ -1209,17 +1289,11 @@ pub fn download_tool(
             detail: "the connection closed early".to_string(),
         });
     }
-    if sha256_of(&part).map_err(io)? != download.sha256 {
-        let _ = fs::remove_file(&part);
+    if sha256_of(part).map_err(io)? != download.sha256 {
+        let _ = fs::remove_file(part);
         return Err(DownloadFailure::DigestMismatch);
     }
-    fs::rename(&part, &done).map_err(io)?;
-    Ok(Downloaded {
-        path: done,
-        sha256: download.sha256.clone(),
-        bytes,
-        already_there: false,
-    })
+    Ok(bytes)
 }
 
 /* --------------------------------- Install ------------------------------- */

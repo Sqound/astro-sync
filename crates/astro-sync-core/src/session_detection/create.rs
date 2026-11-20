@@ -18,6 +18,10 @@ use crate::gui_bridge::{GuiBridgeError, HttpPortalGuiTransport};
 use crate::service_wait::RequestFactory;
 use crate::time_util::{format_iso8601_utc_millis, parse_iso8601_utc_to_unix_seconds};
 
+pub mod packets;
+
+use packets::{PacketFailure, PacketRun};
+
 use super::{
     DetectedSession, DetectedTarget, MultiNightGroup, PlaceAction, Proposal, SessionMatch,
     TargetMatch, TargetSource,
@@ -703,9 +707,9 @@ pub fn outcome_of(
     outcome
 }
 
-/// The one call: `POST /v1/sessions/bulk` (idempotent: a retry replays),
-/// after the personal targets the person ticked (`GET` then `POST
-/// /v1/targets/personal`, the service's own mechanism).
+/// The call: `POST /v1/sessions/bulk` (idempotent: a retry replays), sent
+/// by packets ([`packets`]), after the personal targets the person ticked
+/// (`GET` then `POST /v1/targets/personal`, the service's own mechanism).
 pub trait BulkCreateTransport {
     fn create_bulk(
         &self,
@@ -713,6 +717,18 @@ pub trait BulkCreateTransport {
         token: &str,
         body: &Value,
     ) -> Result<Value, GuiBridgeError>;
+    /// One packet: [`Self::create_bulk`], its failure told « busy, ask
+    /// again » from a refusal ([`PacketFailure`]); the real transport adds
+    /// the status and the `Retry-After` of the answer.
+    fn send_packet(
+        &self,
+        base_url: &str,
+        token: &str,
+        body: &Value,
+    ) -> Result<Value, PacketFailure> {
+        self.create_bulk(base_url, token, body)
+            .map_err(PacketFailure::of)
+    }
     /// `GET /v1/targets/personal`: `{ targets: [{ id, name, … }] }`.
     fn personal_targets(&self, base_url: &str, token: &str) -> Result<Value, GuiBridgeError>;
     /// `POST /v1/targets/personal`, sent once: `{ target: { id, … } }`.
@@ -737,6 +753,23 @@ impl BulkCreateTransport for HttpPortalGuiTransport {
         let build: RequestFactory =
             Arc::new(move |client| client.post(url.clone()).bearer_auth(&token).json(&body));
         self.read_json(&build)
+    }
+
+    fn send_packet(
+        &self,
+        base_url: &str,
+        token: &str,
+        body: &Value,
+    ) -> Result<Value, PacketFailure> {
+        let url = format!("{}/api/v1/sessions/bulk", base_url.trim_end_matches('/'));
+        let token = token.to_owned();
+        let body = body.clone();
+        let build: RequestFactory =
+            Arc::new(move |client| client.post(url.clone()).bearer_auth(&token).json(&body));
+        self.read_json_answered(&build)
+            .map_err(|(error, status, retry_after)| {
+                PacketFailure::answered(error, status, retry_after)
+            })
     }
 
     fn personal_targets(&self, base_url: &str, token: &str) -> Result<Value, GuiBridgeError> {
@@ -852,25 +885,23 @@ fn with_personal_targets<T: BulkCreateTransport>(
     prepared
 }
 
-/// "Create…": the personal targets, the body, the call, the answer read.
+/// "Create…": the personal targets, the body, the packets sent one after
+/// the other ([`packets::create_sessions_by_packets`], real waits while the
+/// service is busy, nothing said), the answers read.
 pub fn create_sessions<T: BulkCreateTransport>(
     transport: &T,
     base_url: &str,
     token: &str,
     request: &BulkCreateRequest,
 ) -> Result<BulkCreateOutcome, GuiBridgeError> {
-    let request = &with_personal_targets(transport, base_url, token, request);
-    let built = bulk_body(request);
-    let nothing = built.body["sessions"].as_array().is_none_or(Vec::is_empty)
-        && built.body["places"].as_array().is_none_or(Vec::is_empty);
-    if nothing {
-        return Ok(BulkCreateOutcome {
-            skipped: built.skipped,
-            ..BulkCreateOutcome::default()
-        });
-    }
-    let answer = transport.create_bulk(base_url, token, &built.body)?;
-    Ok(outcome_of(request, &built, &answer))
+    packets::create_sessions_by_packets(
+        transport,
+        base_url,
+        token,
+        request,
+        &mut PacketRun::quiet(&mut |_| {}),
+        &mut |_| Ok::<(), GuiBridgeError>(()),
+    )
 }
 
 #[cfg(test)]

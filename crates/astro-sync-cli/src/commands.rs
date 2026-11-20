@@ -483,9 +483,20 @@ pub fn reference_stars(args: &ReferenceStarsArgs) -> Result<(), Box<dyn Error>> 
 /// The agreement the command line asks for before it fetches Tycho-2: it
 /// names the catalogue, the source, the size and the credit.
 fn tycho2_agreement() -> String {
+    let source = if reference_catalogue::TYCHO2_MIRROR.is_some() {
+        format!(
+            "from the project's download host (from VizieR, at the CDS or one of its official mirrors, {}, if that host cannot give it): one file, or about thirty requests,",
+            TYCHO2.vizier_table
+        )
+    } else {
+        format!(
+            "from VizieR (the CDS, or one of its official mirrors if it does not answer, {}): about thirty requests,",
+            TYCHO2.vizier_table
+        )
+    };
     format!(
-        "Download {} from VizieR (CDS, {}): about thirty requests, then a list of about {} MB kept on this computer. Credit: {}. Add --accept-download to accept; without it nothing is downloaded.",
-        TYCHO2.name, TYCHO2.vizier_table, TYCHO2.list_megabytes, TYCHO2.credit,
+        "Download {} {source} then a list of about {} MB kept on this computer. Credit: {}. Add --accept-download to accept; without it nothing is downloaded.",
+        TYCHO2.name, TYCHO2.list_megabytes, TYCHO2.credit,
     )
 }
 
@@ -494,14 +505,14 @@ fn download_tycho2_list(args: &ReferenceStarsArgs) -> Result<(), Box<dyn Error>>
     if !args.accept_download {
         return Err(Box::new(ArgError(tycho2_agreement())));
     }
-    let list = reference_catalogue::download_tycho2(
+    let (list, source) = reference_catalogue::download_tycho2(
         Tycho2Consent::given(),
         args.faintest,
         &mut |done, total| eprintln!("Tycho-2: band {done} of {total}"),
     )?;
     std::fs::write(&args.out, list.to_bytes())?;
     println!(
-        "{} reference stars (Tycho-2) written to {}. Credit to display: {}.",
+        "{} reference stars (Tycho-2, source: {source:?}) written to {}. Credit to display: {}.",
         list.len(),
         args.out.display(),
         TYCHO2.credit

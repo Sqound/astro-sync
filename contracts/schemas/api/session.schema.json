@@ -249,7 +249,7 @@
     },
     "list": {
       "type": "object",
-      "description": "GET /v1/sessions. `nextSince` is the `updatedAt` of the last returned session and is meant to be sent back verbatim; the `since` bound is inclusive, so a client may see a session twice and never misses one.",
+      "description": "GET /v1/sessions. `nextSince` is the `updatedAt` of the last returned session and is meant to be sent back verbatim; the `since` bound is inclusive, so a client may see a session twice and never misses one. Additive: `?include=targetSummary` adds `targetSummaries`, what was done target by target on each finished night of the page (see `targetSummary`); any other value of `include` answers `400 invalid_request`. Without the parameter the page is unchanged.",
       "required": ["sessions"],
       "properties": {
         "sessions": {
@@ -263,6 +263,72 @@
         },
         "hasMore": {
           "type": "boolean"
+        },
+        "targetSummaries": {
+          "type": "object",
+          "description": "Only with `?include=targetSummary`: one entry per finished session of `sessions`, by its id (`targetSummary`). A session not finished has none.",
+          "propertyNames": {
+            "$ref": "#/$defs/uuid"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/targetSummary"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetSummary": {
+      "type": "object",
+      "description": "What was done target by target on one finished night, as the history of the suggestions reads it: `perTarget` are the targets of `GET /v1/sessions/{id}`'s `debriefSummary.perTarget` (same order, same values, a target without `targetId` left out) reduced to the four fields the history reads; `observedMinutes`, for a night whose plan is a visual one (`equipment.mode: visual`), the minutes of each target's passages counted from the events `GET /v1/sessions/{id}/events` gives (time counted, pauses deducted, else the passage; rounded per passage; skipped and unfinished passages left out), in the order the targets are first met; `null` for any other night, a night without a plan included. Best-effort: a night whose summary cannot be read has `perTarget: []`.",
+      "required": ["perTarget", "observedMinutes"],
+      "properties": {
+        "perTarget": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["targetId", "outcome"],
+            "properties": {
+              "targetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "outcome": {
+                "type": ["string", "null"],
+                "description": "The summary's outcome of the target (`done`, `partial`, `abandoned`, …)."
+              },
+              "plannedMinutes": {
+                "type": "number"
+              },
+              "acquiredMinutes": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "observedMinutes": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["targetId", "minutes"],
+                "properties": {
+                  "targetId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "minutes": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          ]
         }
       },
       "additionalProperties": false

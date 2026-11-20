@@ -1005,7 +1005,7 @@ pub async fn download_reference_stars<R: Runtime>(
 ) -> Result<ReferenceStarsDownloaded, CommandError> {
     run_blocking(move || {
         let paths = paths::resolve(&app)?;
-        let list = reference_catalogue::download_tycho2(
+        let (list, _source) = reference_catalogue::download_tycho2(
             Tycho2Consent::given(),
             reference_catalogue::DEFAULT_FAINTEST,
             &mut |_, _| {},

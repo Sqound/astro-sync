@@ -284,6 +284,17 @@ class RegistryRules(unittest.TestCase):
         self.refused(registry_data(downloads={"macos-arm64": {"url": "https://example.org/x", "sha256": "abc"}}), "64 lower-case")
         self.refused(registry_data(downloads={"macos-arm64": {"url": "http://example.org/x", "sha256": DIGEST}}), "https")
 
+    def test_a_mirror_is_another_https_address_and_at_most_three(self) -> None:
+        # Mirrors: other https addresses of the same file, at most three.
+        good = {"url": "https://example.org/x", "sha256": DIGEST, "mirrors": ["https://example.net/x"]}
+        self.assertEqual(
+            self.load(registry_data(downloads={"macos-arm64": good}))["tool-x"].downloads["macos-arm64"]["mirrors"],
+            ["https://example.net/x"],
+        )
+        self.refused(registry_data(downloads={"macos-arm64": {**good, "mirrors": ["http://example.net/x"]}}), "https")
+        self.refused(registry_data(downloads={"macos-arm64": {**good, "mirrors": ["https://example.org/x"]}}), "another address")
+        self.refused(registry_data(downloads={"macos-arm64": {**good, "mirrors": [f"https://e.net/{i}" for i in range(4)]}}), "at most 3")
+
     def test_an_unknown_system_or_kind_is_refused(self) -> None:
         self.refused(registry_data(downloads={"amiga": {"url": "https://example.org/x", "sha256": DIGEST}}), "unknown system")
         self.refused(registry_data(kind="script"), "kind 'script' is unknown")

@@ -504,6 +504,10 @@ def _validate_sizes(sizes: object) -> dict[str, int]:
     return dict(sizes)
 
 
+# How many other addresses of the same file a download may list.
+MAX_MIRRORS = 3
+
+
 def _validate_downloads(downloads: object) -> dict[str, dict[str, object]]:
     if not isinstance(downloads, dict):
         raise ValueError("downloads must be an object keyed by system")
@@ -511,8 +515,8 @@ def _validate_downloads(downloads: object) -> dict[str, dict[str, object]]:
     for system, item in downloads.items():
         if system not in SYSTEMS:
             raise ValueError(f"downloads: unknown system '{system}' (known: {', '.join(SYSTEMS)})")
-        if not isinstance(item, dict) or not set(item) <= {"url", "sha256", "bytes"}:
-            raise ValueError(f"downloads.{system} takes url, sha256 and optionally bytes")
+        if not isinstance(item, dict) or not set(item) <= {"url", "sha256", "bytes", "mirrors"}:
+            raise ValueError(f"downloads.{system} takes url, sha256 and optionally bytes and mirrors")
         if ("url" in item) != ("sha256" in item) or "url" not in item:
             raise ValueError(f"downloads.{system}: 'url' and 'sha256' go together (a download without its digest is refused)")
         _https_url(item["url"], f"downloads.{system}.url")
@@ -520,6 +524,14 @@ def _validate_downloads(downloads: object) -> dict[str, dict[str, object]]:
             raise ValueError(f"downloads.{system}.sha256 must be 64 lower-case hexadecimal characters")
         if "bytes" in item and (not isinstance(item["bytes"], int) or isinstance(item["bytes"], bool) or item["bytes"] <= 0):
             raise ValueError(f"downloads.{system}.bytes must be a positive integer")
+        if "mirrors" in item:
+            mirrors = item["mirrors"]
+            if not isinstance(mirrors, list) or len(mirrors) > MAX_MIRRORS:
+                raise ValueError(f"downloads.{system}.mirrors must be a list of at most {MAX_MIRRORS} URLs")
+            for mirror in mirrors:
+                _https_url(mirror, f"downloads.{system}.mirrors")
+                if mirror == item["url"]:
+                    raise ValueError(f"downloads.{system}.mirrors: a mirror is another address than 'url'")
         result[system] = dict(item)
     return result
 

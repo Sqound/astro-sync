@@ -280,6 +280,55 @@ test("Dépendances: a failure in words, what is kept, « Reprendre le téléchar
   );
 });
 
+test("Dépendances: the star database carries its credit and the author's page, offered or installed, in every language", async () => {
+  const dictionaries = await Promise.all(
+    [
+      "fr",
+      "en",
+      "ja",
+      "de",
+      "es",
+      "it",
+      "pt-BR",
+      "ru",
+      "zh-Hans",
+      "zh-Hant",
+    ].map(
+      async (locale) =>
+        JSON.parse(
+          await readFile(
+            new URL(`../i18n/${locale}.json`, import.meta.url),
+            "utf8",
+          ),
+        ) as Record<string, string>,
+    ),
+  );
+  for (const dictionary of dictionaries) {
+    const credit = dictionary["deps.line.databaseCredit"];
+    assert.ok(credit.includes("ESA/Gaia/DPAC"));
+    assert.ok(credit.includes("hnsky.org/astap.htm"));
+    assert.ok(credit.includes("Han Kleijn"));
+    assert.ok(!/[;—–]/.test(credit));
+  }
+  for (const astap of ["missing", "present"] as const) {
+    const rows = dependencyRows(fr, "fr", dependencyTools({ astap }), {});
+    const lines = rows.find((row) => row.id === "astap")!.lines;
+    assert.equal(lines.at(-1), fr("deps.line.databaseCredit"));
+  }
+  // Another row never carries it.
+  const other = dependencyRows(
+    fr,
+    "fr",
+    dependencyTools({ astap: "missing" }),
+    {},
+  );
+  assert.ok(
+    other
+      .filter((row) => row.id !== "astap")
+      .every((row) => !row.lines.includes(fr("deps.line.databaseCredit"))),
+  );
+});
+
 test("« Pipeline d’empilement »: to install, no Python, unfinished, installing, failed and resumed, waiting for Siril", () => {
   const row = (
     environment: "missing" | "interrupted" | "noPython",
