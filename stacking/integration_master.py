@@ -4,7 +4,7 @@ When a target of a night is stacked, Astro Sync keeps one file besides the
 renders: the 32-bit linear master of the family that was integrated (same
 filter, exposure, gain and binning), as::
 
-    <night>/<target>/stacked/<family>_integration.fit
+    <night>/<target>/output/stacked/<family>_integration.fit
 
 It is the only intermediate file kept: with
 it, a later night of the same multi-night plan can be combined with this one

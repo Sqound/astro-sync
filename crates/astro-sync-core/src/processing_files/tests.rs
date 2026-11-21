@@ -407,3 +407,177 @@ fn the_python_environment_is_removed_apart_links_unlinked_never_followed() {
     assert_eq!(fs::metadata(&interpreter).unwrap().len(), 5_000);
     assert_eq!(remove_python_environment(&world.data).unwrap(), 0);
 }
+
+/* ------------------- The two forms of a target (Astro Sync 1.2.0) ------------------- */
+
+/// A night of the new form (`M45/input/…`, `M45/output/…`) beside one of the
+/// earlier form (the world above), and a plan of the new form.
+struct NewForm {
+    world: World,
+    night: PathBuf,
+    plan: PathBuf,
+}
+
+fn new_form() -> NewForm {
+    let world = world();
+    let night = world.root.join("2026-11-19 · Col · dddddd");
+    write(&night.join(NIGHT_IDENTITY_FILE), 10);
+    let target = night.join("M45");
+    write(&target.join(TARGET_IDENTITY_FILE), 10);
+    // The person's: poses, the export of a processing software, a device's
+    // image, and files that look like the stacking's in `input/`.
+    write(&target.join("input/lights/Light_0001.fits"), 1_000);
+    write(&target.join("input/processed/M45.tif"), 900);
+    write(&target.join("input/processed/M45_integration.fit"), 1_100);
+    write(&target.join("input/device/Stacked_M45.fit"), 1_200);
+    symlink(
+        &world.outside_frame,
+        target.join("input/lights/Light_LINK.fits"),
+    )
+    .unwrap();
+    // Produced: a master, a render and its record, the progression.
+    write(&target.join("output/stacked/LP_30s_integration.fit"), 4_000);
+    write(&target.join("output/stacked/M45_natural.tif"), 3_000);
+    write(&target.join("output/stacked/M45_stacking.json"), 20);
+    write(&target.join("output/progression/milestone_01.jpg"), 60);
+    // The person's note left in `output/stacked/`: not a produced extension.
+    write(&target.join("output/stacked/notes.txt"), 7);
+    let plan = world.root.join("M45 plan · eeeeee");
+    write(&plan.join(PLAN_IDENTITY_FILE), 15);
+    write(&plan.join("output/stacked/M45_plan.tif"), 6_500);
+    NewForm { world, night, plan }
+}
+
+#[test]
+fn the_scan_reads_the_output_folders_of_the_new_form_beside_the_earlier_form() {
+    let form = new_form();
+    let scan = scan(&form.world.root, &form.world.data, &HashSet::new());
+    let masters = category(&scan, CategoryKind::Masters);
+    // M31's master (earlier form) and M45's (new form); the file named like a
+    // master in `input/processed/` is the person's.
+    assert_eq!((masters.bytes, masters.count), (8_000, 2));
+    let results = category(&scan, CategoryKind::NightResults);
+    // Earlier form: 3 000 + 500 + 20 (M31) and 2 000 + 100 (M42); new form:
+    // 3 000 + 20 (M45).
+    assert_eq!(results.bytes, 3_520 + 2_100 + 3_020);
+    assert_eq!(results.count, 3);
+    let plans = category(&scan, CategoryKind::PlanRenders);
+    assert_eq!((plans.bytes, plans.count), (6_040 + 6_500, 2));
+}
+
+#[test]
+fn cleaning_a_night_of_the_new_form_never_touches_its_input_folder() {
+    let form = new_form();
+    let all = [
+        CleanKind::Masters,
+        CleanKind::SentResults,
+        CleanKind::UnsentResults,
+        CleanKind::Temp,
+    ];
+    let outcome = clean(&form.world.root, &form.world.data, &HashSet::new(), &all).unwrap();
+    assert!(outcome.failed.is_empty(), "{:?}", outcome.failed);
+    let target = form.night.join("M45");
+    for gone in [
+        "output/stacked/LP_30s_integration.fit",
+        "output/stacked/M45_natural.tif",
+        "output/stacked/M45_stacking.json",
+    ] {
+        assert!(!target.join(gone).exists(), "{gone}");
+    }
+    assert!(!form.plan.join("output/stacked/M45_plan.tif").exists());
+    for kept in [
+        "input/lights/Light_0001.fits",
+        "input/processed/M45.tif",
+        "input/processed/M45_integration.fit",
+        "input/device/Stacked_M45.fit",
+        "output/stacked/notes.txt",
+        "output/progression/milestone_01.jpg",
+    ] {
+        assert!(target.join(kept).is_file(), "{kept}");
+    }
+    assert!(
+        fs::symlink_metadata(target.join("input/lights/Light_LINK.fits"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert!(form.world.outside_frame.is_file());
+    // The earlier form is cleaned as before, its own files kept.
+    assert!(
+        !form
+            .world
+            .night_one
+            .join("M31/stacked/M31_natural.tif")
+            .exists()
+    );
+    assert!(form.world.night_one.join("M31/final/final.tif").is_file());
+}
+
+#[test]
+fn an_output_folder_that_is_a_link_is_neither_read_nor_cleaned() {
+    let form = new_form();
+    let target = form.night.join("M45");
+    // The person points `output/` (or `output/stacked/`) at a folder of theirs.
+    let theirs = form.world.root.parent().unwrap().join("their-renders");
+    write(&theirs.join("stacked/theirs_natural.tif"), 5_555);
+    write(&theirs.join("stacked/theirs_integration.fit"), 4_444);
+    fs::remove_dir_all(target.join("output")).unwrap();
+    symlink(&theirs, target.join("output")).unwrap();
+    let other = form.night.join("M46");
+    write(&other.join(TARGET_IDENTITY_FILE), 10);
+    fs::create_dir_all(other.join("output")).unwrap();
+    symlink(theirs.join("stacked"), other.join("output/stacked")).unwrap();
+
+    let scan = scan(&form.world.root, &form.world.data, &HashSet::new());
+    // Only M31's master is left to measure.
+    assert_eq!(category(&scan, CategoryKind::Masters).bytes, 4_000);
+    let all = [
+        CleanKind::Masters,
+        CleanKind::SentResults,
+        CleanKind::UnsentResults,
+    ];
+    clean(&form.world.root, &form.world.data, &HashSet::new(), &all).unwrap();
+    assert!(theirs.join("stacked/theirs_natural.tif").is_file());
+    assert!(theirs.join("stacked/theirs_integration.fit").is_file());
+}
+
+#[test]
+fn a_target_of_both_forms_has_both_stacked_folders_measured_and_nothing_else() {
+    let form = new_form();
+    let target = form.night.join("M45");
+    // The person copied an earlier night's results beside the new form.
+    write(&target.join("stacked/M45_old_natural.tif"), 1_500);
+    write(&target.join("lights/Light_old.fits"), 1_000);
+    write(&target.join("final/M45_old.jpg"), 300);
+    let scan = scan(&form.world.root, &form.world.data, &HashSet::new());
+    let results = category(&scan, CategoryKind::NightResults);
+    assert_eq!(results.bytes, 3_520 + 2_100 + 3_020 + 1_500);
+    clean(
+        &form.world.root,
+        &form.world.data,
+        &HashSet::new(),
+        &[CleanKind::UnsentResults],
+    )
+    .unwrap();
+    assert!(!target.join("stacked/M45_old_natural.tif").exists());
+    assert!(target.join("lights/Light_old.fits").is_file());
+    assert!(target.join("final/M45_old.jpg").is_file());
+}
+
+#[test]
+fn a_file_under_an_input_folder_is_never_deleted_even_when_asked_directly() {
+    let form = new_form();
+    let canonical = fs::canonicalize(&form.world.root).unwrap();
+    let processed = form.night.join("M45/input/processed/M45_integration.fit");
+    assert_eq!(
+        remove_plain_file(&processed, &canonical),
+        Err("inside_input")
+    );
+    let upper = form.night.join("M45/INPUT/processed/x.tif");
+    write(&upper, 5);
+    assert_eq!(remove_plain_file(&upper, &canonical), Err("inside_input"));
+    assert!(processed.is_file() && upper.is_file());
+    // A file of `output/stacked/` goes.
+    let render = form.night.join("M45/output/stacked/M45_natural.tif");
+    assert_eq!(remove_plain_file(&render, &canonical), Ok(3_000));
+}

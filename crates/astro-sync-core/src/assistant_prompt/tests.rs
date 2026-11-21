@@ -470,6 +470,27 @@ fn the_links_rule_is_one_entry_and_every_search_step_cites_it() {
 }
 
 #[test]
+fn the_texts_before_input_and_output_are_known_and_the_file_says_both_forms() {
+    assert_eq!(
+        EARLIER_ASSISTANT_FILE_SHA256[5],
+        "cbbf5eb90052995fe7d2ad31f0b94c0eab8b37b2348d08930b1fd1fe48b510c1"
+    );
+    assert_eq!(
+        EARLIER_ASSISTANT_FILE_SHA256[6],
+        "a0408a073355835b7a768d8bd228361e870bedbdddce0ca1e7ec29dfb339628b"
+    );
+    for text in [ASSISTANT_FILE_TEXT, ASSISTANT_FILE_TEXT_MULTI_NIGHT] {
+        assert!(text.contains("- `<target>/input/lights/`:"));
+        assert!(text.contains("- `<target>/input/processed/`:"));
+        assert!(text.contains(
+            "- `<target>/output/`: what Astro Sync makes, the only folder of a target it writes in"
+        ));
+        assert!(text.contains("never add `input/` or `output/` beside them"));
+        assert!(!text.contains("- `<target>/final/`:"));
+    }
+}
+
+#[test]
 fn the_third_earlier_text_is_known() {
     assert_eq!(
         EARLIER_ASSISTANT_FILE_SHA256[2],
@@ -551,7 +572,9 @@ fn a_final_image_alone_is_asked_for_directly() {
     snapshot("path-final-only.txt", &path);
     assert!(!path.contains("Search for the darks"));
     assert!(!path.contains("Search for the light frames"));
-    assert!(path.contains("`<target>/final/`"));
+    assert!(path.contains("`<target>/input/processed/`"));
+    // A night of the earlier form keeps its `final/`.
+    assert!(path.contains("`<target>/final/` in a target folder of the earlier form"));
 }
 
 #[test]
@@ -561,7 +584,7 @@ fn everything_in_one_folder_is_searched_there_once() {
     assert!(path.contains("full path of the folder that holds this night's files"));
     assert_eq!(path.matches("Search for").count(), 1);
     let final_only = trace(&["one_folder", "final_only"]);
-    assert!(final_only.contains("`<target>/final/`"));
+    assert!(final_only.contains("`<target>/input/processed/`"));
     assert!(path.contains("`logs/`") && final_only.contains("`logs/`"));
 }
 

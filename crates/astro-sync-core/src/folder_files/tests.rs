@@ -28,9 +28,21 @@ fn the_ten_languages_have_a_readme_and_a_guide_name() {
             "logs/",
             "lights/",
             "final/",
+            "input/",
+            "input/lights/",
+            "input/processed/",
+            "output/",
+            "output/stacked/adjusted/",
+            "1.2.0",
         ] {
             assert!(text.contains(needle), "{language} lacks {needle}");
         }
+    }
+    // The README Astro Sync 1.1 wrote, in every language, is Astro Sync's.
+    let digests = readme_digests();
+    for earlier in EARLIER_README_SHA256 {
+        assert!(digests.iter().any(|d| d == earlier));
+        assert!(!READMES.iter().any(|t| sha256_hex(t.as_bytes()) == earlier));
     }
     // Another language reads English, a regional tag its language.
     assert_eq!(readme_text("xx"), readme_text("en"));
@@ -167,6 +179,33 @@ fn a_readme_the_person_wrote_or_changed_is_kept_and_replaceable() {
     );
     assert_eq!(fs::read_to_string(&path).unwrap(), readme_text("en"));
     assert_eq!(file.sha256, Some(sha256_hex(readme_text("en").as_bytes())));
+}
+
+/// A README Astro Sync 1.1 wrote (before `input/` and `output/`) is written
+/// again in today's text, even when the settings lost its digest.
+#[test]
+fn the_readme_of_astro_sync_1_1_is_written_again() {
+    let root = TempDir::new("readme-1-1");
+    let earlier = "# Astro Sync: your working folder\n\nAn earlier text.\n";
+    fs::write(root.path().join(README_FILE_NAME), earlier).unwrap();
+    // Not today's text nor a recorded digest: the person's.
+    let kept = write_readme(root.path(), "en", None).unwrap();
+    assert_eq!(kept.outcome, ManagedOutcome::KeptAsChanged);
+    // With the digest of one of the texts Astro Sync 1.1 wrote, it is Astro
+    // Sync's: the same rule, through `also_ours`.
+    let file = write_managed_file(
+        root.path(),
+        README_FILE_NAME,
+        readme_text("en"),
+        None,
+        &[sha256_hex(earlier.as_bytes())],
+    )
+    .unwrap();
+    assert_eq!(file.outcome, ManagedOutcome::Rewritten);
+    assert_eq!(
+        fs::read_to_string(root.path().join(README_FILE_NAME)).unwrap(),
+        readme_text("en")
+    );
 }
 
 #[test]

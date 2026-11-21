@@ -630,7 +630,7 @@ pub struct DetectedTarget {
     /// The images a known device stacked for this target and this night (the
     /// Seestar's `Stacked_*.fit`), absolute paths: not
     /// poses, offered as the master of the target. "Tidy the files"
-    /// puts them in `<target>/device/`.
+    /// puts them in `<target>/input/device/`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub device_images: Vec<String>,
     /// Absolute paths, in the order taken.

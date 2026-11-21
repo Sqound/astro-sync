@@ -180,14 +180,14 @@ fn treated(root: &Path, request: &BulkCreateRequest) -> BulkCreateOutcome {
     )
     .unwrap();
     for night in list_night_folders(root).unwrap() {
-        let stacked = night.folder.join("M45/stacked");
+        let stacked = night.folder.join("M45/output/stacked");
         fs::create_dir_all(&stacked).unwrap();
         fs::write(stacked.join("M45_natural.tif"), b"tif").unwrap();
         fs::write(
             stacked.join("M45_natural.json"),
             json!({
                 "nightId": night.night_id,
-                "master": night.folder.join("M45/stacked/M45_master.fit"),
+                "master": night.folder.join("M45/output/stacked/M45_master.fit"),
             })
             .to_string(),
         )
@@ -213,7 +213,7 @@ fn treated(root: &Path, request: &BulkCreateRequest) -> BulkCreateOutcome {
     let masters: Vec<PathBuf> = list_night_folders(root)
         .unwrap()
         .into_iter()
-        .map(|n| n.folder.join("M45/stacked/M45_master.fit"))
+        .map(|n| n.folder.join("M45/output/stacked/M45_master.fit"))
         .collect();
     fs::write(
         plan.join("stacked/M45_plan.json"),
@@ -286,7 +286,7 @@ fn a_night_to_create_gets_a_provisional_identity_and_folder() {
     assert_eq!(record["pending"]["equipmentIds"], json!(["eq-1"]));
     assert_eq!(record["pending"]["targets"][0]["frames"], 2);
     // The frames are linked there, never moved.
-    let link = nights[0].night_folder.join("M45/lights/a.fits");
+    let link = nights[0].night_folder.join("M45/input/lights/a.fits");
     assert!(
         fs::symlink_metadata(&link)
             .unwrap()
@@ -322,7 +322,7 @@ fn the_created_session_renames_the_folder_and_what_points_into_it() {
     let queue = UploadQueue::open(&dir.path().join("queue.sqlite")).unwrap();
     queue
         .enqueue_results(&[ResultFile {
-            path: first.folder.join("M45/stacked/M45_natural.tif"),
+            path: first.folder.join("M45/output/stacked/M45_natural.tif"),
             sha256: "f".repeat(64),
             size: 3,
             kind: ResultKind::Stacked,
@@ -366,7 +366,7 @@ fn the_created_session_renames_the_folder_and_what_points_into_it() {
         }
     );
     // The links to the person's frames survive the rename.
-    let link = renamed.join("M45/lights/a.fits");
+    let link = renamed.join("M45/input/lights/a.fits");
     assert!(
         fs::symlink_metadata(&link)
             .unwrap()
@@ -376,20 +376,23 @@ fn the_created_session_renames_the_folder_and_what_points_into_it() {
     assert_eq!(fs::read_to_string(&link).unwrap(), "frame a.fits");
     // What Astro Sync wrote there names the session and the new folder.
     let kept: Value = serde_json::from_str(
-        &fs::read_to_string(renamed.join("M45/stacked/M45_natural.json")).unwrap(),
+        &fs::read_to_string(renamed.join("M45/output/stacked/M45_natural.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(kept["nightId"], "sess-s-07");
     assert_eq!(
         kept["master"],
         renamed
-            .join("M45/stacked/M45_master.fit")
+            .join("M45/output/stacked/M45_master.fit")
             .to_string_lossy()
             .as_ref()
     );
     // The row of the queue follows.
     let row = queue.list().unwrap().remove(0);
-    assert_eq!(row.source_path, renamed.join("M45/stacked/M45_natural.tif"));
+    assert_eq!(
+        row.source_path,
+        renamed.join("M45/output/stacked/M45_natural.tif")
+    );
     assert_eq!(row.target.session_id.as_deref(), Some("sess-s-07"));
 
     // Then the plan.
@@ -405,7 +408,7 @@ fn the_created_session_renames_the_folder_and_what_points_into_it() {
     assert_eq!(
         kept["masters"][0],
         renamed
-            .join("M45/stacked/M45_master.fit")
+            .join("M45/output/stacked/M45_master.fit")
             .to_string_lossy()
             .as_ref()
     );
@@ -444,7 +447,7 @@ fn a_stop_between_the_creation_and_the_rename_is_finished_at_the_next_start() {
     assert_eq!(record.night_id, "sess-s-07");
     assert!(record.pending.is_none());
     let kept: Value = serde_json::from_str(
-        &fs::read_to_string(moved.join("M45/stacked/M45_natural.json")).unwrap(),
+        &fs::read_to_string(moved.join("M45/output/stacked/M45_natural.json")).unwrap(),
     )
     .unwrap();
     assert_eq!(kept["nightId"], "sess-s-07");
@@ -455,7 +458,7 @@ fn a_stop_between_the_creation_and_the_rename_is_finished_at_the_next_start() {
             .starts_with(moved.to_string_lossy().as_ref())
     );
     assert_eq!(
-        fs::read_to_string(moved.join("M45/lights/b.fits")).unwrap(),
+        fs::read_to_string(moved.join("M45/input/lights/b.fits")).unwrap(),
         "frame b.fits"
     );
 
@@ -484,7 +487,7 @@ fn abandoning_removes_the_provisional_folders_never_a_file_of_the_person_s() {
     let provisional = treated(&root, &request);
     let second = list_night_folders(&root).unwrap().remove(1);
     // A file of the person's, put in the second night's folder.
-    fs::write(second.folder.join("M45/lights/mine.fits"), b"mine").unwrap();
+    fs::write(second.folder.join("M45/input/lights/mine.fits"), b"mine").unwrap();
     let mut ids: Vec<String> = provisional
         .sessions
         .iter()
@@ -511,11 +514,11 @@ fn abandoning_removes_the_provisional_folders_never_a_file_of_the_person_s() {
     }
     // The second keeps the person's file, and only it.
     assert_eq!(
-        fs::read(second.folder.join("M45/lights/mine.fits")).unwrap(),
+        fs::read(second.folder.join("M45/input/lights/mine.fits")).unwrap(),
         b"mine"
     );
-    assert!(!second.folder.join("M45/lights/c.fits").exists());
-    assert!(!second.folder.join("M45/stacked").exists());
+    assert!(!second.folder.join("M45/input/lights/c.fits").exists());
+    assert!(!second.folder.join("M45/output/stacked").exists());
 }
 
 #[cfg(unix)]

@@ -27,7 +27,7 @@ type Outcome = Result<(), Box<dyn Error>>;
 pub struct IncidentsArgs {
     /// Folder of the night.
     pub night: PathBuf,
-    /// Folder of the target in the night (its frames are in `<target>/lights/`); `.`: all the frames of the night.
+    /// Folder of the target in the night (its frames are in `<target>/input/lights/`); `.`: all the frames of the night.
     pub target_folder: String,
     /// Evening of the night, YYYY-MM-DD (the night's window: local noon to local noon).
     #[arg(long)]

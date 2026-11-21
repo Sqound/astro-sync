@@ -89,7 +89,7 @@ pub enum Command {
     Incidents(crate::incidents_cli::IncidentsArgs),
     /// The rendering pipelines of the stacking.
     ListPipelines(crate::cli_night::ListPipelinesArgs),
-    /// The stack of a target in <target>/stacked/ (chosen pipelines), the master of each family kept.
+    /// The stack of a target in <target>/output/stacked/ (chosen pipelines), the master of each family kept.
     Stack(crate::cli_night::StackArgs),
     /// The integrations of a night for a multi-night plan: lines, never a file (Advanced Sync+).
     Integrations(crate::plan_cli::IntegrationsArgs),

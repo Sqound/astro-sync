@@ -21,7 +21,7 @@
 //! - any other render written in one format only leaves as that file;
 //! - the small picture of the plan (`*.preview.png`) is never a render.
 //!
-//! The person's own final image (`<target>/final/`) is not a render: this
+//! The person's own final image (`<target>/input/processed/`) is not a render: this
 //! module never sees it, and it leaves as it always did.
 
 use serde::{Deserialize, Serialize};

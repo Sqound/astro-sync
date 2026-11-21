@@ -117,9 +117,9 @@ const NINA_FLIP_CLUSTER_SECONDS: f64 = 600.0;
 /// What to read: the night's folder, one target, the window and the clocks.
 #[derive(Debug, Clone)]
 pub struct DetectInput {
-    /// The night's folder (`<target>/lights/`, `logs/`, …).
+    /// The night's folder (`<target>/input/lights/`, `logs/`, …).
     pub night_folder: PathBuf,
-    /// The target's folder in the night (its poses are in `<target>/lights/`);
+    /// The target's folder in the night (its poses are in `<target>/input/lights/`);
     /// `None`: every light of the night.
     pub target_folder: Option<String>,
     /// The night's window ([`NightWindow::of_evening`]); `None`: no limit.

@@ -44,12 +44,12 @@ test("Progression: the head message, Siril in one line, « Générer la progress
     "Une aide pratique, pas un outil de traitement.",
   );
   same(
-    fr("progression.readFrom", { path: "NGC 7000/lights/" }),
-    "Lue dans NGC 7000/lights/ de la nuit choisie.",
+    fr("progression.readFrom", { path: "NGC 7000/input/lights/" }),
+    "Lue dans NGC 7000/input/lights/ de la nuit choisie.",
   );
   same(
     fr("progression.output"),
-    "Les images vont dans le dossier progression/ de la cible, à côté de stacked/. Le travail se fait sur le disque de la nuit et n’y laisse rien d’autre.",
+    "Les images vont dans le dossier output/progression/ de la cible, à côté de output/stacked/. Le travail se fait sur le disque de la nuit et n’y laisse rien d’autre.",
   );
   // Today's paragraph, word for word, behind the ⓘ.
   assert.match(

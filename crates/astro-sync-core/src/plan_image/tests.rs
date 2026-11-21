@@ -182,7 +182,7 @@ fn the_job_aligns_on_the_longest_night_and_names_its_files() {
     assert_eq!(job.masters[job.reference].night_id, "n-09");
     assert_eq!(job.night_ids(), vec!["n-09", "n-12"]);
     assert_eq!(job.name, "IC_1805_plan");
-    assert_eq!(job.out, renamed.join("stacked"));
+    assert_eq!(job.out, renamed.join("output/stacked"));
     assert_eq!(job.work, renamed.join(".astro-sync-work/plan-image"));
     assert_eq!(
         job.job_file(),
@@ -415,7 +415,7 @@ fn the_image_of_a_plan_with_a_contrast_is_the_one_with_the_curve_and_the_plain_o
     // plain one stays on this computer.
     assert_eq!(
         outcome.render.path,
-        plan_dir.join("stacked/IC_1805_plan_raw_strong.tif")
+        plan_dir.join("output/stacked/IC_1805_plan_raw_strong.tif")
     );
     assert_eq!(outcome.render.contrast, crate::stacking::Contrast::Strong);
     assert_eq!(outcome.plan_render.as_deref(), Some("natural"));
@@ -423,13 +423,13 @@ fn the_image_of_a_plan_with_a_contrast_is_the_one_with_the_curve_and_the_plain_o
     assert!(
         outcome
             .other_files
-            .contains(&plan_dir.join("stacked/IC_1805_plan_raw.png")),
+            .contains(&plan_dir.join("output/stacked/IC_1805_plan_raw.png")),
         "the plain image is kept here"
     );
     assert!(
         outcome
             .other_files
-            .contains(&plan_dir.join("stacked/IC_1805_plan_raw.tif")),
+            .contains(&plan_dir.join("output/stacked/IC_1805_plan_raw.tif")),
         "and its TIFF"
     );
     let results = plan_results(&outcome, false);
@@ -584,6 +584,10 @@ fn one_run_of_a_plan_has_one_number_and_a_second_run_of_the_same_nights_rewrites
     fs::write(out.join("IC_1805_plan-2_hoo.tif"), "older").unwrap();
     let first = plan_image_jobs(&project, &lines, &chosen, &plan_dir, &pipelines);
     assert_eq!(names(&first), ["IC_1805_plan-3", "IC_1805_plan-3"]);
+    // A plan folder of the earlier form (`<plan>/stacked/`) keeps its form.
+    if let PlanImagePlan::Job(job) = &first[0] {
+        assert_eq!(job.out, plan_dir.join("stacked"));
+    }
     // The run is made: its record says the nights it combined.
     let PlanImagePlan::Job(job) = &first[0] else {
         panic!("a job")
@@ -660,7 +664,7 @@ fn the_image_of_the_plan_is_made_here_and_leaves_as_a_capture_of_the_plan() {
     assert_eq!(steps, vec!["alignment", "combination", "render"]);
     assert_eq!(
         outcome.render.path,
-        plan_dir.join("stacked/IC_1805_plan_dualband-correction.png")
+        plan_dir.join("output/stacked/IC_1805_plan_dualband-correction.png")
     );
     assert!(
         outcome.other_files.is_empty(),
@@ -1892,7 +1896,7 @@ fn the_image_of_a_plan_to_create_is_made_from_the_import_s_nights() {
     assert_eq!(outcome.combined_night_ids, nights);
     // What Astro Sync keeps of the plan names the provisional nights.
     fs::write(
-        plan_dir.join("stacked/sources.json"),
+        plan_dir.join("output/stacked/sources.json"),
         serde_json::json!({
             "projectId": project.project_id,
             "masters": [job.masters[0].path, job.masters[1].path],
@@ -1937,9 +1941,10 @@ fn the_image_of_a_plan_to_create_is_made_from_the_import_s_nights() {
     assert_eq!(identity.project_id, "prj-777");
     assert!(identity.pending.is_none());
     assert!(find_plan_folder(root, "prj-777").is_some());
-    let kept: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(renamed.join("stacked/sources.json")).unwrap())
-            .unwrap();
+    let kept: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(renamed.join("output/stacked/sources.json")).unwrap(),
+    )
+    .unwrap();
     assert_eq!(kept["projectId"], "prj-777");
     assert_eq!(
         kept["nights"],
@@ -1951,7 +1956,7 @@ fn the_image_of_a_plan_to_create_is_made_from_the_import_s_nights() {
     // The plan's image, made under the provisional plan, is still there.
     assert!(
         renamed
-            .join("stacked/IC_1805_plan_dualband-correction.tif")
+            .join("output/stacked/IC_1805_plan_dualband-correction.tif")
             .is_file()
     );
 }

@@ -190,7 +190,7 @@ pub fn forget(night_folder: &Path, target_folder_name: &str) -> std::io::Result<
 
 /// The measure kept for the target an `image` of the night belongs to: the
 /// file is looked for in the folders above the image, up to the night's folder
-/// (`<night>/<target>/final/x.tif` and `<night>/<target>/stacked/x.tif` both
+/// (`<night>/<target>/input/processed/x.tif` and `<night>/<target>/output/stacked/x.tif` both
 /// find `<night>/<target>/`).
 #[must_use]
 pub fn record_near(image: &Path, night_folder: &Path) -> Option<Record> {

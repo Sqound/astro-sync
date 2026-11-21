@@ -1140,3 +1140,55 @@ fn the_rows_added_beside_the_registry_are_named_in_every_language() {
         );
     }
 }
+
+/// A Siril Settings › Dependencies shows as present, with a version the
+/// allow-list does not list yet, is present for the treatments and for the
+/// progression too: one detection, one answer.
+#[cfg(unix)]
+#[test]
+fn a_present_siril_is_present_for_the_treatments_whatever_its_version_note() {
+    use crate::external_process::fake_tool;
+    let dir = TempDir::new("tools-siril-unlisted");
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    fake_tool(&bin, "siril-cli", "echo 'siril 1.4.99'");
+    let context = DetectContext {
+        data_dir: dir.path().join("data"),
+        reference_stars: dir.path().join("data/reference-stars.bin"),
+        search_dirs: vec![bin],
+        known_paths: BTreeMap::new(),
+        probe_timeout: Duration::from_secs(10),
+        stacking: None,
+    };
+    let rows = detect_tools(&context);
+    let siril = row(&rows, "siril").unwrap();
+    assert_eq!(siril.state, ToolState::Present);
+    assert_eq!(siril.progression_compatible, Some(false));
+    assert!(tools_present(&rows).siril);
+    assert_eq!(siril_for_progression(&rows).unwrap().1, "1.4.99");
+    let capabilities: crate::gui_bridge::Capabilities = serde_json::from_value(serde_json::json!({
+        "planner.multiple": true, "planner.mosaic": true, "pointing.solve": true,
+        "sync.plan_limit": 0, "gallery.private": true, "portal.invitations": true,
+        "capture.variant_limit": 0, "capture.count_limit": 3, "capture.public": true,
+        "analysis.logs": true, "analysis.progression": true,
+        "storage.max_file_bytes": 100, "storage.quota_bytes": 1000,
+        "history.retention_days": 0
+    }))
+    .unwrap();
+    let siril_treatment = |present: ToolsPresent| {
+        crate::precheck::treatments(
+            &capabilities,
+            &present,
+            &crate::precheck::NightMaterial {
+                light_frames: true,
+                ..Default::default()
+            },
+        )
+        .into_iter()
+        .find(|state| state.treatment == crate::precheck::Treatment::Progression)
+        .unwrap()
+    };
+    assert!(siril_treatment(tools_present(&rows)).available);
+    // Before the fix this read « tool missing » for a Siril that Settings shows.
+    assert_eq!(siril_treatment(tools_present(&rows)).unavailable, None);
+}

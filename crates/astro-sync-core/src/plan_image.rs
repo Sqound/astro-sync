@@ -83,7 +83,7 @@ use crate::stacking::{
 };
 use crate::upload_queue::{EntryTarget, PlanFilterTotal, PlanUpload, ResultFile, ResultKind};
 use crate::working_folder::{
-    NAME_SEPARATOR, STACKED_DIR, WORK_DIR, clean_component, list_night_folders,
+    NAME_SEPARATOR, TargetPart, WORK_DIR, clean_component, list_night_folders,
 };
 
 /* -------------------------------- The bands ------------------------------ */
@@ -146,10 +146,10 @@ pub enum Place {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanSource {
-    /// `<target>/stacked/<family>_integration.fit`, the stacking of the poses.
+    /// `<target>/output/stacked/<family>_integration.fit`, the stacking of the poses.
     #[default]
     Master,
-    /// `<target>/device/Stacked_*.fit`, the device's own stack.
+    /// `<target>/input/device/Stacked_*.fit`, the device's own stack.
     Device,
 }
 
@@ -806,7 +806,7 @@ pub struct PlanImageJob {
     pub project_id: String,
     pub target_id: String,
     pub plan_dir: PathBuf,
-    /// `<plan>/stacked/`.
+    /// `<plan>/output/stacked/`.
     pub out: PathBuf,
     /// `<plan>/.astro-sync-work/plan-image/`.
     pub work: PathBuf,
@@ -1027,7 +1027,9 @@ fn plan_image_job_in_run(
         _ => {}
     }
     let pipeline = pipeline.unwrap_or_else(|| PipelineChoice::new(DEFAULT_PIPELINE));
-    let out = plan_dir.join(STACKED_DIR);
+    // `<plan>/output/stacked/`, or `<plan>/output/stacked/` for a plan folder of the
+    // earlier form (it keeps its form).
+    let out = crate::working_folder::plan_part_dir(plan_dir, TargetPart::Stacked);
     let stem = plan_file_stem(&project.name);
     let mut suffixes: Vec<String> = run.iter().map(file_suffix_of).collect();
     if !suffixes.contains(&file_suffix_of(&pipeline)) {
@@ -1401,7 +1403,7 @@ fn combined_set(
 /// The frames on offer for the image of the plan made of `chosen` (the keys of the integrations ticked, `making`
 /// the sources taken and the frame the image is cut to, [`PlanField`]): read from the record of the last image
 /// made **with the same integrations, cut the same way** in
-/// `<plan>/stacked/` (the newest), its picture beside it. `None` before the first image of that set is made (the
+/// `<plan>/output/stacked/` (the newest), its picture beside it. `None` before the first image of that set is made (the
 /// first image is always whole), or when the record says nothing of the frame.
 #[must_use]
 pub fn plan_framing(
@@ -1422,7 +1424,7 @@ pub fn plan_framing(
     if wanted.is_empty() {
         return None;
     }
-    let stacked = plan_dir.join(STACKED_DIR);
+    let stacked = crate::working_folder::plan_part_dir(plan_dir, TargetPart::Stacked);
     let mut best: Option<(std::time::SystemTime, PathBuf, PlanRecord)> = None;
     for entry in fs::read_dir(&stacked).ok()?.filter_map(Result::ok) {
         let path = entry.path();

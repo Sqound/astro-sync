@@ -262,10 +262,16 @@ export interface TreeRow {
   file?: boolean;
 }
 
+/** A target folder of the tree: its name, and its form when the folder is
+ * already there (`legacy`: made before Astro Sync 1.2.0); a plain name is a
+ * folder of the new form. */
+export type TreeTargetFolder =
+  string | { name: string; layout?: "inputOutput" | "legacy" };
+
 export function folderTree(
   rootName: string,
   nightFolder: string,
-  targetFolders: readonly string[],
+  targetFolders: readonly TreeTargetFolder[],
 ): TreeRow[] {
   const rows: TreeRow[] = [
     { depth: 0, name: `${rootName}/`, noteKey: null },
@@ -283,14 +289,33 @@ export function folderTree(
     { depth: 3, name: "dark-flats/", noteKey: null },
     { depth: 3, name: "biases/", noteKey: null },
   ];
-  targetFolders.forEach((folder, index) => {
+  targetFolders.forEach((target, index) => {
+    const folder = typeof target === "string" ? target : target.name;
+    const legacy = typeof target !== "string" && target.layout === "legacy";
     const name = folder.endsWith("/") ? folder : `${folder}/`;
     if (index === 0) {
       rows.push({ depth: 2, name, noteKey: "wizard.tree.target" });
-      rows.push({ depth: 3, name: "lights/", noteKey: "wizard.tree.lights" });
-      rows.push({ depth: 3, name: "final/", noteKey: "wizard.tree.final" });
+      if (legacy) {
+        // A target folder made before Astro Sync 1.2.0 keeps its form.
+        rows.push({ depth: 3, name: "lights/", noteKey: "wizard.tree.lights" });
+        rows.push({ depth: 3, name: "final/", noteKey: "wizard.tree.final" });
+      } else {
+        rows.push({ depth: 3, name: "input/", noteKey: "wizard.tree.input" });
+        rows.push({ depth: 4, name: "lights/", noteKey: "wizard.tree.lights" });
+        rows.push({
+          depth: 4,
+          name: "processed/",
+          noteKey: "wizard.tree.final",
+        });
+        rows.push({ depth: 3, name: "output/", noteKey: "wizard.tree.output" });
+      }
     } else {
-      rows.push({ depth: 2, name, noteKey: null, note: "lights/, final/" });
+      rows.push({
+        depth: 2,
+        name,
+        noteKey: null,
+        note: legacy ? "lights/, final/" : "input/, output/",
+      });
     }
   });
   return rows;

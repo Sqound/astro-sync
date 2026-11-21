@@ -8,8 +8,9 @@
 - 一夜的文件夹内：
   - `logs/`：当晚的 NINA、PHD2 和 ASIAIR 日志；
   - `calibration/`：`darks/`、`flats/`、`dark-flats/` 和 `biases/`；
-  - 每个目标一个文件夹（`M31`、`NGC 7000` 等），其中 `lights/` 存放原始帧（FITS 或相机的 RAW 文件），`final/` 存放你处理好的图像（TIFF、JPEG 或 PNG）；
-  - `stacked/` 和 `progression/`：只有在 Astro Sync 自己生成图像时才会创建。你在发送前调整的图像会写入 `stacked/adjusted/`，放在原始渲染旁边，绝不覆盖它。
+  - 每个目标一个文件夹（`M31`、`NGC 7000` 等），其中 `input/` 存放你交给 Astro Sync 的文件：`input/lights/` 存放原始帧（FITS 或相机的 RAW 文件），`input/processed/` 存放后期处理软件导出的图像（TIFF、JPEG 或 PNG）；`output/` 存放 Astro Sync 生成的文件；
+  - `output/` 中的 `stacked/` 和 `progression/`：只有在 Astro Sync 自己生成图像时才会创建。这是目标中 Astro Sync 唯一写入的文件夹，它绝不写入 `input/`。你在发送前调整的图像会写入 `output/stacked/adjusted/`，放在原始渲染旁边，绝不覆盖它；
+  - 在 Astro Sync 1.2.0 之前整理的夜晚保持原来的形式，`lights/`、`final/` 和 `stacked/` 直接位于目标文件夹中。Astro Sync 按原样读取，不移动其中任何文件。
 - 名称以点开头的文件和文件夹（`.astro-sync-night.json`、`.astro-sync-target.json`、`.astro-sync-work/`）属于 Astro Sync：它们保存一夜或一个目标的身份信息，以及正在进行的任务的临时工作内容。请保持原样。
 
 ## 根目录中的 .md 文件

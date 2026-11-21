@@ -372,13 +372,13 @@ fn night_with(optics: bool) -> Night {
     };
     for n in 0..8 {
         write(
-            &format!("M31/lights/ha_{n}.fits"),
+            &format!("M31/input/lights/ha_{n}.fits"),
             &frame("Light Frame", "Ha", "300", n),
         );
     }
     for n in 0..4 {
         write(
-            &format!("M31/lights/oiii_{n}.fits"),
+            &format!("M31/input/lights/oiii_{n}.fits"),
             &frame("Light Frame", "OIII", "180", 10 + n),
         );
     }
@@ -394,14 +394,14 @@ fn night_with(optics: bool) -> Night {
             &frame("Flat Frame", "Ha", "2", 40 + n),
         );
     }
-    write("M31/stacked/M31_2026-10-07_raw.tif", b"tiff-a");
+    write("M31/output/stacked/M31_2026-10-07_raw.tif", b"tiff-a");
     write(
-        "M31/stacked/M31_2026-10-07_dualband-correction.tif",
+        "M31/output/stacked/M31_2026-10-07_dualband-correction.tif",
         b"tiff-b",
     );
-    write("M31/stacked/M31_2026-10-07_linear.tif", b"tiff-c");
+    write("M31/output/stacked/M31_2026-10-07_linear.tif", b"tiff-c");
     write(
-        "M31/stacked/M31_2026-10-07_stacking.json",
+        "M31/output/stacked/M31_2026-10-07_stacking.json",
         serde_json::json!({
             "format": 1,
             "frames": { "lights": 12, "darks": 3, "flats": 2, "dark_flats": 0, "biases": 0 },
@@ -480,7 +480,7 @@ fn a_nights_files_give_the_acquisition_the_sensor_and_the_calibration() {
         image_quality: true,
     };
     let families = progression_images::target_families(&night.folder, "M31");
-    let image = night.folder.join("M31/final/m31.tif");
+    let image = night.folder.join("M31/input/processed/m31.tif");
     let proposals = proposals_for_image(&image, ResultKind::Final, None, &families, &ctx);
 
     assert_eq!(proposals.acquisition.len(), 2);
@@ -504,7 +504,9 @@ fn a_nights_files_give_the_acquisition_the_sensor_and_the_calibration() {
 fn the_linear_image_without_processing_is_titled_in_the_language_of_the_app() {
     let night = night();
     let families = progression_images::target_families(&night.folder, "M31");
-    let image = night.folder.join("M31/stacked/M31_2026-10-07_linear.tif");
+    let image = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_linear.tif");
     for (language, title) in [
         ("fr", "Sans traitement"),
         ("en", "No processing"),
@@ -541,7 +543,9 @@ fn the_linear_image_without_processing_is_titled_in_the_language_of_the_app() {
 fn a_stacked_image_gives_its_processing_and_the_rendering_in_the_language_of_the_app() {
     let night = night();
     let families = progression_images::target_families(&night.folder, "M31");
-    let image = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let image = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_raw.tif");
     for (language, title) in [
         ("fr", "Rendu naturel"),
         ("en", "Natural render"),
@@ -583,7 +587,7 @@ fn a_stacked_image_gives_its_processing_and_the_rendering_in_the_language_of_the
     };
     let other = night
         .folder
-        .join("M31/stacked/M31_2026-10-07_dualband-correction.tif");
+        .join("M31/output/stacked/M31_2026-10-07_dualband-correction.tif");
     let proposals = proposals_for_image(&other, ResultKind::Stacked, None, &families, &ctx);
     // "Dual-band correction", the name of the shipped definition.
     assert_eq!(
@@ -609,7 +613,7 @@ fn an_image_rendered_from_the_image_of_a_device_says_so_in_its_processing() {
     fs::write(
         night
             .folder
-            .join("M31/stacked/M31_2026-10-09_stacking.json"),
+            .join("M31/output/stacked/M31_2026-10-09_stacking.json"),
         serde_json::json!({
             "format": 1,
             "frames": { "lights": 0, "darks": 0, "flats": 0, "dark_flats": 0, "biases": 0 },
@@ -623,7 +627,9 @@ fn an_image_rendered_from_the_image_of_a_device_says_so_in_its_processing() {
     )
     .unwrap();
     fs::write(
-        night.folder.join("M31/stacked/M31_2026-10-09_raw.tif"),
+        night
+            .folder
+            .join("M31/output/stacked/M31_2026-10-09_raw.tif"),
         b"tiff-d",
     )
     .unwrap();
@@ -635,7 +641,9 @@ fn an_image_rendered_from_the_image_of_a_device_says_so_in_its_processing() {
         pipelines: Some(&list),
         image_quality: true,
     };
-    let image = night.folder.join("M31/stacked/M31_2026-10-09_raw.tif");
+    let image = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-09_raw.tif");
     let proposals = proposals_for_image(&image, ResultKind::Stacked, None, &families, &ctx);
     let processing = proposals.processing.unwrap();
     assert_eq!(
@@ -651,7 +659,9 @@ fn an_image_rendered_from_the_image_of_a_device_says_so_in_its_processing() {
     // The window learns the origin from the provenance, plan by plan.
     assert!(recorded_device_master(&image));
     assert!(!recorded_device_master(
-        &night.folder.join("M31/stacked/M31_2026-10-07_raw.tif")
+        &night
+            .folder
+            .join("M31/output/stacked/M31_2026-10-07_raw.tif")
     ));
 }
 
@@ -667,7 +677,7 @@ fn a_stacked_image_without_a_provenance_names_no_rendering() {
         pipelines: Some(&list),
         image_quality: true,
     };
-    let alone = night.folder.join("M31/stacked/unknown.tif");
+    let alone = night.folder.join("M31/output/stacked/unknown.tif");
     let proposals = proposals_for_image(&alone, ResultKind::Stacked, None, &families, &ctx);
     assert_eq!(proposals.variant_generated_title, None);
     assert_eq!(proposals.processing, None);
@@ -697,7 +707,7 @@ fn the_decision_decides_what_each_image_carries() {
     let stacked = |sha: &str| {
         candidate(
             &night,
-            "M31/stacked/M31_2026-10-07_raw.tif",
+            "M31/output/stacked/M31_2026-10-07_raw.tif",
             ResultKind::Stacked,
             sha,
         )
@@ -776,7 +786,7 @@ fn a_progression_image_proposes_nothing() {
     let mut plans = vec![plan(
         candidate(
             &night,
-            "M31/final/progress.png",
+            "M31/input/processed/progress.png",
             ResultKind::Progression,
             "p",
         ),
@@ -793,7 +803,7 @@ fn a_progression_image_proposes_nothing() {
 fn write_quality(night: &Night, mutate: impl FnOnce(&mut serde_json::Value)) {
     let path = night
         .folder
-        .join("M31/stacked/M31_2026-10-07_stacking.json");
+        .join("M31/output/stacked/M31_2026-10-07_stacking.json");
     let mut provenance: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
     provenance["quality"] = serde_json::json!({
@@ -823,7 +833,7 @@ fn an_image_with_a_contrast_says_so_in_its_processing_and_its_title() {
     fs::write(
         night
             .folder
-            .join("M31/stacked/M31_2026-10-07_raw_strong.tif"),
+            .join("M31/output/stacked/M31_2026-10-07_raw_strong.tif"),
         b"tiff-d",
     )
     .unwrap();
@@ -835,12 +845,16 @@ fn an_image_with_a_contrast_says_so_in_its_processing_and_its_title() {
         recorded_contrast(
             &night
                 .folder
-                .join("M31/stacked/M31_2026-10-07_raw_strong.tif")
+                .join("M31/output/stacked/M31_2026-10-07_raw_strong.tif")
         ),
         crate::stacking::Contrast::Strong
     );
     assert_eq!(
-        recorded_contrast(&night.folder.join("M31/stacked/M31_2026-10-07_raw.tif")),
+        recorded_contrast(
+            &night
+                .folder
+                .join("M31/output/stacked/M31_2026-10-07_raw.tif")
+        ),
         crate::stacking::Contrast::None
     );
     assert!(
@@ -883,7 +897,7 @@ fn an_image_with_a_finish_says_so_in_its_processing_and_its_title() {
     fs::write(
         night
             .folder
-            .join("M31/stacked/M31_2026-10-07_raw_strong_colour-strong_stars-strong.tif"),
+            .join("M31/output/stacked/M31_2026-10-07_raw_strong_colour-strong_stars-strong.tif"),
         b"tiff-e",
     )
     .unwrap();
@@ -893,16 +907,23 @@ fn an_image_with_a_finish_says_so_in_its_processing_and_its_title() {
     let finished_title = title_of(&finished, "fr").unwrap();
     assert_eq!(
         recorded_retouch(
-            &night
-                .folder
-                .join("M31/stacked/M31_2026-10-07_raw_strong_colour-strong_stars-strong.tif")
+            &night.folder.join(
+                "M31/output/stacked/M31_2026-10-07_raw_strong_colour-strong_stars-strong.tif"
+            )
         ),
         Retouch {
             colour: Colour::Strong,
             soft_stars: SoftStars::Strong
         }
     );
-    assert!(recorded_retouch(&night.folder.join("M31/stacked/M31_2026-10-07_raw.tif")).is_none());
+    assert!(
+        recorded_retouch(
+            &night
+                .folder
+                .join("M31/output/stacked/M31_2026-10-07_raw.tif")
+        )
+        .is_none()
+    );
     let steps = finished.processing.unwrap().steps.unwrap();
     assert!(
         steps.starts_with("raw · contrast strong · colour 40 · soft stars 85"),
@@ -966,7 +987,7 @@ fn each_pipeline_s_variant_says_its_own_finish() {
         fs::write(
             night
                 .folder
-                .join(format!("M31/stacked/M31_2026-10-07_{stem}.tif")),
+                .join(format!("M31/output/stacked/M31_2026-10-07_{stem}.tif")),
             format!("tiff-{stem}"),
         )
         .unwrap();
@@ -1128,7 +1149,8 @@ fn a_render_knows_its_place_among_the_renders_asked_for() {
                 "contrast": "strong"
             }));
     });
-    let rank = |name: &str| recorded_render_rank(&night.folder.join("M31/stacked").join(name));
+    let rank =
+        |name: &str| recorded_render_rank(&night.folder.join("M31/output/stacked").join(name));
     assert_eq!(rank("M31_2026-10-07_raw.tif"), Some(0));
     assert_eq!(rank("M31_2026-10-07_dualband-correction.tif"), Some(1));
     assert_eq!(rank("M31_2026-10-07_linear.tif"), Some(2));
@@ -1188,7 +1210,7 @@ fn stacked_proposals(night: &Night, render: &str, with_right: bool) -> Proposals
     };
     let image = night
         .folder
-        .join(format!("M31/stacked/M31_2026-10-07_{render}.tif"));
+        .join(format!("M31/output/stacked/M31_2026-10-07_{render}.tif"));
     proposals_for_image(&image, ResultKind::Stacked, None, &families, &ctx)
 }
 
@@ -1291,12 +1313,16 @@ fn only_the_images_the_stacker_made_have_a_quality() {
         pipelines: None,
         image_quality: true,
     };
-    let own = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let own = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_raw.tif");
     assert_eq!(
         proposals_for_image(&own, ResultKind::Final, None, &families, &ctx).image_quality,
         None
     );
-    let foreign = night.folder.join("M31/stacked/my-pixinsight-master.tif");
+    let foreign = night
+        .folder
+        .join("M31/output/stacked/my-pixinsight-master.tif");
     assert_eq!(
         proposals_for_image(&foreign, ResultKind::Stacked, None, &families, &ctx).image_quality,
         None
@@ -1318,7 +1344,7 @@ fn the_decision_decides_who_carries_the_quality() {
     let stacked = |sha: &str| {
         candidate(
             &night,
-            "M31/stacked/M31_2026-10-07_raw.tif",
+            "M31/output/stacked/M31_2026-10-07_raw.tif",
             ResultKind::Stacked,
             sha,
         )
@@ -1400,7 +1426,7 @@ fn final_proposals(night: &Night, with_right: bool) -> Proposals {
         pipelines: Some(&list),
         image_quality: with_right,
     };
-    let image = night.folder.join("M31/final/m31.tif");
+    let image = night.folder.join("M31/input/processed/m31.tif");
     proposals_for_image(&image, ResultKind::Final, None, &families, &ctx)
 }
 
@@ -1579,14 +1605,14 @@ fn device_family_night() -> Night {
             }
             outputs.push(entry);
             fs::write(
-                night.folder.join("M31/stacked").join(&file),
+                night.folder.join("M31/output/stacked").join(&file),
                 file.as_bytes(),
             )
             .unwrap();
         }
     }
     fs::write(
-        night.folder.join(format!("M31/stacked/{stem}_stacking.json")),
+        night.folder.join(format!("M31/output/stacked/{stem}_stacking.json")),
         serde_json::json!({
             "format": 1,
             "frames": { "lights": 0, "darks": 0, "flats": 0, "dark_flats": 0, "biases": 0 },
@@ -1626,7 +1652,7 @@ fn every_image_of_a_device_night_carries_its_title_its_finish_and_its_origin() {
     .into_iter()
     .enumerate()
     {
-        let relative = format!("M31/stacked/{stem}_{pipeline}{suffix}.png");
+        let relative = format!("M31/output/stacked/{stem}_{pipeline}{suffix}.png");
         let mut image = candidate(&night, &relative, ResultKind::Stacked, &format!("sha{n}"));
         image.render = Some(pipeline.to_string());
         let decision = match n {
@@ -1682,10 +1708,10 @@ fn a_render_without_its_record_is_named_by_its_file_name() {
     let list = pipelines::read_manifests(None, None, "en");
     let plain = night
         .folder
-        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction.png");
+        .join("M31/output/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction.png");
     let strong = night
         .folder
-        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction_strong.png");
+        .join("M31/output/stacked/M31_2026-10-10_IRCUT_10s_g200_dualband-correction_strong.png");
     for path in [&plain, &strong] {
         fs::write(path, path.to_string_lossy().as_bytes()).unwrap();
     }
@@ -1717,13 +1743,13 @@ fn a_render_moved_away_from_its_record_is_found_by_its_digest() {
     let night = night();
     let families = progression_images::target_families(&night.folder, "M31");
     let list = pipelines::read_manifests(None, None, "en");
-    let moved = night.folder.join("M31/final/my-own-name.png");
+    let moved = night.folder.join("M31/input/processed/my-own-name.png");
     fs::write(&moved, b"the render").unwrap();
     let digest = crate::scanner::file_sha256(&moved).unwrap();
     fs::write(
         night
             .folder
-            .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_stacking.json"),
+            .join("M31/output/stacked/M31_2026-10-10_IRCUT_10s_g200_stacking.json"),
         serde_json::json!({
             "frames": { "lights": 0 },
             "stackedFrames": 36,
@@ -1746,7 +1772,7 @@ fn a_render_moved_away_from_its_record_is_found_by_its_digest() {
         Some("dualband-correction · Seestar S50 Pro stack · contrast strong · 36 lights")
     );
     // A final image no record holds, however it is named, proposes no rendering.
-    let own = night.folder.join("M31/final/M31_x_hoo.png");
+    let own = night.folder.join("M31/input/processed/M31_x_hoo.png");
     fs::write(&own, b"retouched elsewhere").unwrap();
     let alone = proposals_for_image(&own, ResultKind::Final, None, &families, &ctx);
     assert_eq!(alone.variant_generated_title, None);
@@ -1762,7 +1788,9 @@ fn a_render_ticked_in_the_import_carries_what_the_night_wizard_proposes() {
     let list = pipelines::read_manifests(None, None, "en");
     let ctx = ctx_en(&night, &list);
     let families = progression_images::target_families(&night.folder, "M31");
-    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let raw = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_raw.tif");
     let wizard = proposals_for_image(&raw, ResultKind::Stacked, Some("raw"), &families, &ctx);
 
     let capture = import_render_proposals(
@@ -1781,7 +1809,7 @@ fn a_render_ticked_in_the_import_carries_what_the_night_wizard_proposes() {
 
     let other = night
         .folder
-        .join("M31/stacked/M31_2026-10-07_dualband-correction.tif");
+        .join("M31/output/stacked/M31_2026-10-07_dualband-correction.tif");
     let variant = import_render_proposals(
         &other,
         ResultKind::Stacked,
@@ -1808,7 +1836,7 @@ fn an_imported_render_without_a_record_is_named_by_its_file_name() {
     let list = pipelines::read_manifests(None, None, "en");
     let image = night
         .folder
-        .join("M31/stacked/M31_2026-10-10_IRCUT_10s_g200_hoo_strong.png");
+        .join("M31/output/stacked/M31_2026-10-10_IRCUT_10s_g200_hoo_strong.png");
     fs::write(&image, b"png").unwrap();
     let proposals = import_render_proposals(
         &image,
@@ -1830,7 +1858,9 @@ fn an_imported_render_without_a_record_is_named_by_its_file_name() {
 fn the_import_proposes_nothing_for_a_file_outside_stacked_nor_for_the_linear_file() {
     let night = night();
     let list = pipelines::read_manifests(None, None, "en");
-    let elsewhere = night.folder.join("M31/final/M31_2026-10-07_raw.png");
+    let elsewhere = night
+        .folder
+        .join("M31/input/processed/M31_2026-10-07_raw.png");
     fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
     fs::write(&elsewhere, b"png").unwrap();
     assert_eq!(
@@ -1844,7 +1874,9 @@ fn the_import_proposes_nothing_for_a_file_outside_stacked_nor_for_the_linear_fil
         ),
         None
     );
-    let linear = night.folder.join("M31/stacked/M31_2026-10-07_linear.tif");
+    let linear = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_linear.tif");
     assert_eq!(
         import_render_proposals(
             &linear,
@@ -1862,12 +1894,14 @@ fn the_import_proposes_nothing_for_a_file_outside_stacked_nor_for_the_linear_fil
 #[test]
 fn the_series_of_a_render_is_its_recorded_total_exposure() {
     let night = night();
-    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let raw = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_raw.tif");
     assert_eq!(recorded_series_seconds(&raw), None);
     fs::write(
         night
             .folder
-            .join("M31/stacked/M31_2026-10-07_stacking.json"),
+            .join("M31/output/stacked/M31_2026-10-07_stacking.json"),
         serde_json::json!({
             "outputs": [{ "pipeline": "raw", "file": "M31_2026-10-07_raw.tif" }],
             "integration": { "family": "Ha_300s_g100", "totalSeconds": 2399.6 }
@@ -1886,10 +1920,12 @@ fn the_series_of_a_render_is_its_recorded_total_exposure() {
 fn the_renders_of_one_sending_read_the_frames_of_their_target_once() {
     let night = night_with(true);
     let list = pipelines::read_manifests(None, None, "en");
-    let raw = night.folder.join("M31/stacked/M31_2026-10-07_raw.tif");
+    let raw = night
+        .folder
+        .join("M31/output/stacked/M31_2026-10-07_raw.tif");
     let other = night
         .folder
-        .join("M31/stacked/M31_2026-10-07_dualband-correction.tif");
+        .join("M31/output/stacked/M31_2026-10-07_dualband-correction.tif");
     let alone = |image: &Path, render: &str, capture: bool, quality: bool| {
         import_render_proposals(
             image,
@@ -1946,12 +1982,12 @@ fn queuing_time_by_frames() {
     use std::time::Instant;
     let night = night();
     let list = pipelines::read_manifests(None, None, "en");
-    let lights = night.folder.join("M31/lights");
+    let lights = night.folder.join("M31/input/lights");
     let header = fs::read(lights.join("ha_0.fits")).unwrap();
     for n in 0..1000 {
         fs::write(lights.join(format!("more_{n:04}.fits")), &header).unwrap();
     }
-    let stacked = night.folder.join("M31/stacked");
+    let stacked = night.folder.join("M31/output/stacked");
     let png = stacked.join("M31_2026-10-07_raw.tif");
     let big = stacked.join("M31_2026-10-07_dualband-correction.tif");
     fs::write(&png, vec![7_u8; 8 << 20]).unwrap();

@@ -62,14 +62,14 @@ pub const VARIANT_UNCONFIRMED_NOTE: &str = "variant_unconfirmed";
 pub enum ResultKind {
     /// The processed image of a target, from its `final/` folder.
     Final,
-    /// The image the stacking wrote in `<target>/stacked/`.
+    /// The image the stacking wrote in `<target>/output/stacked/`.
     Stacked,
-    /// An image of the progression, from `<target>/progression/`.
+    /// An image of the progression, from `<target>/output/progression/`.
     Progression,
-    /// The image of a multi-night plan, from `<plan>/stacked/`: a capture of
+    /// The image of a multi-night plan, from `<plan>/output/stacked/`: a capture of
     /// the plan, never of a night (`role: "plan"`).
     Plan,
-    /// The linear render ("No processing"), from `<target>/stacked/`: a file
+    /// The linear render ("No processing"), from `<target>/output/stacked/`: a file
     /// attached to a capture (`role: "linear"`), never an image of it. It
     /// needs the capture another result creates or that is online, counts
     /// against the storage only, and has no sky solution.

@@ -53,9 +53,25 @@ test("Guide: the structure table says what each folder receives and what Astro S
     [
       "logs/",
       "calibration/darks/ · flats/ · dark-flats/ · biases/",
-      "<cible>/lights/",
-      "<cible>/final/",
+      "<cible>/input/lights/",
+      "<cible>/input/processed/",
+      "<cible>/output/",
     ],
+  );
+  // The rule made visible: Astro Sync writes in output/ only, never in
+  // input/, and a night of the earlier form is read as it is.
+  same(
+    fr("guide.row.output.use"),
+    "Envoyé si vous le choisissez. Astro Sync n’écrit que là, et Réglages › Fichiers de traitement ne nettoie que là.",
+  );
+  assert.match(
+    plain(fr("guide.note.never")),
+    /n’écrit que dans output\/ .*jamais dans input\//u,
+  );
+  assert.ok(STRUCTURE_NOTES.includes("guide.note.earlier"));
+  assert.match(
+    plain(fr("guide.note.earlier")),
+    /^Une nuit rangée avant Astro Sync 1\.2\.0 garde sa forme\s?: lights\/, final\/ et stacked\//u,
   );
   same(
     fr(STRUCTURE_ROWS[0].useKey),
@@ -74,11 +90,19 @@ test("Guide: the structure table says what each folder receives and what Astro S
 });
 
 test("Guide: the Finder drawn grey, the night, its targets, a target's frames", () => {
-  const columns = finderColumns("Astro Sync");
-  assert.equal(columns.length, 4);
+  const columns = finderColumns();
+  assert.equal(columns.length, 5);
   assert.deepEqual(
     columns.map((column) => column.items.find((item) => item.open)?.name),
-    ["Astro Sync", EXAMPLE_NIGHT, "M31", "lights"],
+    [EXAMPLE_NIGHT, "M31", "input", "lights", undefined],
+  );
+  assert.deepEqual(
+    columns[2].items.map((item) => item.name),
+    ["input", "output"],
+  );
+  assert.deepEqual(
+    columns[3].items.map((item) => item.name),
+    ["lights", "processed"],
   );
   same(fr("guide.finder.drawn"), "Finder · dessiné, non capturé");
   same(
@@ -154,7 +178,7 @@ test("Guide: the four tips, the command and the pattern to copy, ASSISTANT-IA.md
   const root = "~/Documents/Astro Sync";
   assert.equal(
     linkCommand(root, "<disque externe>"),
-    'ln -s "<disque externe>/2026-10-07/Light" \\\n  "~/Documents/Astro Sync/2026-10-07 · Col des Étoiles · 7f3a2c/M31/lights"',
+    'ln -s "<disque externe>/2026-10-07/Light" \\\n  "~/Documents/Astro Sync/2026-10-07 · Col des Étoiles · 7f3a2c/M31/input/lights"',
   );
   assert.equal(
     ninaPath(root),
@@ -162,7 +186,7 @@ test("Guide: the four tips, the command and the pattern to copy, ASSISTANT-IA.md
   );
   assert.equal(
     NINA_PATTERN,
-    "$$TARGETNAME$$\\lights\\$$DATETIME$$_$$FILTER$$_$$EXPOSURETIME$$s_$$FRAMENR$$",
+    "$$TARGETNAME$$\\input\\lights\\$$DATETIME$$_$$FILTER$$_$$EXPOSURETIME$$s_$$FRAMENR$$",
   );
   assert.equal(
     assistantFile("/home/camille/Documents/Astro Sync/"),

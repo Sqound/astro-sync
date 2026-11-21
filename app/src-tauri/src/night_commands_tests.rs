@@ -285,7 +285,7 @@ fn the_working_folder_the_night_folder_and_its_detection() {
         .answer(Duration::from_secs(5))
         .unwrap();
     let folder = std::path::PathBuf::from(made["folder"].as_str().unwrap());
-    assert!(folder.join("M31/lights").is_dir());
+    assert!(folder.join("M31/input/lights").is_dir());
     assert!(!folder.join("IC 1396").exists());
     // The folder made is remembered for the night: moved away later, the
     // step asks to find it again rather than making another one.
@@ -402,7 +402,7 @@ fn a_followed_copy_is_the_nights_folder_from_then_on() {
         .answer(Duration::from_secs(5))
         .expect("the followed copy is prepared");
     assert_eq!(again["folder"], copy.to_string_lossy().as_ref());
-    assert!(copy.join("M31/lights").is_dir());
+    assert!(copy.join("M31/input/lights").is_dir());
     drop(harness.app);
 }
 

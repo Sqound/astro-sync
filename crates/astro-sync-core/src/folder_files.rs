@@ -86,12 +86,33 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// The digests of the README in the ten languages: any of them found in the
-/// file is Astro Sync's text.
+/// The SHA-256 of the README Astro Sync 1.1 wrote, before `input/` and
+/// `output/`, in [`LANGUAGES`]' order: such a file is Astro Sync's, and is
+/// written again even when the settings lost its digest.
+pub const EARLIER_README_SHA256: [&str; 10] = [
+    "ea49921827d24d9243ee45b3e34581bd9d689af168a065c8cbfb7a88c4471d5e",
+    "1cecaaf4d5dabaecc4e5e5f80d3cb0246dd39a82c83741da6279f0702990ac4b",
+    "fc2bad0d1da211f60cc1bac156ab30bac7321b0dd17bc5177e8d90e2c5b828bc",
+    "e0a13c77056ba667c5f3526447dbf42513dd8e91ab69bcf21b4f87470b36bc98",
+    "a2f4948aa8d08ecf2cad343f73953cd8ae5743cd34140886d3f8d5e9b5e39549",
+    "ddf43364deed7b13369b414cdd3f47d20a4039b955ff33f67dbe0ee5ba68140c",
+    "a097ab6dabd298b600c6e04e6b39c301c695dd38d4dc7dc10a76ccfc2babc25b",
+    "f046b611f3127354cdf9c725e35ae4ea37b770d0d1073cec2049fb4e0199b5a0",
+    "10904d5518553aa6121a22c195954e801e0c629a93728752fe64c6848f19e2d4",
+    "2293f4670e88f56b62c0830cc0c3e35f8676449a4472720fb4ddfd749a08de4b",
+];
+
+/// The digests of the README in the ten languages, today's and Astro Sync
+/// 1.1's: any of them found in the file is Astro Sync's text.
 fn readme_digests() -> Vec<String> {
     READMES
         .iter()
         .map(|text| sha256_hex(text.as_bytes()))
+        .chain(
+            EARLIER_README_SHA256
+                .iter()
+                .map(|digest| (*digest).to_string()),
+        )
         .collect()
 }
 

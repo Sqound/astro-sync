@@ -375,14 +375,21 @@ def choose_pipelines(args: argparse.Namespace) -> list[pipeline_defs.Pipeline]:
     return chosen
 
 
+def is_persons_folder(out: Path) -> bool:
+    """Whether ``out`` is a folder the person gives Astro Sync: the final image's (``final/`` of the earlier form,
+    ``input/processed/``) or any folder directly under a target's ``input/``. The stacked image never goes there."""
+    name = out.name.lower()
+    return name in ("final", "processed") or name == "input" or out.parent.name.lower() == "input"
+
+
 def build_device_plan(args: argparse.Namespace) -> Plan:
     """The plan of ``--from-master``: the image of a device, no frame, nothing to stack."""
     pipelines = choose_pipelines(args)
     image = args.from_master
     if image.suffix.lower() not in FITS_SUFFIXES or not image.is_file():
         raise StackingError("folder_missing", f"not a FITS file: {image}", EXIT_INPUT)
-    if args.out.name.lower() == "final":
-        raise StackingError("output_is_final", "the stacked image never goes to final/", EXIT_INPUT)
+    if is_persons_folder(args.out):
+        raise StackingError("output_is_final", "the stacked image never goes to input/ nor to final/", EXIT_INPUT)
     for other in (args.work, args.out):
         if other.resolve() == image.resolve() or is_inside(image, other):
             raise StackingError("output_inside_input", f"{image} is inside {other}", EXIT_INPUT)
@@ -411,8 +418,8 @@ def build_plan(args: argparse.Namespace) -> Plan:
         for other in (args.work, args.out):
             if is_inside(other, folder):
                 raise StackingError("output_inside_input", f"{other} is inside the {kind} folder", EXIT_INPUT)
-    if args.out.name.lower() == "final":
-        raise StackingError("output_is_final", "the stacked image never goes to final/", EXIT_INPUT)
+    if is_persons_folder(args.out):
+        raise StackingError("output_is_final", "the stacked image never goes to input/ nor to final/", EXIT_INPUT)
     frames = {kind: fits_files(folder) for kind, folder in folders.items()}
     if args.frames_from is not None:
         frames["lights"] = listed_frames(args.frames_from, args.lights)

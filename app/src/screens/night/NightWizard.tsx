@@ -49,6 +49,7 @@ import {
 } from "../../lib/bridge";
 import { latestOnly } from "../../lib/concurrency";
 import { formatError } from "../../lib/format";
+import { targetFolders as targetFolders_ } from "../../lib/targetFolders";
 import { promptNames } from "../../lib/promptWindow";
 import { displayPath, homeOf } from "../../lib/home";
 import { windowStorage } from "../../lib/lastReport";
@@ -1043,9 +1044,18 @@ function FolderStep({
   const path = displayPath(folder.folder, home);
   const nightName = baseName(folder.folder);
   const root = context.root ?? parentOf(folder.folder);
-  const targetFolders = folder.targets
-    .filter((target) => target.state !== "out-of-night")
-    .map((target) => target.folderName);
+  const inNight = folder.targets.filter(
+    (target) => target.state !== "out-of-night",
+  );
+  const targetFolders = inNight.map((target) => target.folderName);
+  // The tree shows each target folder in its form (an earlier night's keeps
+  // `lights/` and `final/`).
+  const treeTargets = inNight.map((target) => ({
+    name: target.folderName,
+    layout: target.layout,
+  }));
+  // The notes beside the tree name the first target's folders.
+  const firstFolders = targetFolders_(inNight[0]?.layout);
   const finder = navigator.userAgent.includes("Windows")
     ? "wizard.folder.openExplorer"
     : navigator.userAgent.includes("Mac")
@@ -1148,7 +1158,7 @@ function FolderStep({
         {frameOpen && (
           <div className="as-fold__body">
             <ul className="as-tree">
-              {folderTree(baseName(root), nightName, targetFolders).map(
+              {folderTree(baseName(root), nightName, treeTargets).map(
                 (row, index) => (
                   <li
                     key={index}
@@ -1171,13 +1181,16 @@ function FolderStep({
             <div className="as-tree__aside">
               <p>
                 <Segs
-                  segs={[{ strong: "final/" }, t("wizard.folder.finalNote")]}
+                  segs={[
+                    { strong: firstFolders.processed },
+                    t("wizard.folder.finalNote"),
+                  ]}
                 />
               </p>
               <p>
                 <Segs
                   segs={[
-                    { strong: "lights/" },
+                    { strong: firstFolders.lights },
                     ", ",
                     { strong: "calibration/" },
                     ", ",

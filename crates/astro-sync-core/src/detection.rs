@@ -39,8 +39,8 @@ use crate::nfc::{same_name, to_nfc};
 use crate::scanner::{self, FileClass, FolderWalk, LinkIssue, LinkProblem, ScanError, WalkedFile};
 use crate::time_util::parse_iso8601_utc_to_unix_seconds;
 use crate::working_folder::{
-    CALIBRATION_DIR, CALIBRATION_KINDS, DEVICE_DIR, FINAL_DIR, LIGHTS_DIR, LOGS_DIR,
-    PROGRESSION_DIR, STACKED_DIR, target_folder_name, target_folders_by_identity,
+    CALIBRATION_DIR, CALIBRATION_KINDS, LOGS_DIR, TargetLayout, TargetPart, part_of_target_path,
+    target_folder_name, target_folders_by_identity, target_layout,
 };
 
 /// The length of a night's window: from local noon of its evening to local
@@ -280,7 +280,7 @@ pub enum Severity {
 /// The message keys, one per rule of the sheet's table. An interface looks
 /// them up in its dictionaries with the finding's `params`.
 pub mod keys {
-    /// No final image in `<target>/final/` (nor online, nor stacked), but
+    /// No final image in `<target>/input/processed/` (nor online, nor stacked), but
     /// FITS frames: a warning, the frames alone are used.
     pub const FINAL_MISSING: &str = "detection.finalMissing";
     /// No final image, but the image a device stacked: it is the source of
@@ -319,6 +319,11 @@ pub mod keys {
     pub const LINK_TARGET_MISSING: &str = "detection.linkTargetMissing";
     /// A loop of symbolic links.
     pub const LINK_LOOP: &str = "detection.linkLoop";
+    /// A target of the new form (`input/`, `output/`) that also holds folders
+    /// of the earlier form (`lights/`, `final/`…): those are not read, and
+    /// nothing is moved or merged. `folders` names them, `inputFolder` is
+    /// where the files are read; a warning.
+    pub const TARGET_TWO_LAYOUTS: &str = "detection.targetTwoLayouts";
 }
 
 /// One finding: a rule of the sheet, its parameters, the files concerned.
@@ -412,7 +417,7 @@ impl Finding {
                 let header = self.text("header");
                 let filed = "filed in";
                 let destination = if to.is_empty() {
-                    "to move into the lights/ folder of their target".to_string()
+                    "to move into the input/lights/ folder of their target".to_string()
                 } else {
                     format!("to move into {to}")
                 };
@@ -522,6 +527,12 @@ impl Finding {
                 format!("Link to a missing disk: {}.", self.text("path"))
             }
             keys::LINK_LOOP => format!("Link that loops back on itself: {}.", self.text("path")),
+            keys::TARGET_TWO_LAYOUTS => format!(
+                "{} holds input/ and also {}, the folders of the earlier form: only {} is read. Move the files yourself if you want them read.",
+                self.text("target"),
+                self.text("folders"),
+                self.text("inputFolder")
+            ),
             other => other.to_string(),
         }
     }
@@ -565,7 +576,7 @@ fn short_date(iso: &str) -> String {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MinimumSource {
-    /// A final image in `<target>/final/`.
+    /// A final image in `<target>/input/processed/`.
     FinalFile,
     /// The final image is already online.
     Online,
@@ -604,6 +615,10 @@ pub struct TargetDetection {
     /// `None` when there is none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device: Option<DeviceDetection>,
+    /// The form of the target's folder: `inputOutput` (`input/lights/`,
+    /// `input/processed/`, `output/stacked/`) or `legacy` (`lights/`,
+    /// `final/`, `stacked/`, a folder made before Astro Sync 1.2.0).
+    pub layout: TargetLayout,
 }
 
 /// What the target's `device/` folder holds: the
@@ -770,14 +785,17 @@ enum Place {
     Logs,
     /// `calibration/<kind>/…`: the kind's folder name.
     Calibration(&'static str),
-    /// `<target>/lights/…`, by index in the target list.
+    /// `<target>/input/lights/…`, by index in the target list.
     Lights(usize),
     Final(usize),
-    /// `<target>/device/…`: what a device stacked itself.
+    /// `<target>/input/device/…`: what a device stacked itself.
     Device(usize),
-    /// `<target>/stacked/…` or `<target>/progression/…`: Astro Sync's own
+    /// `<target>/output/stacked/…` or `<target>/output/progression/…`: Astro Sync's own
     /// results (the stacking, the progression images).
     AstroSyncOutput,
+    /// A folder of the earlier form (`lights/`, `final/`…) in a target of the
+    /// new form: not read, said ([`keys::TARGET_TWO_LAYOUTS`]).
+    OtherLayout(usize),
     /// A folder kept for a target out of the night.
     OutOfNight,
     Outside,
@@ -789,6 +807,8 @@ struct TargetDir {
     index: Option<usize>,
     name: String,
     in_night: bool,
+    /// The folder's form ([`TargetLayout`]), read once.
+    layout: TargetLayout,
 }
 
 /// The fingerprint of a night folder, without reading any file: its files'
@@ -858,7 +878,7 @@ pub fn detect_night(
         .map(|(index, _)| index)
         .collect();
     let mut headers: BTreeMap<usize, FrameHeaderRecord> = BTreeMap::new();
-    // The images of a known device in `<target>/device/`.
+    // The images of a known device in `<target>/input/device/`.
     let mut device_infos: BTreeMap<usize, device_master::DeviceImageInfo> = BTreeMap::new();
     let total = to_read.len() as u64;
     for (done, index) in to_read.iter().enumerate() {
@@ -911,6 +931,8 @@ pub fn detect_night(
     // Per target: the images of a known device and the `.jpg` of `device/`.
     let mut device_images: Vec<Vec<DeviceImage>> = vec![Vec::new(); input.targets.len()];
     let mut device_jpgs: Vec<Vec<String>> = vec![Vec::new(); input.targets.len()];
+    // Per target of the new form: the files of its folders of the earlier form.
+    let mut other_layout: Vec<Vec<String>> = vec![Vec::new(); input.targets.len()];
 
     // Misfiled frames, grouped by (from, type): (to, fromLights, files).
     let mut misfiled: BTreeMap<(String, FrameType), Misfiled> = BTreeMap::new();
@@ -944,6 +966,9 @@ pub fn detect_night(
                 });
             }
             Place::AstroSyncOutput | Place::OutOfNight => {}
+            Place::OtherLayout(target) => {
+                other_layout[*target].push(file.relative_path.clone());
+            }
             Place::Outside => outside.push(file.relative_path.clone()),
             Place::Device(target) => {
                 let extension = extension_of(&file.relative_path);
@@ -981,7 +1006,11 @@ pub fn detect_night(
                     continue;
                 }
                 let kind = effective_type(FrameType::Light);
-                let folder_label = format!("{}/{LIGHTS_DIR}/", dirs_name(&dirs, input, *target));
+                let folder_label = part_label(
+                    &dirs_name(&dirs, input, *target),
+                    TargetPart::Lights,
+                    dirs_layout(&dirs, *target),
+                );
                 if kind != FrameType::Light {
                     count_calibration(&mut calibration, kind);
                     record_calibration(kind, header, &mut flat_filters, &mut dark_settings, None);
@@ -1129,15 +1158,42 @@ pub fn detect_night(
         let label = folder_name
             .clone()
             .unwrap_or_else(|| target_folder_name(&target.designation));
+        let layout = dirs_layout(&dirs, index);
+        let final_folder = part_label(&label, TargetPart::Processed, layout);
+        let lights_folder = part_label(&label, TargetPart::Lights, layout);
 
         if in_night {
+            if !other_layout[index].is_empty() {
+                let beside = dir.map_or_else(Vec::new, |d| {
+                    crate::working_folder::legacy_folders_beside(&folder.join(&d.name))
+                });
+                let folders = beside
+                    .iter()
+                    .map(|name| format!("{label}/{name}/"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                findings.push(
+                    Finding::new(
+                        keys::TARGET_TWO_LAYOUTS,
+                        Severity::Warning,
+                        Some(&target.target_id),
+                        json!({
+                            "target": target.designation,
+                            "count": other_layout[index].len(),
+                            "folders": folders,
+                            "inputFolder": format!("{label}/{}/", crate::working_folder::INPUT_DIR),
+                        }),
+                    )
+                    .with_files(other_layout[index].clone()),
+                );
+            }
             if !refused_finals[index].is_empty() {
                 findings.push(
                     Finding::new(
                         keys::FINAL_FRAME_REFUSED,
                         Severity::Warning,
                         Some(&target.target_id),
-                        json!({ "target": target.designation, "count": refused_finals[index].len(), "folder": format!("{label}/{FINAL_DIR}/") }),
+                        json!({ "target": target.designation, "count": refused_finals[index].len(), "folder": final_folder }),
                     )
                     .with_files(refused_finals[index].clone()),
                 );
@@ -1145,7 +1201,7 @@ pub fn detect_night(
             // The image a device stacked is a source of the stacking too.
             let has_frames = !lights[index].is_empty() || has_device;
             let has_final = matches!(minimum, MinimumSource::FinalFile | MinimumSource::Online);
-            let finding_params = json!({ "target": target.designation, "folder": format!("{label}/{FINAL_DIR}/"), "lightsFolder": format!("{label}/{LIGHTS_DIR}/") });
+            let finding_params = json!({ "target": target.designation, "folder": final_folder, "lightsFolder": lights_folder });
             if !has_frames && !has_final {
                 findings.push(Finding::new(
                     keys::TARGET_EMPTY,
@@ -1170,8 +1226,8 @@ pub fn detect_night(
                         Some(&target.target_id),
                         json!({
                             "target": target.designation,
-                            "folder": format!("{label}/{FINAL_DIR}/"),
-                            "lightsFolder": format!("{label}/{LIGHTS_DIR}/"),
+                            "folder": final_folder,
+                            "lightsFolder": lights_folder,
                             "restackFrames": restack,
                         }),
                     ));
@@ -1287,6 +1343,7 @@ pub fn detect_night(
             final_bytes,
             light_summary,
             device,
+            layout,
         });
     }
     // Folders whose target is not in the list at all: kept, out of the night.
@@ -1304,6 +1361,7 @@ pub fn detect_night(
             final_bytes: None,
             light_summary: FrameSummary::default(),
             device: None,
+            layout: dir.layout,
         });
     }
 
@@ -1351,6 +1409,12 @@ pub fn detect_night(
                     "count": files.len(),
                     "object": input.targets[other].designation,
                     "folder": folder_label,
+                    // Where those frames belong, in the other target's form.
+                    "objectFolder": part_label(
+                        &dirs_name(&dirs, input, other),
+                        TargetPart::Lights,
+                        dirs_layout(&dirs, other),
+                    ),
                 }),
             )
             .with_files(files),
@@ -1478,6 +1542,7 @@ fn target_dirs(folder: &Path, input: &DetectionInput) -> Vec<TargetDir> {
         dirs.push(TargetDir {
             in_night: index.is_some_and(|i| input.targets[i].ticked),
             index,
+            layout: target_layout(&folder.join(&name)),
             name,
         });
     }
@@ -1501,6 +1566,7 @@ fn target_dirs(folder: &Path, input: &DetectionInput) -> Vec<TargetDir> {
         {
             dirs.push(TargetDir {
                 index: Some(index),
+                layout: target_layout(&folder.join(name)),
                 name: name.clone(),
                 in_night: target.ticked,
             });
@@ -1514,6 +1580,19 @@ fn dirs_name(dirs: &[TargetDir], input: &DetectionInput, target: usize) -> Strin
         || target_folder_name(&input.targets[target].designation),
         |d| d.name.clone(),
     )
+}
+
+/// The form of the folder of `target` (the new one when it has none).
+fn dirs_layout(dirs: &[TargetDir], target: usize) -> TargetLayout {
+    dirs.iter()
+        .find(|d| d.index == Some(target))
+        .map_or(TargetLayout::InputOutput, |d| d.layout)
+}
+
+/// `M31/input/lights/`, `M31/final/`: a part's folder of a target, relative to
+/// the night, in the target folder's form.
+fn part_label(label: &str, part: TargetPart, layout: TargetLayout) -> String {
+    format!("{label}/{}", part.label(layout))
 }
 
 fn place_of(relative: &str, dirs: &[TargetDir]) -> Place {
@@ -1546,17 +1625,29 @@ fn place_of(relative: &str, dirs: &[TargetDir]) -> Place {
         return Place::OutOfNight;
     }
     let index = dir.index.expect("a folder in the night has its target");
-    if parts.len() < 3 {
+    let under = &parts[1..];
+    // Whatever lies in `output/` is Astro Sync's.
+    if dir.layout == TargetLayout::InputOutput
+        && under.len() >= 2
+        && same_name(under[0], crate::working_folder::OUTPUT_DIR)
+    {
+        return Place::AstroSyncOutput;
+    }
+    let Some((part, layout, depth)) = part_of_target_path(under) else {
+        return Place::Outside;
+    };
+    // The file itself lies below the part's folder.
+    if under.len() <= depth {
         return Place::Outside;
     }
-    match parts[1] {
-        sub if same_name(sub, LIGHTS_DIR) => Place::Lights(index),
-        sub if same_name(sub, FINAL_DIR) => Place::Final(index),
-        sub if same_name(sub, DEVICE_DIR) => Place::Device(index),
-        sub if same_name(sub, STACKED_DIR) || same_name(sub, PROGRESSION_DIR) => {
-            Place::AstroSyncOutput
-        }
-        _ => Place::Outside,
+    if layout != dir.layout {
+        return Place::OtherLayout(index);
+    }
+    match part {
+        TargetPart::Lights => Place::Lights(index),
+        TargetPart::Processed => Place::Final(index),
+        TargetPart::Device => Place::Device(index),
+        TargetPart::Stacked | TargetPart::Progression => Place::AstroSyncOutput,
     }
 }
 

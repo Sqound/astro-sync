@@ -33,6 +33,7 @@ import { contrastToCore, type Contrast } from "./contrast";
 import type { Colour, SoftStars } from "./finish";
 import type { AdjustValues } from "./imageAdjust";
 import type { SpikeStars } from "./diffractionSpikes";
+import type { TargetLayout } from "./targetFolders";
 
 /** Every command's `Err` payload (`app/src-tauri/src/error.rs`). `code` is
  * the stable key the UI looks up in `errors.<code>` of the active locale;
@@ -1292,6 +1293,8 @@ export interface NightFolderOutcome {
     designation: string;
     folderName: string;
     state: "created" | "existing" | "out-of-night";
+    /** Its form, as for the detection (absent from an earlier build). */
+    layout?: TargetLayout;
   }[];
   applied: boolean;
 }
@@ -1377,6 +1380,10 @@ export interface TargetDetection {
   /** The images a device already stacked, found in `device/`; absent when
    * there is none. */
   device?: DeviceDetection;
+  /** The form of the target's folder (`working_folder::TargetLayout`):
+   * `input/` and `output/`, or `legacy` for a folder made before Astro Sync
+   * 1.2.0 (`lights/`, `final/`, `stacked/`); absent from an earlier build. */
+  layout?: TargetLayout;
 }
 
 /** `device_master::DeviceImage`: a stacked image of a known device (the

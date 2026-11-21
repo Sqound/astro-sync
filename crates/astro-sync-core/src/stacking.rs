@@ -1,6 +1,8 @@
 //! The place of the stacking: "Stacking from the FITS" turns a target's
 //! `lights/`, with the night's `calibration/`, into a stacked image written
-//! by Astro Sync in **`<target>/stacked/`, never in `final/`**.
+//! by Astro Sync in **`<target>/output/stacked/`, never in `input/`** (`stacked/`
+//! beside the `lights/` of a target of the earlier form, never in `final/`:
+//! [`crate::working_folder::TargetLayout`]).
 //!
 //! - **The slot** is a trait, [`Stacker`]: a job in, renders out, progress,
 //!   the stop switch, a failure in words. [`run_stacking`] holds the rules
@@ -63,7 +65,7 @@
 //!   pipeline. It excludes every render: the script is run with
 //!   `--linear-only`, no render runs (no StarNet2, no pipeline definition,
 //!   no trust question) and it writes the linear stack, not stretched, as
-//!   `<target>/stacked/<name>_linear.tif` (16-bit TIFF). That file leaves like
+//!   `<target>/output/stacked/<name>_linear.tif` (16-bit TIFF). That file leaves like
 //!   a render does (the capture's main image, or a variant when one is
 //!   online), its `render` being `linear`.
 //! - **The night's window**: [`plan_target_within`]
@@ -74,14 +76,14 @@
 //! - **The master kept**: every job
 //!   names its family ([`StackJob::integration`], `--integration <family>`)
 //!   and the script keeps the 32-bit linear master of the family as
-//!   `<target>/stacked/<family>_integration.fit` -- the only intermediate
+//!   `<target>/output/stacked/<family>_integration.fit` -- the only intermediate
 //!   kept, so that a later night of a multi-night plan can be combined with
 //!   it ([`crate::plan_image`]). A new stacking of the same family replaces
 //!   it. [`StackOutcome::integrations`] describes each one
 //!   ([`crate::multi_night::read_master`]).
 //! - **The image of a device**: a family may take the
 //!   image its device already stacked (the Seestar's `Stacked_*.fit`, found
-//!   in `<target>/device/`, [`crate::device_master`]) instead of a stacking of
+//!   in `<target>/input/device/`, [`crate::device_master`]) instead of a stacking of
 //!   its poses. The job then carries [`StackJob::device_master`]: the script
 //!   runs with `--from-master <file>`, stacks and calibrates nothing, and
 //!   renders from that image like it does from its own master (the
@@ -119,8 +121,8 @@ use crate::python_env;
 use crate::siril_progress::{LogTail, POLL_EVERY, SirilFollower, now_ms};
 use crate::upload_queue::ResultKind;
 use crate::working_folder::{
-    CALIBRATION_DIR, CALIBRATION_KINDS, DEVICE_DIR, LIGHTS_DIR, STACKED_DIR, WORK_DIR,
-    stacking_scratch_root, target_folder_name,
+    CALIBRATION_DIR, CALIBRATION_KINDS, TargetPart, WORK_DIR, stacking_scratch_root,
+    target_folder_name, target_part_dir,
 };
 
 /// A number written as a word (`presentation`, `strong`) or as itself in a
@@ -583,7 +585,7 @@ pub struct StackJob {
     pub flats: Option<PathBuf>,
     pub dark_flats: Option<PathBuf>,
     pub biases: Option<PathBuf>,
-    /// `<target>/stacked/`.
+    /// `<target>/output/stacked/`.
     pub output_dir: PathBuf,
     /// The stem of the files (`<name>_<pipeline>.tif`).
     pub name: String,
@@ -598,7 +600,7 @@ pub struct StackJob {
     #[serde(default)]
     pub frames: Vec<PathBuf>,
     /// The family the master kept is named after
-    /// (`<target>/stacked/<integration>_integration.fit`), even when the
+    /// (`<target>/output/stacked/<integration>_integration.fit`), even when the
     /// target has one family only; `None`: no master kept.
     #[serde(default)]
     pub integration: Option<String>,
@@ -613,7 +615,7 @@ pub struct StackJob {
     /// The engine of the "polished render"'s background and denoising (R348b).
     #[serde(default, skip_serializing_if = "PolishedEngine::is_default")]
     pub polished_engine: PolishedEngine,
-    /// The image a device already stacked (`<target>/device/<file>`):
+    /// The image a device already stacked (`<target>/input/device/<file>`):
     /// rendered as it is, nothing stacked, no calibration, no master kept.
     /// `None`: the poses are stacked.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -737,7 +739,9 @@ pub fn plan_stack(
     let target = night_folder.join(target_folder);
     let calibration = |name: &str| non_empty_dir(night_folder.join(CALIBRATION_DIR).join(name));
     let pipelines = ordered_pipelines(pipelines);
-    let output_dir = target.join(STACKED_DIR);
+    // The target's form decides: `output/stacked/`, or `stacked/` beside the
+    // `lights/` of a target made before Astro Sync 1.2.0 (never both).
+    let output_dir = target_part_dir(&target, TargetPart::Stacked);
     let stem: String = format!("{target_folder}_{evening_date}")
         .chars()
         .map(|c| if c.is_whitespace() { '_' } else { c })
@@ -759,7 +763,7 @@ pub fn plan_stack(
     }
     let [darks, flats, dark_flats, biases] = CALIBRATION_KINDS;
     StackJob {
-        lights: target.join(LIGHTS_DIR),
+        lights: target_part_dir(&target, TargetPart::Lights),
         darks: calibration(darks),
         flats: calibration(flats),
         dark_flats: calibration(dark_flats),
@@ -1053,7 +1057,7 @@ struct DeviceSource {
     info: DeviceImageInfo,
 }
 
-/// The files of `<target>/device/` the person chose to take, read again (the
+/// The files of `<target>/input/device/` the person chose to take, read again (the
 /// header says the family, never the window): a name that is not a plain file
 /// name, a file that is not there and an image that is not a device's are
 /// left out; a family takes one image, the first named.
@@ -1062,7 +1066,7 @@ fn device_sources(
     target_folder: &str,
     uses: &[DeviceUse],
 ) -> Vec<DeviceSource> {
-    let folder = night_folder.join(target_folder).join(DEVICE_DIR);
+    let folder = target_part_dir(&night_folder.join(target_folder), TargetPart::Device);
     let mut sources: Vec<DeviceSource> = Vec::new();
     for item in uses {
         if !device_master::is_plain_file_name(&item.file) {
@@ -1295,7 +1299,7 @@ pub struct FrameMeasure {
 
 /// What the last stacking of a target measured of its frame, for the
 /// « Cadre de l'empilement » of its window: the field rotation and the
-/// notches. Read from the records of `<target>/stacked/*_stacking.json`.
+/// notches. Read from the records of `<target>/output/stacked/*_stacking.json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TargetFrame {
@@ -1310,7 +1314,7 @@ pub struct TargetFrame {
 /// the family with the most lights registered.
 #[must_use]
 pub fn target_frame(night_folder: &Path, target_folder: &str) -> Option<TargetFrame> {
-    let stacked = night_folder.join(target_folder).join(STACKED_DIR);
+    let stacked = target_part_dir(&night_folder.join(target_folder), TargetPart::Stacked);
     let mut best: Option<TargetFrame> = None;
     for entry in fs::read_dir(stacked).ok()?.flatten() {
         let path = entry.path();
@@ -1521,7 +1525,7 @@ pub enum StackFailure {
         folder: String,
     },
     Cancelled,
-    /// A file named outside `<target>/stacked/`: refused, never sent.
+    /// A file named outside `<target>/output/stacked/`: refused, never sent.
     OutsideStacked {
         file: String,
     },

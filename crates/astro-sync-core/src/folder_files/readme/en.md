@@ -8,8 +8,9 @@ This is the working folder of Astro Sync. It holds your astrophotography nights 
 - Inside a night:
   - `logs/`: the NINA, PHD2 and ASIAIR logs of the night;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` and `biases/`;
-  - one folder per target (`M31`, `NGC 7000`…), with `lights/` for the raw frames (FITS or camera RAW files) and `final/` for your processed image (TIFF, JPEG or PNG);
-  - `stacked/` and `progression/`, which Astro Sync creates only when it makes an image of its own. The images you adjust before sending are written to `stacked/adjusted/`, beside the original render, never over it.
+  - one folder per target (`M31`, `NGC 7000`…), with `input/` for what you give Astro Sync, `input/lights/` for the raw frames (FITS or camera RAW files) and `input/processed/` for the export of your processing software (TIFF, JPEG or PNG), and `output/` for what Astro Sync makes;
+  - in `output/`, `stacked/` and `progression/`, which Astro Sync creates only when it makes an image of its own. It is the only folder of a target Astro Sync writes in, never `input/`. The images you adjust before sending are written to `output/stacked/adjusted/`, beside the original render, never over it;
+  - a night filed before Astro Sync 1.2.0 keeps its form, with `lights/`, `final/` and `stacked/` directly in the target. Astro Sync reads it as it is and moves nothing in it.
 - Files and folders whose name starts with a dot (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) are Astro Sync's: they keep the identity of a night or a target and the scratch work of a job in progress. Leave them where they are.
 
 ## The .md files at the root

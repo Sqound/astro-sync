@@ -15,6 +15,7 @@ import type {
 } from "./bridge";
 import { deviceBox, hasDeviceImage, type DeviceBox } from "./deviceMaster.ts";
 import { calibrationFinding } from "./missingMessages.ts";
+import { targetFolders } from "./targetFolders.ts";
 import { baseName } from "./wizardSteps.ts";
 import { formatSize, pluralText, shortDigest } from "./written.ts";
 
@@ -274,8 +275,18 @@ export function findingSegs(
         " ",
         { code: text("folder") },
         t("wizard.files.otherTargetHeader"),
-        { code: `${text("object")}/lights/` },
+        // The other target's folder in its own form (a finding of an
+        // earlier build names none: the new form).
+        { code: text("objectFolder") || `${text("object")}/input/lights/` },
         ".",
+      ];
+    case "detection.targetTwoLayouts":
+      return [
+        t("wizard.files.twoLayouts", {
+          target: text("target"),
+          folders: text("folders"),
+          inputFolder: text("inputFolder"),
+        }),
       ];
     case "detection.flatsMissing":
     case "detection.darksMissing":
@@ -360,6 +371,9 @@ export function filesView(
   }[] = [];
   let warnings = 0;
   for (const target of detection.targets.filter((item) => item.inNight)) {
+    // `input/processed/`, `input/lights/`, or `final/`, `lights/` in a target
+    // folder made before Astro Sync 1.2.0.
+    const folders = targetFolders(target.layout);
     const finalLines: FileLine[] = [];
     const lines: FileLine[] = [];
     const capture = captureOf(online, target.targetId);
@@ -435,7 +449,7 @@ export function filesView(
       finalLines.push({
         glyph: "ok",
         segs: [
-          { code: "final/" },
+          { code: folders.processed },
           ` · ${finalName}${
             target.finalBytes
               ? ` · ${formatSize(t, target.finalBytes, locale)}`
@@ -461,7 +475,11 @@ export function filesView(
                 ? finalFromDeviceText(t, restackFramesOf(target))
                 : t("wizard.files.finalMissing"),
             ]
-          : [t("wizard.files.finalNone"), { strong: `${folder}/final/` }, "."],
+          : [
+              t("wizard.files.finalNone"),
+              { strong: `${folder}/${folders.processed}` },
+              ".",
+            ],
       });
     }
     const framesLines: FileLine[] = [];
@@ -470,7 +488,7 @@ export function filesView(
         glyph: "ok",
         isNew: added,
         segs: [
-          { code: "lights/" },
+          { code: folders.lights },
           ` · ${framesText(t, locale, target.lightSummary, target.lightFrames)}`,
         ],
       });
@@ -486,7 +504,7 @@ export function filesView(
           ? [t("wizard.files.framesMissing")]
           : [
               t("wizard.files.framesNone"),
-              { strong: `${folder}/lights/` },
+              { strong: `${folder}/${folders.lights}` },
               ".",
             ],
       });
@@ -496,9 +514,9 @@ export function filesView(
         glyph: "missing",
         segs: [
           t("wizard.files.targetEmptyLead"),
-          { strong: `${folder}/lights/` },
+          { strong: `${folder}/${folders.lights}` },
           t("wizard.files.targetEmptyOr"),
-          { strong: `${folder}/final/` },
+          { strong: `${folder}/${folders.processed}` },
           ".",
         ],
       });

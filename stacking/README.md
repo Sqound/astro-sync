@@ -2,7 +2,8 @@
 
 The "Stacking from the FITS" treatment of Astro Sync: one target's
 FITS lights, with the night's calibration frames, become a stacked and
-rendered image in `<cible>/stacked/`, never in `final/`. Everything runs on the
+rendered image in `<cible>/output/stacked/` (`<cible>/stacked/` in a target folder made
+before Astro Sync 1.2.0), never in `input/` nor in `final/`. Everything runs on the
 computer; no FITS ever leaves it.
 
 The recipe is the author's own deep-sky processing pipeline. No path, place,

@@ -6,7 +6,7 @@
 //!
 //! - **The masters kept** ([`IntegrationMaster`], [`read_master`],
 //!   [`night_masters`]): the stacking keeps, per night, target and family,
-//!   the 32-bit linear master `<night>/<target>/stacked/<family>_integration.fit`
+//!   the 32-bit linear master `<night>/<target>/output/stacked/<family>_integration.fit`
 //!   ([`crate::stacking`]); its own FITS header says what it integrates
 //!   (`FILTER`, `EXPTIME` of one frame, `GAIN`, `XBINNING`, `CCD-TEMP`,
 //!   `INSTRUME`, `STACKCNT`, `LIVETIME`, `ASFAMILY`), so it is read again
@@ -14,7 +14,7 @@
 //!   another filter leave two masters: one is active, the other stays on
 //!   disk out of the plan and of the lines ([`night_masters`]).
 //! - **The image a device stacked** ([`DeviceSource`], [`night_device_images`]): a night
-//!   of which only the device's own stack (`<target>/device/Stacked_*.fit`)
+//!   of which only the device's own stack (`<target>/input/device/Stacked_*.fit`)
 //!   is here is a night of the plan too; its
 //!   integration line is read from the image's header (`STACKCNT`, `TOTALEXP`,
 //!   [`device_master::recognise`]) and a family a kept master already covers is
@@ -69,7 +69,7 @@ use crate::gui_bridge::{Capabilities, GuiBridgeError, HttpPortalGuiTransport};
 use crate::service_wait::{RequestFactory, WaitHooks, WakePolicy};
 use crate::space::{SignInAnnouncement, SpaceClient, SpaceCreation, SpaceError};
 use crate::stacking::INTEGRATION_SUFFIX;
-use crate::working_folder::{DEVICE_DIR, STACKED_DIR, target_folders_by_identity};
+use crate::working_folder::{TargetPart, target_folders_by_identity, target_part_dir};
 
 /* ------------------------------ The masters ------------------------------ */
 
@@ -156,11 +156,11 @@ pub fn read_master(path: &Path) -> Option<IntegrationMaster> {
     })
 }
 
-/// The masters kept for one target of a night (`<target>/stacked/*_integration.fit`),
+/// The masters kept for one target of a night (`<target>/output/stacked/*_integration.fit`),
 /// by family, one per set of poses ([`retain_active_masters`]).
 #[must_use]
 pub fn night_masters(night_folder: &Path, target_folder: &str) -> Vec<IntegrationMaster> {
-    let stacked = night_folder.join(target_folder).join(STACKED_DIR);
+    let stacked = target_part_dir(&night_folder.join(target_folder), TargetPart::Stacked);
     let Ok(entries) = fs::read_dir(&stacked) else {
         return Vec::new();
     };
@@ -265,7 +265,7 @@ pub fn target_masters(night_folder: &Path, target_id: &str) -> Vec<IntegrationMa
 
 /* ------------------------ The image a device stacked ----------------------- */
 
-/// An image a device stacked (a Seestar's `Stacked_*.fit` in `<target>/device/`) as the integration of a
+/// An image a device stacked (a Seestar's `Stacked_*.fit` in `<target>/input/device/`) as the integration of a
 /// night of a plan, described by its own header: its frames are `STACKCNT`, its time `TOTALEXP` (else
 /// frames x exposure).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -343,7 +343,7 @@ pub(crate) fn same_acquisition(
 /// the bigger one is the night), by family. Reads headers only.
 #[must_use]
 pub fn night_device_images(night_folder: &Path, target_folder: &str) -> Vec<DeviceSource> {
-    let folder = night_folder.join(target_folder).join(DEVICE_DIR);
+    let folder = target_part_dir(&night_folder.join(target_folder), TargetPart::Device);
     let Ok(entries) = fs::read_dir(&folder) else {
         return Vec::new();
     };

@@ -964,14 +964,17 @@ fn present(rows: &[ToolRow], id: &str) -> bool {
 }
 
 /// What the treatments read ([`crate::precheck::treatments`]): ASTAP with
-/// its database, a Siril the progression knows, the stacking pipeline.
+/// its database, the Siril Settings › Dependencies shows as present, the
+/// stacking pipeline. A single rule: a row that reads « Present » there is
+/// present here. Whether the Siril version is in the allow-list the
+/// progression was checked against ([`ToolRow::progression_compatible`]) is
+/// a note on that row, never a second way of saying « not found ».
 #[must_use]
 pub fn tools_present(rows: &[ToolRow]) -> ToolsPresent {
     ToolsPresent {
         stacking_pipeline: present(rows, "stacking-pipeline"),
         astap: present(rows, "astap") && present(rows, "astap-database"),
-        siril: present(rows, "siril")
-            && row(rows, "siril").is_some_and(|r| r.progression_compatible == Some(true)),
+        siril: present(rows, "siril"),
     }
 }
 
@@ -999,11 +1002,13 @@ pub fn solvers(rows: &[ToolRow]) -> Solvers {
     }
 }
 
-/// The Siril the progression runs: a present one whose version it knows.
+/// The Siril the progression runs: the present one of Settings ›
+/// Dependencies (the same row [`tools_present`] reads), whatever its
+/// version is checked or not against the allow-list.
 #[must_use]
 pub fn siril_for_progression(rows: &[ToolRow]) -> Option<(PathBuf, String)> {
     row(rows, "siril")
-        .filter(|r| r.state == ToolState::Present && r.progression_compatible == Some(true))
+        .filter(|r| r.state == ToolState::Present)
         .and_then(|r| Some((r.path.clone()?, r.version.clone()?)))
 }
 

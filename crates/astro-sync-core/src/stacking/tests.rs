@@ -2832,3 +2832,27 @@ fn a_fallback_of_the_polished_engine_is_read_with_its_causes() {
         vec![EngineCause::GraxpertFailed]
     );
 }
+
+/// A target of the new form reads `input/lights/` and writes in
+/// `output/stacked/`; the night of [`night`] (its `M31/lights/`, the form made
+/// before Astro Sync 1.2.0) keeps `M31/stacked/`. Never both in one target.
+#[test]
+fn the_stacking_follows_the_form_of_the_target_folder() {
+    let dir = TempDir::new("stacking-forms");
+    let night = night(dir.path());
+    let legacy = plan_stack(&night, "M31", "2026-10-07", &[]);
+    assert_eq!(legacy.lights, night.join("M31/lights"));
+    assert_eq!(legacy.output_dir, night.join("M31/stacked"));
+
+    fs::create_dir_all(night.join("M45/input/lights")).unwrap();
+    let light = fits_bytes(&[("IMAGETYP", "'LIGHT'"), ("OBJECT", "'M45'")], 0);
+    fs::write(night.join("M45/input/lights/Light_0001.fits"), &light).unwrap();
+    let job = plan_stack(&night, "M45", "2026-10-07", &[]);
+    assert_eq!(job.lights, night.join("M45/input/lights"));
+    assert_eq!(job.output_dir, night.join("M45/output/stacked"));
+    let stacker = FakeStacker::new(Behaviour::Writes);
+    run_stacking(&stacker, &job, OPEN, &CancelFlag::new(), None, &mut |_| {}).unwrap();
+    assert!(night.join("M45/output/stacked").is_dir());
+    assert!(!night.join("M45/stacked").exists());
+    assert!(!night.join("M45/input/stacked").exists());
+}

@@ -19,6 +19,7 @@ import type {
   TargetDetection,
 } from "./bridge";
 import { formatDuration } from "./duration.ts";
+import { targetFolders } from "./targetFolders.ts";
 import type { FileLine, Seg } from "./wizardFiles.ts";
 import {
   conjunction,
@@ -306,16 +307,20 @@ export interface DeviceBox {
 export function deviceBox(
   t: Translate,
   locale: string,
-  target: Pick<TargetDetection, "device" | "lightFrames" | "folderName">,
+  target: Pick<TargetDetection, "device" | "lightFrames" | "folderName"> & {
+    layout?: TargetDetection["layout"];
+  },
 ): DeviceBox | null {
   const device = target.device;
   if (!device) return null;
+  // `input/device/`, or `device/` in a target folder of the earlier form.
+  const deviceFolder = targetFolders(target.layout).device;
   const images = device.images;
   const families = device.families;
   const several = families.length > 1;
   const groups: DeviceBoxGroup[] = [];
   const notes: FileLine[] = [];
-  const pathOf = (image: DeviceImage) => `device/${image.fileName}`;
+  const pathOf = (image: DeviceImage) => `${deviceFolder}${image.fileName}`;
   const lone = images.length === 1;
   for (const family of families) {
     const mine = family.images
@@ -417,7 +422,10 @@ export function deviceBox(
   // the card points to the final image.
   for (const jpg of device.jpgs) {
     const name = jpg.split("/").pop() ?? jpg;
-    notes.push({ glyph: "warning", segs: [{ code: `device/${name}` }] });
+    notes.push({
+      glyph: "warning",
+      segs: [{ code: `${deviceFolder}${name}` }],
+    });
   }
   if (device.jpgs.length > 0) {
     notes.push({

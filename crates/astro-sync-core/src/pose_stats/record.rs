@@ -4,7 +4,7 @@
 //! the stacking left out. Kept in the night's scratch
 //! (`<night>/.astro-sync-work/pose-stats/`), one file per target and kind,
 //! replaced at each measure or stacking; the report v3 reads them
-//! ([`load`]) with the stacking's own record (`<target>/stacked/
+//! ([`load`]) with the stacking's own record (`<target>/output/stacked/
 //! *_stacking.json`, `registration.unregistered`). Poses are named by their
 //! file name: a symbolic link in `lights/` and its target share it. Nothing
 //! here ever leaves the computer but the values the report carries.
@@ -185,7 +185,7 @@ fn unregistered_of(record: &serde_json::Value) -> Vec<String> {
 }
 
 /// Reads what the night's scratch and the stacking records of its targets
-/// (`<target>/stacked/*_stacking.json`) say of its poses; a file that cannot
+/// (`<target>/output/stacked/*_stacking.json`) say of its poses; a file that cannot
 /// be read is skipped.
 #[must_use]
 pub fn load(night_folder: &Path) -> NightPoseRecords {
@@ -212,10 +212,15 @@ pub fn load(night_folder: &Path) -> NightPoseRecords {
     }
     if let Ok(targets) = std::fs::read_dir(night_folder) {
         for target in targets.flatten() {
-            let stacked = target.path().join("stacked");
-            let Ok(files) = std::fs::read_dir(&stacked) else {
-                continue;
-            };
+            // Both forms: `output/stacked/`, and `stacked/` of a target made
+            // before Astro Sync 1.2.0.
+            let files = crate::working_folder::target_part_dirs_both(
+                &target.path(),
+                crate::working_folder::TargetPart::Stacked,
+            )
+            .into_iter()
+            .filter_map(|stacked| std::fs::read_dir(stacked).ok())
+            .flatten();
             for file in files.flatten() {
                 let path = file.path();
                 if !file_name(&path).is_some_and(|n| n.ends_with("_stacking.json")) {

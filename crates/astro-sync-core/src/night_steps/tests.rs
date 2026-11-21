@@ -32,18 +32,22 @@ fn night(root: &Path) -> (PathBuf, NightDetection) {
     let folder = prepare_night_folder(root, &[], &spec, "2026-10-08T09:00:00Z")
         .unwrap()
         .folder;
-    fs::write(folder.join("M31/final/M31_old.jpg"), b"old final").unwrap();
+    fs::write(folder.join("M31/input/processed/M31_old.jpg"), b"old final").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(20));
-    fs::write(folder.join("M31/final/M31.tif"), b"new final").unwrap();
-    fs::create_dir_all(folder.join("M31/stacked")).unwrap();
+    fs::write(folder.join("M31/input/processed/M31.tif"), b"new final").unwrap();
+    fs::create_dir_all(folder.join("M31/output/stacked")).unwrap();
     fs::write(
-        folder.join("M31/stacked/M31_2026-10-07_raw.tif"),
+        folder.join("M31/output/stacked/M31_2026-10-07_raw.tif"),
         b"stacked",
     )
     .unwrap();
-    fs::write(folder.join("M31/stacked/M31_2026-10-07_raw.png"), b"png").unwrap();
     fs::write(
-        folder.join("M31/lights/Light_0001.fits"),
+        folder.join("M31/output/stacked/M31_2026-10-07_raw.png"),
+        b"png",
+    )
+    .unwrap();
+    fs::write(
+        folder.join("M31/input/lights/Light_0001.fits"),
         fits_bytes(&[("IMAGETYP", "'LIGHT'"), ("OBJECT", "'M31'")], 0),
     )
     .unwrap();
@@ -434,14 +438,20 @@ fn the_masters_of_a_night_leave_as_lines_of_its_multi_night_plan() {
         .unwrap()
         .folder;
     write_master(
-        &folder.join("IC 1805/stacked"),
+        &folder.join("IC 1805/output/stacked"),
         "UV-IR-cut_120s_g100",
         Some("UV/IR-cut"),
         120.0,
         120,
     );
     // M31 is in no multi-night plan: its master never leaves.
-    write_master(&folder.join("M31/stacked"), "L_60s_g100", None, 60.0, 30);
+    write_master(
+        &folder.join("M31/output/stacked"),
+        "L_60s_g100",
+        None,
+        60.0,
+        30,
+    );
     let night = crate::multi_night::NightMultiNight {
         evening_date: Some("2026-08-12".to_string()),
         projects: vec![project_of(&heart(), "ic-1805").unwrap()],
@@ -555,7 +565,12 @@ fn a_night_with_only_the_image_of_its_device_leaves_a_line_read_from_its_header(
     let folder = prepare_night_folder(dir.path(), &[], &spec, "2026-08-13T09:00:00Z")
         .unwrap()
         .folder;
-    write_device_image(&folder.join("IC 1805/device"), 120, "UV/IR-cut", 120.0);
+    write_device_image(
+        &folder.join("IC 1805/input/device"),
+        120,
+        "UV/IR-cut",
+        120.0,
+    );
     let night = crate::multi_night::NightMultiNight {
         evening_date: Some("2026-08-12".to_string()),
         projects: vec![project_of(&heart(), "ic-1805").unwrap()],
@@ -588,7 +603,7 @@ fn a_night_with_only_the_image_of_its_device_leaves_a_line_read_from_its_header(
     assert_eq!(line["sensor"], "Seestar S50 Pro");
     // The same night stacked here as well: the master's line goes, the device's image of the family is not a second one.
     write_master(
-        &folder.join("IC 1805/stacked"),
+        &folder.join("IC 1805/output/stacked"),
         "UV-IR-cut_120s_g100",
         Some("UV/IR-cut"),
         120.0,
@@ -619,8 +634,8 @@ fn a_night_with_only_the_image_of_its_device_leaves_a_line_read_from_its_header(
 /// earlier stacking made, PNG and TIFF; the digest of its PNG.
 fn night_with_a_stacked_leftover(root: &Path) -> (ResumeLocal, String) {
     let (folder, detection) = night(root);
-    fs::remove_file(folder.join("M31/final/M31_old.jpg")).unwrap();
-    fs::remove_file(folder.join("M31/final/M31.tif")).unwrap();
+    fs::remove_file(folder.join("M31/input/processed/M31_old.jpg")).unwrap();
+    fs::remove_file(folder.join("M31/input/processed/M31.tif")).unwrap();
     let local = resume_local(
         FolderState::Found,
         Some(&folder),
@@ -725,8 +740,8 @@ fn a_stacked_output_online_is_kept_identical_never_a_final_image_sent_again() {
 /// plan; nothing online yet.
 fn night_of_renders(root: &Path) -> (ResumeLocal, NightOnline) {
     let (folder, detection) = night(root);
-    fs::remove_file(folder.join("M31/final/M31_old.jpg")).unwrap();
-    let stacked = folder.join("M31/stacked");
+    fs::remove_file(folder.join("M31/input/processed/M31_old.jpg")).unwrap();
+    let stacked = folder.join("M31/output/stacked");
     fs::write(stacked.join("M31_2026-10-07_raw.tif"), vec![b't'; 470]).unwrap();
     fs::write(stacked.join("M31_2026-10-07_raw.png"), vec![b'p'; 130]).unwrap();
     fs::write(stacked.join("M31_2026-10-07_linear.tif"), vec![b'l'; 200]).unwrap();
@@ -931,8 +946,8 @@ fn a_render_whose_tiff_is_online_is_online_and_its_tiff_is_never_missing() {
 fn with_a_finish_only_the_finished_image_leaves_the_bare_twin_stays_here() {
     let root = TempDir::new("steps-finish-only");
     let (folder, detection) = night(root.path());
-    fs::remove_file(folder.join("M31/final/M31_old.jpg")).unwrap();
-    let stacked = folder.join("M31/stacked");
+    fs::remove_file(folder.join("M31/input/processed/M31_old.jpg")).unwrap();
+    let stacked = folder.join("M31/output/stacked");
     for name in [
         "M31_2026-10-07_raw.png",
         "M31_2026-10-07_raw.tif",

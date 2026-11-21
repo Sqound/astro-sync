@@ -181,7 +181,9 @@ export function target(
     filters: summary.filters
       .map((f) => f.filter)
       .filter((f): f is string => !!f),
-    finalImage: final ? `${NAMES[targetId]}/final/${final.name}` : null,
+    finalImage: final
+      ? `${NAMES[targetId]}/input/processed/${final.name}`
+      : null,
     otherFinalImages: [],
     minimum,
     finalBytes: final?.bytes ?? null,
@@ -270,7 +272,7 @@ export function plan(
   return {
     image: {
       targetId,
-      path: `${NIGHT_FOLDER}/${NAMES[targetId]}/final/${name}`,
+      path: `${NIGHT_FOLDER}/${NAMES[targetId]}/input/processed/${name}`,
       sha256,
       size,
       kind: "final",

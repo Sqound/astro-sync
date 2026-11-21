@@ -218,7 +218,7 @@ pub struct PlanImageArgs {
     )]
     pub contrast: astro_sync_core::stacking::Contrast,
     /// Also make the progression of the plan: its image after each night (the first night, the
-    /// first two, ... up to the plan's image), one JPEG each in `<plan>/progression/`, with the
+    /// first two, ... up to the plan's image), one JPEG each in `<plan>/output/progression/`, with the
     /// main render's pipeline. With --queue they leave as the history of the plan's capture.
     /// These intermediate images need Advanced Sync+ on a service that sells it.
     #[arg(long)]
@@ -468,7 +468,7 @@ fn plan_image_failure_sentence(failure: &StackFailure, gate: &MultiNightGate) ->
         ),
         StackFailure::Cancelled => "cancelled".to_string(),
         StackFailure::OutsideStacked { file } => {
-            format!("file refused, outside the stacked/ folder: {file}")
+            format!("file refused, outside the output/stacked/ folder: {file}")
         }
         StackFailure::Failed { code, message, .. } => format!("{message} ({code})"),
     };

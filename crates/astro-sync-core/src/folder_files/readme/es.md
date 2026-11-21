@@ -8,8 +8,9 @@ Esta es la carpeta de trabajo de Astro Sync. Contiene sus noches de astrofotogra
 - Dentro de una noche:
   - `logs/`: los registros de NINA, PHD2 y ASIAIR de la noche;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` y `biases/`;
-  - una carpeta por objetivo (`M31`, `NGC 7000`…), con `lights/` para las tomas sin procesar (FITS o archivos RAW de cámara) y `final/` para su imagen procesada (TIFF, JPEG o PNG);
-  - `stacked/` y `progression/`, que Astro Sync solo crea cuando fabrica una imagen por su cuenta. Las imágenes que ajusta antes de enviarlas se escriben en `stacked/adjusted/`, junto al renderizado original, nunca encima.
+  - una carpeta por objetivo (`M31`, `NGC 7000`…), con `input/` para lo que le da a Astro Sync, `input/lights/` para las tomas sin procesar (FITS o archivos RAW de cámara) e `input/processed/` para la exportación de su programa de procesamiento (TIFF, JPEG o PNG), y `output/` para lo que Astro Sync produce;
+  - en `output/`, `stacked/` y `progression/`, que Astro Sync solo crea cuando fabrica una imagen por su cuenta. Es la única carpeta de un objetivo en la que Astro Sync escribe, nunca en `input/`. Las imágenes que ajusta antes de enviarlas se escriben en `output/stacked/adjusted/`, junto al renderizado original, nunca encima;
+  - una noche ordenada antes de Astro Sync 1.2.0 conserva su forma, con `lights/`, `final/` y `stacked/` directamente en el objetivo. Astro Sync la lee tal cual y no mueve nada en ella.
 - Los archivos y carpetas cuyo nombre empieza por un punto (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) son de Astro Sync: conservan la identidad de una noche o de un objetivo y el trabajo temporal de una tarea en curso. Déjelos donde están.
 
 ## Los archivos .md de la raíz

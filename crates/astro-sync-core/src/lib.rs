@@ -15,7 +15,7 @@
 //!   `.astro-sync-target.json`, created only when absent (never replaced);
 //! - `ASSISTANT-IA.md` at the root, rewritten only while it still holds the
 //!   bytes Astro Sync wrote;
-//! - the stacked images under `<target>/stacked/` (the stacking).
+//! - the stacked images under `<target>/output/stacked/` (the stacking).
 //! - the stacking's scratch under `<night>/.astro-sync-work/stacking/`
 //! : hidden, Astro Sync's own, created for a stacking and removed
 //!   at its end -- and skipped by every reading of the night.
@@ -64,7 +64,7 @@
 //!   dependency registry (`stacking/dependencies/registry.json`, the one
 //!   source): detection, download by digest, resume.
 //! - [`pipelines`], [`stacking`]: the render pipelines,
-//!   and the slot of the stacking (output in `<target>/stacked/` only, never
+//!   and the slot of the stacking (output in `<target>/output/stacked/` only, never
 //!   gated by a capability, the pipelines chosen and the trusted digest of a
 //!   script passed to the launcher).
 //! - [`progression_images`]: Siril with fixed settings,
@@ -77,7 +77,7 @@
 //!   a question" in the application's language.
 //! - [`device_master`]: the image a device already
 //!   stacked (the Seestar's `Stacked_*.fit`), recognised from its header, found
-//!   in `<target>/device/`, its families and the default source of each; the
+//!   in `<target>/input/device/`, its families and the default source of each; the
 //!   stacking renders it instead of stacking the poses again.
 //! - [`night_steps`]: the steps of a night composed once
 //!   for the window and the command line.

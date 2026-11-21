@@ -917,6 +917,7 @@ export function stackingCard(
         ? targetIntegrationView(t, locale, {
             targetId: target.targetId,
             targetFolder: target.folderName,
+            layout: target.layout,
             preview: { ...preview, families: integrated },
             eveningDate: input.eveningDate,
           })

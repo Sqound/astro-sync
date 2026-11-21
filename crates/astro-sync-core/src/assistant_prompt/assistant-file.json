@@ -46,16 +46,20 @@
       "text": "the offsets (biases)"
     },
     {
-      "path": "<target>/lights/",
-      "text": "one folder per target (\"M31\", \"NGC 7000\"…): its raw frames, FITS or XISF (sub-folders are allowed)"
+      "path": "<target>/input/lights/",
+      "text": "one folder per target (\"M31\", \"NGC 7000\"…); its `input/` holds what the person gives Astro Sync, and `input/lights/` its raw frames, FITS or XISF (sub-folders are allowed)"
     },
     {
-      "path": "<target>/final/",
-      "text": "the target's processed final image: TIFF, JPEG or PNG"
+      "path": "<target>/input/processed/",
+      "text": "the export of the person's processing software, the target's final image: TIFF, JPEG or PNG"
     },
     {
-      "path": "<target>/stacked/",
-      "text": "written by Astro Sync's stacking only: write nothing there. `<family>_integration.fit` in it is the linear master of a family of the night (filter, exposure, gain, binning), kept on purpose: never move, rename or delete it"
+      "path": "<target>/output/",
+      "text": "what Astro Sync makes, the only folder of a target it writes in: write nothing there. `output/stacked/<family>_integration.fit` is the linear master of a family of the night (filter, exposure, gain, binning), kept on purpose: never move, rename or delete it"
+    },
+    {
+      "path": "<target>/lights/, <target>/final/, <target>/stacked/",
+      "text": "the earlier form of a target folder, made before Astro Sync 1.2.0: Astro Sync still reads it as it is. In such a target, place the frames in `lights/` and the final image in `final/`; never move these folders and never add `input/` or `output/` beside them"
     },
     {
       "path": ".astro-sync-work/",
@@ -106,8 +110,8 @@
       "This space has the multi-night plans of Astro Sync: one target photographed over several nights, whose integrations Astro Sync combines into one image of the plan.",
       "Keep **one folder per night**, as above: never put the frames of two nights in the same night's folder, even for the same target. A frame taken outside its night (from local noon to local noon the next day) is left out of that night's integration.",
       "Use **the same target folder name** from one night to the next (\"IC 1805\" every night, not \"Heart\" one night and \"IC1805\" the next): Astro Sync finds the plan's target in each night by it.",
-      "Each night's integration is kept as `<target>/stacked/<family>_integration.fit`, one per family: the linear master Astro Sync combines later. Never move, rename or delete it. To combine a night stacked on another computer, copy that whole night's folder into this working folder.",
-      "The image of a multi-night plan is written by Astro Sync in the plan's own folder, at the root of this folder (`<target> · <short identifier>/stacked/`): write nothing there."
+      "Each night's integration is kept as `<target>/output/stacked/<family>_integration.fit` (`<target>/stacked/` in a night of the earlier form), one per family: the linear master Astro Sync combines later. Never move, rename or delete it. To combine a night stacked on another computer, copy that whole night's folder into this working folder.",
+      "The image of a multi-night plan is written by Astro Sync in the plan's own folder, at the root of this folder (`<target> · <short identifier>/output/stacked/`, or `stacked/` for a plan of the earlier form): write nothing there."
     ]
   },
   "kinds": [
@@ -118,7 +122,7 @@
     {
       "id": "lights",
       "label": "the light frames (raw FITS)",
-      "destination": "`<target>/lights/` (the target its `OBJECT` header names)"
+      "destination": "`<target>/input/lights/` (the target its `OBJECT` header names; `<target>/lights/` in a target folder of the earlier form)"
     },
     {
       "id": "darks",
@@ -148,7 +152,7 @@
     {
       "id": "final",
       "label": "the final image (TIFF, JPEG or PNG)",
-      "destination": "`<target>/final/`"
+      "destination": "`<target>/input/processed/` (`<target>/final/` in a target folder of the earlier form)"
     }
   ],
   "actions": {

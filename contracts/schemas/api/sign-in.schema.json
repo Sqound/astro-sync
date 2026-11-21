@@ -197,13 +197,19 @@
       }
     },
     "currentSpace": {
-      "description": "200 of GET /v1/space: the space of the credential. `device` is the calling device for a bearer, null for a web session.",
+      "description": "200 of GET /v1/space: the space of the credential. `device` is the calling device for a bearer, null for a web session. On the hosted service, `deletionRequest` is the request for the deletion of the space waiting for its e-mail, or null.",
       "type": "object",
       "required": ["space", "device"],
       "properties": {
         "space": { "$ref": "#/$defs/space" },
         "device": {
           "anyOf": [{ "$ref": "#/$defs/registeredDevice" }, { "type": "null" }]
+        },
+        "deletionRequest": {
+          "anyOf": [
+            { "$ref": "space-deletion.schema.json#/$defs/pendingDeletion" },
+            { "type": "null" }
+          ]
         }
       }
     },

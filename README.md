@@ -23,6 +23,15 @@ only once the copy has been checked by its SHA-256. What it writes (a folder per
 night, its own results, and the copies or links you asked for) lives in its own
 folder, `Documents/Astro Sync/` (created at the first signed-in launch).
 
+Inside it, each night has `logs/`, `calibration/` and one folder per target.
+A target's folder is split in two: `input/` for what you give Astro Sync
+(`input/lights/` for the frames, `input/processed/` for the export of your
+processing software) and `output/` for what Astro Sync makes
+(`output/stacked/`, `output/progression/`). Astro Sync writes only in
+`output/` and in its hidden folders, never in `input/`. A night filed by a
+version before 1.2.0, with `lights/`, `final/` and `stacked/` side by side in
+the target, is still read as it is, and nothing in it is moved.
+
 Astro Sync belongs to the [PlanAstro](https://www.planastro.space) family: the
 site presents the whole product, the hosted service and the applications.
 
@@ -39,7 +48,7 @@ file names carry no version:
 | Windows (x64)                      | `Astro-Sync_windows_x64-setup.exe`, the Windows installer, not yet signed  |
 | Linux (x64, Ubuntu 22.04 or newer) | `Astro-Sync_linux_x64.deb` and `Astro-Sync_linux_x64.AppImage`, not signed |
 
-The Windows installer of version 1.1.5 is not yet signed, so Windows may show a
+The Windows installer of version 1.2.0 is not yet signed, so Windows may show a
 SmartScreen warning: choose "More info", then "Run anyway".
 
 On Linux, install the `.deb` with `sudo apt install ./Astro-Sync_linux_x64.deb`
@@ -104,8 +113,9 @@ contracts/               the portal's API contracts the tests replay (fixtures, 
 ## Stacking pipelines
 
 The optional stacking of a target’s FITS or camera RAW files lives in `stacking/`: a Python
-script drives Siril and writes only to `<target>/stacked/`, never into your
-source folders. The render pipelines (the shipped ones, and your own, kept in
+script drives Siril and writes only to `<target>/output/stacked/` (or the
+`stacked/` of a night filed before 1.2.0), never into `input/` or your source
+folders. The render pipelines (the shipped ones, and your own, kept in
 the application’s data folder) are declared in manifests: see
 [`stacking/README.md`](stacking/README.md) and the format in
 [`stacking/pipelines/SCHEMA.md`](stacking/pipelines/SCHEMA.md).

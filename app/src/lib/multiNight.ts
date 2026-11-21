@@ -25,6 +25,7 @@ import type {
   PlanTag,
 } from "./bridge";
 import { loadPlanKept, type KeptStorage } from "./planKept.ts";
+import { targetPath, type TargetLayout } from "./targetFolders.ts";
 import { nightDay } from "./nights.ts";
 import {
   inListOrder,
@@ -192,11 +193,15 @@ export function targetIntegrationView(
   input: {
     targetId: string;
     targetFolder: string;
+    /** The form of the target's folder: `output/stacked/`, or `stacked/`
+     * in a folder made before Astro Sync 1.2.0. */
+    layout?: TargetLayout;
     preview: IntegrationPreview;
     eveningDate: string | null;
   },
 ): TargetIntegrationView {
   const { preview } = input;
+  const stacked = targetPath(input.targetFolder, "stacked", input.layout);
   return {
     targetId: input.targetId,
     families: preview.families.map((family) => ({
@@ -204,11 +209,11 @@ export function targetIntegrationView(
       duration: integrationTime(t, family.totalSeconds),
       master: family.master
         ? t("multiNight.masterKept", {
-            path: `${input.targetFolder}/stacked/${family.label}_integration.fit`,
+            path: `${stacked}${family.label}_integration.fit`,
             size: formatSize(t, family.master.bytes, locale),
           })
         : t("multiNight.masterWillBeKept", {
-            path: `${input.targetFolder}/stacked/`,
+            path: stacked,
           }),
     })),
     outside:

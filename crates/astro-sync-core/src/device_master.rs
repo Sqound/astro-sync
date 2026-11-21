@@ -28,7 +28,7 @@
 //!   computer, and otherwise takes the biggest image and names the poses it
 //!   leaves aside ([`DeviceFamily::aside_poses`]); Astro Sync never combines
 //!   two device images.
-//! - **Where the file lives**: `<target>/device/` of the night (the working
+//! - **Where the file lives**: `<target>/input/device/` of the night (the working
 //!   folder's [`crate::working_folder::DEVICE_DIR`]), where "Tidy the
 //!   files" puts it (copy, move or link, as for the poses) and where the
 //!   detection of the night finds it.
@@ -309,14 +309,14 @@ pub fn families(images: &[DeviceImage], lights: &[LightFamily]) -> Vec<DeviceFam
 }
 
 /// What the device choice of a family says it uses: the file (a name inside
-/// `<target>/device/`, never a path).
+/// `<target>/input/device/`, never a path).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceUse {
     pub file: String,
 }
 
-/// A file's name that cannot leave `<target>/device/`.
+/// A file's name that cannot leave `<target>/input/device/`.
 #[must_use]
 pub fn is_plain_file_name(name: &str) -> bool {
     !name.is_empty()

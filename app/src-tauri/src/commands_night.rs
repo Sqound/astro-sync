@@ -1537,7 +1537,7 @@ pub async fn stacking_run<R: Runtime>(
     // The poses of « Mesure des poses » the person left out: not
     // integrated, never deleted.
     discarded: Option<Vec<String>>,
-    // The files of `<cible>/device/` the families take as their image instead
+    // The files of `<cible>/input/device/` the families take as their image instead
     // of a stacking of their poses; none: every family
     // is stacked from its poses.
     device: Option<Vec<DeviceUse>>,
@@ -1683,7 +1683,7 @@ pub async fn progression_families(
 }
 
 /// « Générer la progression »: Siril with fixed settings, the work on the
-/// disk of the night, the images in `<cible>/progression/`; behind
+/// disk of the night, the images in `<cible>/output/progression/`; behind
 /// `analysis.progression`.
 #[tauri::command]
 pub async fn progression_images_run<R: Runtime>(

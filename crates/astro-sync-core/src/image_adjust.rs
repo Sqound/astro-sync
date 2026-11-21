@@ -9,8 +9,8 @@
 //!   The arithmetic is `stacking/image_adjust.py`'s (the whole image) and
 //!   the window's (the preview); this module never touches pixels.
 //! - The image set is written **beside** the render, never over it:
-//!   `<target>/stacked/adjusted/<stem>_adjusted.png`, with its record
-//!   `<target>/stacked/adjusted/<render file name>.json` ([`AdjustRecord`]:
+//!   `<target>/output/stacked/adjusted/<stem>_adjusted.png`, with its record
+//!   `<target>/output/stacked/adjusted/<render file name>.json` ([`AdjustRecord`]:
 //!   the values, so the screen reopens them as they were, and what the two
 //!   files were when it was written). The folder is under `stacked/` but one
 //!   level down, so the reading of a night's folder never takes the image set

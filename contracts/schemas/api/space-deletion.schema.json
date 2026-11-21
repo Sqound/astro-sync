@@ -2,13 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://astroportal.invalid/schemas/api/space-deletion.schema.json",
   "title": "Astro Portal API v1 deletion of a space",
-  "description": "DELETE /v1/space, from inside the application or from the web. See v1.md, section « Deleting a space ».",
+  "description": "DELETE /v1/space, and the request confirmed by e-mail that comes before it (POST /v1/space/deletion-request and its routes), from inside the application or from the web. See v1.md, section « Deleting a space ».",
   "$defs": {
     "deletionRequest": {
       "description": "The explicit confirmation of « Supprimer mon espace ».",
       "type": "object",
       "required": ["confirm"],
-      "properties": { "confirm": { "const": true } }
+      "properties": {
+        "confirm": {
+          "const": true
+        }
+      }
     },
     "deletionAccepted": {
       "description": "202: the erasure has begun and cannot be cancelled. Every session and every device of the space is detached at once; the erasure of the data completes by `completesBy`.",
@@ -19,8 +23,14 @@
           "type": "object",
           "required": ["requestedAt", "completesBy"],
           "properties": {
-            "requestedAt": { "type": "string", "format": "date-time" },
-            "completesBy": { "type": "string", "format": "date-time" }
+            "requestedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "completesBy": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         }
       }
@@ -34,9 +44,171 @@
           "type": "object",
           "required": ["code", "message"],
           "properties": {
-            "code": { "const": "space_deleted" },
-            "message": { "type": "string" }
+            "code": {
+              "const": "space_deleted"
+            },
+            "message": {
+              "type": "string"
+            }
           }
+        }
+      }
+    },
+    "pendingDeletion": {
+      "description": "A request for the deletion of the space, waiting for the confirmation of its e-mail (the link or the code). Nothing is deleted while it waits. `sentTo` is the address of the space; `resendAt` when another message may be asked for.",
+      "type": "object",
+      "required": ["state", "requestedAt", "expiresAt", "sentTo", "resendAt"],
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "const": "pending"
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sentTo": {
+          "type": "string",
+          "minLength": 3
+        },
+        "resendAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "requestBody": {
+      "description": "The body of POST /v1/space/deletion-request, optional: the language of the message and the time zone its end is written in.",
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "maxLength": 16
+        },
+        "timeZone": {
+          "type": "string",
+          "maxLength": 64
+        }
+      }
+    },
+    "requestAccepted": {
+      "description": "202 of POST /v1/space/deletion-request: the request is recorded and its message leaves. A new request replaces the previous one, whose link and code stop working.",
+      "type": "object",
+      "required": ["deletionRequest"],
+      "properties": {
+        "deletionRequest": {
+          "$ref": "#/$defs/pendingDeletion"
+        }
+      }
+    },
+    "linkRequest": {
+      "description": "The body of POST /v1/space/deletion-request/link and …/keep, and of …/confirm from the page of the link: the token of the fragment.",
+      "type": "object",
+      "required": ["token"],
+      "properties": {
+        "token": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        }
+      }
+    },
+    "codeRequest": {
+      "description": "The body of POST /v1/space/deletion-request/confirm from the application or the web, with the space's own credential: the six digits of the e-mail.",
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[0-9]{6}$"
+        }
+      }
+    },
+    "linkRead": {
+      "description": "200 of POST /v1/space/deletion-request/link: what the page of the link shows before anything is done. The address is masked.",
+      "type": "object",
+      "required": ["deletionRequest"],
+      "properties": {
+        "deletionRequest": {
+          "type": "object",
+          "required": ["state", "expiresAt", "sentTo"],
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "pending"
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "sentTo": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "linkFragment": {
+      "description": "The fragment of the link of the message, `https://<service>/auth/delete#v=1&token=<token>&lang=<language>`, read as URL-encoded pairs. The fragment never reaches the service: a visit to the link (a mail scanner) sends nothing and consumes nothing.",
+      "type": "object",
+      "required": ["v", "token", "lang"],
+      "properties": {
+        "v": {
+          "const": "1"
+        },
+        "token": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "lang": {
+          "type": "string",
+          "minLength": 2
+        }
+      }
+    },
+    "deletionError": {
+      "description": "A refusal of the routes of the deletion request. `attemptsRemaining` comes with `deletion_code_incorrect`; `retryAt` (also `Retry-After`) with `deletion_request_rate_limited` and `deletion_request_unavailable`.",
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "enum": [
+                "invalid_request",
+                "deletion_request_invalid",
+                "deletion_request_expired",
+                "deletion_code_incorrect",
+                "deletion_code_locked",
+                "deletion_request_rate_limited",
+                "deletion_request_unavailable",
+                "email_delivery_failed",
+                "authentication_required",
+                "csrf_invalid",
+                "space_deleted",
+                "not_found"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "attemptsRemaining": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4
+        },
+        "retryAt": {
+          "type": "string",
+          "format": "date-time"
         }
       }
     }

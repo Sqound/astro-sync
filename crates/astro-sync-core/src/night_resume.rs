@@ -212,7 +212,8 @@ pub struct AnalysisInputs {
     pub latest_modified: Option<String>,
 }
 
-/// Reads `night_folder`'s `logs/` and every `<target>/lights/` (links
+/// Reads `night_folder`'s `logs/` and every `<target>/input/lights/` (or
+/// `<target>/input/lights/` of the earlier form; links
 /// followed), without reading a file.
 pub fn analysis_inputs(night_folder: &Path) -> Result<AnalysisInputs, ScanError> {
     let walk = scanner::walk_folder(night_folder, None)?;
@@ -221,8 +222,13 @@ pub fn analysis_inputs(night_folder: &Path) -> Result<AnalysisInputs, ScanError>
     let mut latest: Option<i64> = None;
     for file in &walk.files {
         let segments: Vec<&str> = file.relative_path.split('/').collect();
-        let read_by_the_analysis =
-            segments.first() == Some(&"logs") || (segments.len() >= 3 && segments[1] == "lights");
+        // `<target>/input/lights/…` or `<target>/input/lights/…` (earlier form).
+        let in_lights = segments.len() >= 3
+            && matches!(
+                crate::working_folder::part_of_target_path(&segments[1..]),
+                Some((crate::working_folder::TargetPart::Lights, _, depth)) if segments.len() > depth + 1
+            );
+        let read_by_the_analysis = segments.first() == Some(&"logs") || in_lights;
         if !read_by_the_analysis {
             continue;
         }

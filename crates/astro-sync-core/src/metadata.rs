@@ -597,9 +597,13 @@ fn records_near(image: &Path, night_folder: &Path) -> Vec<Provenance> {
         let mut targets: Vec<_> = entries.flatten().collect();
         targets.sort_by_key(std::fs::DirEntry::file_name);
         for target in targets {
-            let stacked = target.path().join("stacked");
-            if stacked.is_dir() && !folders.contains(&stacked) {
-                folders.push(stacked);
+            for stacked in crate::working_folder::target_part_dirs_both(
+                &target.path(),
+                crate::working_folder::TargetPart::Stacked,
+            ) {
+                if stacked.is_dir() && !folders.contains(&stacked) {
+                    folders.push(stacked);
+                }
             }
         }
     }
@@ -1291,7 +1295,7 @@ fn proposals_with(
 /// N ») and the capture with no acquisition (no figures on its page).
 ///
 /// The night and the target are the folders the render lies in
-/// (`<night>/<target>/stacked/<file>`): the target's frames give the
+/// (`<night>/<target>/output/stacked/<file>`): the target's frames give the
 /// acquisition and the sensor, the night's `calibration/` folders the
 /// calibration, the stacker's record (or the file's name) the rendering. A
 /// file elsewhere, a progression image and the linear file propose nothing.
@@ -1352,7 +1356,8 @@ impl ImportProposalSources {
         if stacked.file_name()? != crate::working_folder::STACKED_DIR {
             return None;
         }
-        let target = stacked.parent()?;
+        // `<target>/output/stacked/`, or `<target>/output/stacked/` (earlier form).
+        let target = crate::working_folder::owner_of_part_dir(stacked)?;
         let night_folder = target.parent()?;
         let target_name = target.file_name()?.to_str()?;
         let families = if capture || image_quality {

@@ -86,7 +86,7 @@ test("a stacking that gave no image is said in words: by its reason, its script'
     assert.equal(actual, expected.replaceAll("\u00a0", " "));
   equal(
     said({ why: "failed", code: "too_few_lights", message: "x" }),
-    "Il faut au moins deux poses FITS dans lights/.",
+    "Il faut au moins deux poses FITS dans input/lights/.",
   );
   equal(
     said({ why: "failed", code: "bad_input", message: "x" }),

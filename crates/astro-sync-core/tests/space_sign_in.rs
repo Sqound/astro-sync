@@ -868,6 +868,20 @@ fn a_service_that_cannot_be_reached_at_all_fails_at_once() {
 /* -------------------------------- the space ------------------------------- */
 
 #[test]
+fn a_space_with_a_deletion_request_waiting_is_read_as_any_space() {
+    // The request is the phone's and the web's to show; Astro Sync reads the
+    // space and its device the same way, whatever `deletionRequest` says.
+    let replay = Replay::start(&["current-space-with-deletion-request"]);
+    let current = client(&replay.base_url())
+        .current_space(RECORDED_BEARER)
+        .unwrap();
+    assert_eq!(current.space.email, "vous@exemple.fr");
+    assert_eq!(current.space.web_url, "https://portal.example.test");
+    assert_eq!(current.device.unwrap().name, "iPhone 16 Pro");
+    replay.assert_played_exactly();
+}
+
+#[test]
 fn the_space_of_a_token_and_the_end_of_a_sign_in_are_read_as_recorded() {
     // The token of the recorded request is the one the fake service expects:
     // it is sent as `Authorization: Bearer <token>`.
@@ -998,6 +1012,7 @@ fn every_recorded_exchange_is_either_played_or_set_aside_for_a_reason() {
         "current-space-for-device",
         "current-space-without-credential",
         "current-space-on-private-server",
+        "current-space-with-deletion-request",
         "call-after-deletion",
         "rename-device",
         "detach-this-device",
@@ -1077,6 +1092,54 @@ fn every_recorded_exchange_is_either_played_or_set_aside_for_a_reason() {
         ),
         (
             "delete-space-without-confirmation",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "request-deletion",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "request-deletion-again-too-soon",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "request-deletion-on-private-server",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "cancel-deletion-request",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "read-deletion-link",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "read-deletion-link-no-longer-valid",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "keep-space-by-link",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "confirm-deletion-by-link",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "confirm-deletion-by-code",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "confirm-deletion-wrong-code",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "confirm-deletion-code-locked",
+            "deleting a space is the phone's and the web's; Astro Sync only sends",
+        ),
+        (
+            "confirm-deletion-expired",
             "deleting a space is the phone's and the web's; Astro Sync only sends",
         ),
         (

@@ -8,8 +8,9 @@
 - 1 つの夜のフォルダーの中身：
   - `logs/`：その夜の NINA、PHD2、ASIAIR のログ
   - `calibration/`：`darks/`、`flats/`、`dark-flats/`、`biases/`
-  - 対象天体ごとに 1 つのフォルダー（`M31`、`NGC 7000` など）。`lights/` に元フレーム（FITS またはカメラの RAW ファイル）、`final/` に処理済みの画像（TIFF、JPEG、PNG）を入れます
-  - `stacked/` と `progression/`：Astro Sync が自分で画像を作るときだけ作成します。送信前に調整した画像は、元のレンダリングの横の `stacked/adjusted/` に書き込まれ、元のレンダリングは上書きされません
+  - 対象天体ごとに 1 つのフォルダー（`M31`、`NGC 7000` など）。`input/` には Astro Sync に渡すものを入れます。`input/lights/` に元フレーム（FITS またはカメラの RAW ファイル）、`input/processed/` に処理ソフトから書き出した画像（TIFF、JPEG、PNG）を入れ、`output/` には Astro Sync が作るものが入ります
+  - `output/` の中の `stacked/` と `progression/`：Astro Sync が自分で画像を作るときだけ作成します。Astro Sync が書き込むのは対象天体のこのフォルダーだけで、`input/` には書き込みません。送信前に調整した画像は、元のレンダリングの横の `output/stacked/adjusted/` に書き込まれ、元のレンダリングは上書きされません
+  - Astro Sync 1.2.0 より前に整理した夜は、`lights/`、`final/`、`stacked/` が対象天体の直下にある形のまま残ります。Astro Sync はそのまま読み込み、中のものを移動しません
 - 名前がドットで始まるファイルとフォルダー（`.astro-sync-night.json`、`.astro-sync-target.json`、`.astro-sync-work/`）は Astro Sync のものです。夜や対象天体の識別情報と、実行中の処理の一時作業を保持しています。そのままにしておいてください。
 
 ## ルートにある .md ファイル

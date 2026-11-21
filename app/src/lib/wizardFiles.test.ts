@@ -61,12 +61,12 @@ test("everything found: per target its final image and its frames, then the cali
     ],
   );
   assert.deepEqual(lines(all(view.targets[0])), [
-    "ok final/ · NGC7000_final.tif · 412 Mo",
-    "ok lights/ · 40 poses · 180 s · Ha 20, OIII 20 · gain 100 · 1,3 Go",
+    "ok input/processed/ · NGC7000_final.tif · 412 Mo",
+    "ok input/lights/ · 40 poses · 180 s · Ha 20, OIII 20 · gain 100 · 1,3 Go",
   ]);
   assert.deepEqual(
     lines(all(view.targets[2]))[1],
-    "ok lights/ · 42 poses · 120 s · sans filtre · gain 100 · 1,3 Go",
+    "ok input/lights/ · 42 poses · 120 s · sans filtre · gain 100 · 1,3 Go",
   );
   assert.deepEqual(lines(view.calibration!), [
     "ok darks/ · 30 poses · 180 s et 120 s · gain 100",
@@ -96,7 +96,7 @@ test("missing items: what and where in one line; the missing final image in ambe
       key: "detection.finalMissing",
       severity: "warning",
       targetId: IC,
-      params: { target: "IC 1396", folder: "IC 1396/final/" },
+      params: { target: "IC 1396", folder: "IC 1396/input/processed/" },
       files: [],
     },
     {
@@ -151,7 +151,7 @@ test("missing items: what and where in one line; the missing final image in ambe
   // Calibration card, not under each target.
   assert.deepEqual(lines(all(view.targets[1])), [
     "warning Aucune image finale : seules les poses FITS seront utilisées pour créer une image finale (empilement).",
-    "ok lights/ · 38 poses · 180 s · Ha 19, OIII 19 · gain 100 · 1,2 Go",
+    "ok input/lights/ · 38 poses · 180 s · Ha 19, OIII 19 · gain 100 · 1,2 Go",
   ]);
   assert.equal(lines(all(view.targets[2])).length, 2);
   assert.deepEqual(
@@ -187,7 +187,7 @@ test("misfiled frames from the headers: from where to where, the assistant offer
         count: 3,
         kind: "flat",
         header: "FLAT",
-        from: "M31/lights/",
+        from: "M31/input/lights/",
         to: "calibration/flats/",
         fromLights: true,
       },
@@ -197,7 +197,7 @@ test("misfiled frames from the headers: from where to where, the assistant offer
       key: "detection.framesOtherTarget",
       severity: "warning",
       targetId: M31,
-      params: { count: 2, object: "NGC 7000", folder: "M31/lights/" },
+      params: { count: 2, object: "NGC 7000", folder: "M31/input/lights/" },
       files: [],
     },
   ];
@@ -222,8 +222,8 @@ test("misfiled frames from the headers: from where to where, the assistant offer
   assert.deepEqual(m31.badge, { tone: "warning", key: "tidy", count: 2 });
   assert.ok(m31.askAssistant);
   assert.deepEqual(lines(m31.lines), [
-    "warning 3 flats rangés dans M31/lights/ : leur en-tête dit FLAT. À déplacer dans calibration/flats/.",
-    "warning 2 poses de NGC 7000 dans M31/lights/ (en-tête OBJECT). À déplacer dans NGC 7000/lights/.",
+    "warning 3 flats rangés dans M31/input/lights/ : leur en-tête dit FLAT. À déplacer dans calibration/flats/.",
+    "warning 2 poses de NGC 7000 dans M31/input/lights/ (en-tête OBJECT). À déplacer dans NGC 7000/input/lights/.",
   ]);
   assert.equal(
     text(view.outside!),
@@ -245,7 +245,7 @@ test("SHA-256: identical online is not sent again; a different image is a varian
   );
   assert.equal(
     lines(all(view.targets[0]))[0],
-    "ok final/ · NGC7000_final.tif · 412 Mo · pas encore en ligne",
+    "ok input/processed/ · NGC7000_final.tif · 412 Mo · pas encore en ligne",
   );
   assert.equal(
     lines(all(view.targets[1]))[0],
@@ -300,7 +300,7 @@ test("a resumed night: the image online kept, frames and logs « Nouveau »", ()
   );
   assert.deepEqual(lines(all(view.targets[0])), [
     "phone Image finale en ligne : M31_final.jpg, envoyée depuis le téléphone · annotations du ciel en ligne. Conservées.",
-    "ok lights/ · 96 poses · 120 s · sans filtre · gain 100",
+    "ok input/lights/ · 96 poses · 120 s · sans filtre · gain 100",
   ]);
   assert.ok(view.targets[0].frames.lines[0].isNew);
   assert.ok(view.logs.lines.every((l) => l.isNew));
@@ -356,7 +356,7 @@ test("the four cases of a target: FITS only, final image only, both, neither", (
   assert.deepEqual(neither.final.state, { tone: "error", key: "missing" });
   assert.deepEqual(neither.frames.state, { tone: "error", key: "missing" });
   assert.deepEqual(lines(neither.lines), [
-    "missing Ni pose FITS ni image finale : déposez les poses dans M33/lights/ ou une image finale (TIFF, JPEG ou PNG) dans M33/final/.",
+    "missing Ni pose FITS ni image finale : déposez les poses dans M33/input/lights/ ou une image finale (TIFF, JPEG ou PNG) dans M33/input/processed/.",
   ]);
   // Only the FITS-only target is announced as leaving without a capture.
   assert.match(view.footer ?? "", /^NGC 7000 partira sans capture/u);
@@ -377,7 +377,10 @@ test("the target's messages for the assistant keep the new findings readable", (
       key: "detection.targetEmpty",
       severity: "error",
       targetId: M31,
-      params: { lightsFolder: "M31/lights/", folder: "M31/final/" },
+      params: {
+        lightsFolder: "M31/input/lights/",
+        folder: "M31/input/processed/",
+      },
       files: [],
     },
   ];
@@ -399,7 +402,11 @@ test("frames outside the night's window: a warning line, the frames still found,
       key: "detection.framesOtherNight",
       severity: "warning",
       targetId: NGC,
-      params: { count: 40, date: "2026-10-06", folder: "NGC 7000/lights/" },
+      params: {
+        count: 40,
+        date: "2026-10-06",
+        folder: "NGC 7000/input/lights/",
+      },
       files: [],
     },
   ];
@@ -416,7 +423,7 @@ test("frames outside the night's window: a warning line, the frames still found,
   assert.notEqual(card.badge.key, "tidy");
   assert.equal(card.askAssistant, false);
   assert.deepEqual(lines(card.lines), [
-    "warning 40 poses hors de la nuit (nuit du 6 oct.), écartées de l’intégration\u00a0; elles restent comptées dans NGC 7000/lights/.",
+    "warning 40 poses hors de la nuit (nuit du 6 oct.), écartées de l’intégration\u00a0; elles restent comptées dans NGC 7000/input/lights/.",
   ]);
 });
 
@@ -519,7 +526,7 @@ test("a target whose device stacked an image does not promise « seules les pose
   seestar.device = {
     images: [
       {
-        relativePath: "M31/device/Stacked_430.fit",
+        relativePath: "M31/input/device/Stacked_430.fit",
         fileName: "Stacked_430.fit",
         bytes: 1,
         device: "Seestar S50 Pro",
@@ -576,4 +583,52 @@ test("a target whose device stacked an image does not promise « seules les pose
     text(findingSegs(fr, "fr", finding)),
     "Aucune image finale\u00a0: l’image de l’appareil sera utilisée comme source.",
   );
+});
+
+test("a target folder made before Astro Sync 1.2.0 is named in its own form, and two forms in one target are said", () => {
+  const detection = detectionAllFound();
+  const fits = detection.targets[0].lightSummary;
+  detection.targets = [
+    {
+      ...target(M31, 42, fits, { name: "M31_final.tif", bytes: 50_000_000 }),
+      layout: "legacy",
+    },
+    {
+      ...target(NGC, 0, fits, null),
+      targetId: "t-empty",
+      designation: "M33",
+      folderName: "M33",
+      layout: "legacy",
+    },
+  ];
+  detection.findings = [
+    {
+      key: "detection.targetTwoLayouts",
+      severity: "warning",
+      targetId: M31,
+      params: {
+        target: "M31",
+        count: 2,
+        folders: "M31/lights/, M31/final/",
+        inputFolder: "M31/input/",
+      },
+      files: ["M31/final/old.jpg", "M31/lights/old.fits"],
+    },
+  ];
+  const view = filesView(fr, "fr", {
+    detection,
+    online: null,
+    plans: [],
+    added: false,
+    eveningDay: "7 oct.",
+  });
+  const [legacy, empty] = view.targets;
+  assert.ok(lines(legacy.final.lines)[0].startsWith("ok final/ · "));
+  assert.ok(lines(legacy.frames.lines)[0].startsWith("ok lights/ · "));
+  assert.deepEqual(lines(legacy.lines), [
+    "warning M31 contient input/ et aussi M31/lights/, M31/final/, des dossiers de l’ancienne forme : seul M31/input/ est lu. Rien n’est déplacé ni fusionné, déplacez vous-même les fichiers à lire.",
+  ]);
+  assert.deepEqual(lines(empty.lines), [
+    "missing Ni pose FITS ni image finale : déposez les poses dans M33/lights/ ou une image finale (TIFF, JPEG ou PNG) dans M33/final/.",
+  ]);
 });

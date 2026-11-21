@@ -11,7 +11,7 @@ Step 9. Ask: "Do you want me to search for the light frames (raw FITS) of this n
   - If the answer is "Here is the path": step 10.
 > Please search
 Step 11. Search for the light frames (raw FITS), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 12.
-Step 12. Propose placing the light frames (raw FITS) in `<target>/lights/` (the target its `OBJECT` header names), by the rule "Placing a file". Then step 13.
+Step 12. Propose placing the light frames (raw FITS) in `<target>/input/lights/` (the target its `OBJECT` header names; `<target>/lights/` in a target folder of the earlier form), by the rule "Placing a file". Then step 13.
 Step 13. Ask: "Do you want me to search for the darks of this night, or would you rather give me the full path? Tell me as well if you had none."
   - If the answer is "Please search": step 15.
   - If the answer is "Here is the path": step 14.
@@ -50,5 +50,5 @@ Step 34. Ask: "Do you want me to search for the final image (TIFF, JPEG or PNG) 
 > Here is the path
 Step 35. Ask: "Please give me the full path of the folder that holds the final image (TIFF, JPEG or PNG)." Then step 36.
 Step 36. Search for the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 37.
-Step 37. Propose placing the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+Step 37. Propose placing the final image (TIFF, JPEG or PNG) in `<target>/input/processed/` (`<target>/final/` in a target folder of the earlier form), by the rule "Placing a file". Then step 38.
 Step 38. Sum up: what was placed, where, by link, copy or move, and what is still missing. Then tell the person to go back to Astro Sync and open the night again.

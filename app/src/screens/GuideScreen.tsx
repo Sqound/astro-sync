@@ -216,7 +216,7 @@ export function GuideScreen({
           <div className="as-finder" aria-label={t("guide.finder.drawn")}>
             <p className="as-finder__caption">{t("guide.finder.drawn")}</p>
             <div className="as-finder__columns">
-              {finderColumns(rootName).map((column, index) => (
+              {finderColumns().map((column, index) => (
                 <ul key={index} className="as-finder__column">
                   {column.items.map((item) => (
                     <li

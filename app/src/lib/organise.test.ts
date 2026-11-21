@@ -220,3 +220,39 @@ test("the image a device stacked goes to device/ of its target, shown in the tre
   );
   assert.ok(alone.includes("M45/device/") && !alone.includes("lights/"), alone);
 });
+
+test("the tree of a tidying into the new form shows input/lights/ and input/device/, the earlier form stays readable", () => {
+  const plan: OrganisePlan = {
+    ...PLAN,
+    actions: [
+      action("/data/S/l1.fit", "2026-11-19/M45/input/lights/IRCUT/l1.fit"),
+      action("/data/S/l2.fit", "2026-11-19/M45/input/lights/IRCUT/l2.fit"),
+      action(
+        "/data/S/Stacked_2.fit",
+        "2026-11-19/M45/input/device/Stacked_2.fit",
+      ),
+      // A target folder already there in the earlier form keeps it.
+      action("/data/S/l3.fit", "2026-11-19/M31/lights/l3.fit"),
+    ],
+  };
+  assert.deepEqual(organiseCounts(plan), {
+    frames: 3,
+    calibration: 0,
+    logs: 0,
+  });
+  const [night] = organiseTree(plan);
+  assert.deepEqual(
+    night.targets.map((t) => [t.name, t.layout, t.frames, t.device]),
+    [
+      ["M45", "inputOutput", 2, 1],
+      ["M31", "legacy", 1, 0],
+    ],
+  );
+  const text = organiseTreeText(plan, {
+    poses: (n) => `${n} poses`,
+    moreNights: (n) => `${n} nuits`,
+  });
+  assert.ok(text.includes("M45/input/lights/IRCUT/"), text);
+  assert.ok(text.includes("M45/input/device/"), text);
+  assert.ok(text.includes("M31/lights/"), text);
+});

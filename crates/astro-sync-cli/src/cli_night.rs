@@ -401,7 +401,7 @@ pub struct StackArgs {
     #[arg(long, value_name = "NAME")]
     pub filter: Option<String>,
     /// "No processing": the linear stack (calibrated, aligned, unstretched) as a 16-bit TIFF,
-    /// `<target>/stacked/<name>_linear.tif`; alone, no render; with pipelines, written in addition, after them.
+    /// `<target>/output/stacked/<name>_linear.tif`; alone, no render; with pipelines, written in addition, after them.
     #[arg(long)]
     pub no_render: bool,
     /// Presentation contrast: each image is also written with an S curve on the luminance
@@ -459,10 +459,10 @@ pub struct StackArgs {
     #[arg(long)]
     pub token: Option<PathBuf>,
     /// Leave out the frames named in this file (one per line), like "Leave out the flagged
-    /// frames" in the window: they stay in lights/, nothing is deleted.
+    /// frames" in the window: they stay in input/lights/, nothing is deleted.
     #[arg(long, value_name = "FICHIER")]
     pub leave_out: Option<PathBuf>,
-    /// An image of the device (a file of `<target>/device/`) taken as the source of its family
+    /// An image of the device (a file of `<target>/input/device/`) taken as the source of its family
     /// instead of a stack of its frames (repeatable). Without this option, the CLI does like the window:
     /// each family covered by an image of the device takes it; `--restack` stacks them all.
     #[arg(long = "device", value_name = "FICHIER")]

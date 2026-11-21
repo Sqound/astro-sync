@@ -152,7 +152,7 @@ def write_raw_night(root: Path, name: str, sky: np.ndarray, angles: list[float],
                     target: str = "M 45", exposure: float = 30.0, iso: int = 800, offset: str | None = "+09:00",
                     darks: int = 3, flats: int = 3, biases: int = 3, evening: str = "2026:10:07",
                     colour: tuple[float, float, float] = (1.0, 0.9, 0.8)) -> Path:
-    """A night of camera RAW files (DNG): ``<root>/<name>/<target>/lights/Light_###.dng`` of ``sky`` turned by
+    """A night of camera RAW files (DNG): ``<root>/<name>/<target>/input/lights/Light_###.dng`` of ``sky`` turned by
     ``angles``, and ``calibration/{darks,flats,biases}`` of the same camera (a dark has the lights' exposure and
     ISO, a flat is a bright flat field, a bias is the shortest exposure).  Returns the night's folder."""
     night = root / name

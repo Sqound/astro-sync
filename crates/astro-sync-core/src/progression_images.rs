@@ -34,7 +34,7 @@
 //!   writes beside them. When the run ends -- success, failure or stop --
 //!   the scratch is removed, and `.astro-sync-work/` with it when empty.
 //! - **What stays**: the JPEG of each milestone, copied before the
-//!   scratch goes into `<night>/<target>/progression/milestone_NN.jpg`
+//!   scratch goes into `<night>/<target>/output/progression/milestone_NN.jpg`
 //!   ([`crate::working_folder::PROGRESSION_DIR`]), a result of Astro Sync
 //!   like `stacked/`, and the record of the poses each one stacks
 //!   ([`PROGRESSION_RECORD`]), which a later sending reads
@@ -66,7 +66,7 @@ use crate::siril_progress::{POLL_EVERY, SirilFollower, now_ms};
 use crate::stacking::BYTES_PER_LIGHT;
 use crate::upload_queue::ResultKind;
 use crate::working_folder::{
-    CALIBRATION_DIR, LIGHTS_DIR, PROGRESSION_DIR, progression_scratch_root, remove_scratch,
+    CALIBRATION_DIR, TargetPart, progression_scratch_root, remove_scratch, target_part_dir,
 };
 
 /// The fixed settings, written in every script and record.
@@ -110,7 +110,7 @@ fn frames_of(folder: &Path) -> Vec<(PathBuf, fits::FitsAcquisitionRecord, Option
     frames
 }
 
-/// The families of a target's light frames (`<target>/lights/`, links
+/// The families of a target's light frames (`<target>/input/lights/`, links
 /// followed; a frame whose header says another type is left out).
 #[must_use]
 pub fn target_families(night_folder: &Path, target_folder: &str) -> Vec<AcquisitionFamily> {
@@ -126,7 +126,7 @@ pub fn target_families_within(
     target_folder: &str,
     window: Option<&NightWindow>,
 ) -> (Vec<AcquisitionFamily>, Vec<PathBuf>) {
-    let lights = night_folder.join(target_folder).join(LIGHTS_DIR);
+    let lights = target_part_dir(&night_folder.join(target_folder), TargetPart::Lights);
     // The filter the target folder records, for the lights whose headers name
     // none (the frames are never written).
     let assumed = crate::working_folder::read_target_filter(&night_folder.join(target_folder));
@@ -163,7 +163,7 @@ pub struct ProgressionJob {
     pub family: AcquisitionFamily,
     /// The scratch, `<night>/.astro-sync-work/progression/<target>/<family>/`.
     pub work_dir: PathBuf,
-    /// Where the milestones' JPEGs stay, `<night>/<target>/progression/`.
+    /// Where the milestones' JPEGs stay, `<night>/<target>/output/progression/`.
     pub output_dir: PathBuf,
     /// The frames come from a colour sensor (a `BAYERPAT`): they are
     /// debayered.
@@ -244,7 +244,7 @@ impl ProgressionJob {
         Self {
             night_folder: night_folder.to_path_buf(),
             target_folder: target_folder.to_string(),
-            output_dir: night_folder.join(target_folder).join(PROGRESSION_DIR),
+            output_dir: target_part_dir(&night_folder.join(target_folder), TargetPart::Progression),
             family,
             work_dir,
             colour,
@@ -492,7 +492,7 @@ pub fn display_commands(level_channels: bool) -> Vec<String> {
 }
 
 /// The record a progression leaves beside its milestones
-/// (`<target>/progression/progression.json`): the poses each one stacks, so a
+/// (`<target>/output/progression/progression.json`): the poses each one stacks, so a
 /// later sending ([`recorded_candidates`]) knows them without Siril.
 pub const PROGRESSION_RECORD: &str = "progression.json";
 
@@ -903,7 +903,7 @@ fn write_record(output_dir: &Path, images: &[ProgressionImage]) -> std::io::Resu
     fs::write(output_dir.join(PROGRESSION_RECORD), text)
 }
 
-/// The milestones a progression left in `<night>/<target>/progression/`,
+/// The milestones a progression left in `<night>/<target>/output/progression/`,
 /// as results that could leave: each JPEG the record names and the folder
 /// still holds, with the poses it stacks. What a sending from the command
 /// line adds to the images of the night's folder, as the window adds the
@@ -914,7 +914,7 @@ pub fn recorded_candidates(
     target_folder: &str,
     target_id: &str,
 ) -> Vec<ImageCandidate> {
-    let folder = night_folder.join(target_folder).join(PROGRESSION_DIR);
+    let folder = target_part_dir(&night_folder.join(target_folder), TargetPart::Progression);
     let Some(record) = fs::read_to_string(folder.join(PROGRESSION_RECORD))
         .ok()
         .and_then(|text| serde_json::from_str::<Record>(&text).ok())

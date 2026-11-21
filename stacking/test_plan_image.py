@@ -511,6 +511,18 @@ class Job(unittest.TestCase):
         self.assertEqual((code, events[-1]["code"]), (2, "folder_missing"))
         code, events = self.run_script("--job", str(self.job(out=str(self.root / "final"))), "--dry-run")
         self.assertEqual(events[-1]["code"], "output_is_final")
+        # The folders the person gives Astro Sync, in the form of Astro Sync 1.2.0.
+        for out in (self.root / "M31" / "input" / "processed", self.root / "M31" / "input" / "lights"):
+            code, events = self.run_script("--job", str(self.job(out=str(out))), "--dry-run")
+            self.assertEqual(events[-1]["code"], "output_is_final", out)
+
+    def test_the_folders_of_the_person_are_never_an_output(self) -> None:
+        import astro_sync_stack as stack
+
+        for out in ("final", "M31/final", "M31/input/processed", "M31/input/lights", "M31/input"):
+            self.assertTrue(stack.is_persons_folder(Path("/n") / out), out)
+        for out in ("M31/output/stacked", "M31/stacked", "plan/output/stacked"):
+            self.assertFalse(stack.is_persons_folder(Path("/n") / out), out)
 
     def test_the_alignment_puts_the_reference_first(self) -> None:
         import plan_stack

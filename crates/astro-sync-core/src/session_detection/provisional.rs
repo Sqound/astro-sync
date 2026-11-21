@@ -636,7 +636,8 @@ pub struct Discarded {
 }
 
 /// Whether `path` (a file in a provisional folder) is Astro Sync's own: its
-/// identity files, its results (`stacked/`, `progression/`), its scratch.
+/// identity files, its results (`output/stacked/`, `output/progression/`, or
+/// `stacked/`, `progression/`), its scratch.
 fn made_by_astro_sync(folder: &Path, path: &Path) -> bool {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
     if matches!(
@@ -652,6 +653,8 @@ fn made_by_astro_sync(folder: &Path, path: &Path) -> bool {
     path.strip_prefix(folder).is_ok_and(|relative| {
         relative.components().any(|part| {
             let part = part.as_os_str().to_string_lossy();
+            // `output/stacked/` and `output/progression/` of the new form
+            // carry the same names: `output/` alone is not enough.
             part == STACKED_DIR || part == PROGRESSION_DIR || part == WORK_DIR
         })
     })

@@ -427,3 +427,32 @@ test("paths are shown under the folder read, the name alone elsewhere", () => {
   assert.equal(relativeTo("/x/y/b.fit", ROOT), "b.fit");
   assert.equal(utcTime("2026-08-10T11:45:00Z", "fr"), "11:45");
 });
+
+test("the folders of a tidying into the new form are named with input/lights/", () => {
+  const copy = (destination: string) => ({
+    source: "/s/x.fit",
+    destination,
+    kind: "copy" as const,
+    bytes: 1,
+  });
+  const plan = {
+    destination: "/N",
+    actions: [
+      copy("/N/2026-11-19/IC 1805/input/lights/1.fit"),
+      copy("/N/2026-11-19/IC 1805/input/lights/Ha/2.fit"),
+      copy("/N/2026-11-19/M31/lights/3.fit"),
+      copy("/N/2026-11-19/calibration/darks/1.fit"),
+    ],
+    conflicts: [],
+    files: 4,
+    bytes: 4,
+    windowsNoLink: false,
+    summary: "",
+  };
+  assert.deepEqual(treeFolders(plan), [
+    "IC 1805/input/lights/",
+    "IC 1805/input/lights/Ha/",
+    "M31/lights/",
+    "calibration/",
+  ]);
+});

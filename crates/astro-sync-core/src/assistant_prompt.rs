@@ -6,7 +6,8 @@
 //!   step-by-step procedure** an assistant follows to gather a night's files
 //!   (one folder or separate places; raw FITS or only a final image; search
 //!   or a full path; lights, darks, flats and dark-flats, offsets; a
-//!   processing already done into `final/`; a summary, then back to Astro
+//!   processing already done into `input/processed/`, or the `final/` of a
+//!   target folder of the earlier form; a summary, then back to Astro
 //!   Sync). Its source of truth is `assistant_prompt/assistant-file.json`
 //!   (schema beside it, [`flow`]); [`ASSISTANT_FILE_TEXT`] is its rendering,
 //!   committed and held equal to it by a test. It is written at the root of
@@ -70,7 +71,7 @@ pub fn assistant_text(multi_night: bool) -> &'static str {
 /// The SHA-256 of the texts of `ASSISTANT-IA.md` earlier versions wrote,
 /// oldest first: such a file is Astro Sync's, and is written again even when
 /// the settings lost its digest.
-pub const EARLIER_ASSISTANT_FILE_SHA256: [&str; 5] = [
+pub const EARLIER_ASSISTANT_FILE_SHA256: [&str; 7] = [
     "4c89aca009e1fa0fe7089fd7078418d1d68f5911882d60153292574998dd57c4",
     // Before the links rule.
     "e755edf53afc1c4bcdc36102450c359e7f232526a26af914a81ecf1b2a633d78",
@@ -80,6 +81,9 @@ pub const EARLIER_ASSISTANT_FILE_SHA256: [&str; 5] = [
     "144610e34a59fd7bf6c8c07c2569c7864f0ad5ae1920e29232bb8aee88eef878",
     // Before the masters kept in `stacked/`.
     "4a9df5f9ff4d566c94d4b0047f18294166d2f2061247425022c69c984abe0217",
+    // Before `input/` and `output/` (Astro Sync 1.1.x), and its multi-night text.
+    "cbbf5eb90052995fe7d2ad31f0b94c0eab8b37b2348d08930b1fd1fe48b510c1",
+    "a0408a073355835b7a768d8bd228361e870bedbdddce0ca1e7ec29dfb339628b",
 ];
 
 /// The SHA-256 of [`ASSISTANT_FILE_TEXT`].

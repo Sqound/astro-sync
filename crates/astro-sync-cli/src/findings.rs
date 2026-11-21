@@ -108,13 +108,27 @@ fn composed(finding: &Finding, locale: &str) -> Option<String> {
         }
         "detection.framesOtherTarget" => {
             let object = text("object");
+            // The other target's folder in its own form; a finding of an
+            // earlier build names none.
+            let to = Some(text("objectFolder"))
+                .filter(|folder| !folder.is_empty())
+                .unwrap_or_else(|| format!("{object}/input/lights/"));
             Some(format!(
-                "{} {}{}{object}/lights/.",
+                "{} {}{}{to}.",
                 plural("wizard.files.otherTarget", &[("object", &object)])?,
                 text("folder"),
                 say(locale, "wizard.files.otherTargetHeader", &[])?
             ))
         }
+        "detection.targetTwoLayouts" => say(
+            locale,
+            "wizard.files.twoLayouts",
+            &[
+                ("target", &text("target")),
+                ("folders", &text("folders")),
+                ("inputFolder", &text("inputFolder")),
+            ],
+        ),
         "detection.flatsMissing" => {
             let none = finding.params.get("none").and_then(Value::as_bool) == Some(true);
             let filter = finding.params.get("filter").and_then(Value::as_str);

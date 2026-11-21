@@ -4,9 +4,11 @@
 //! the one deliberate exception to Astro Sync's rule that it never touches a
 //! source file.
 //!
-//! The tree: `<night>/<target>/lights/[<filter>/]` (`<night>` is
-//! `YYYY-MM-DD · <place> · <id court>`, the working folder's rule), the image a
-//! known device stacked in `<night>/<target>/device/` (the Seestar's
+//! The tree: `<night>/<target>/input/lights/[<filter>/]` (`<night>` is
+//! `YYYY-MM-DD · <place> · <id court>`, the working folder's rule; a target
+//! folder already there in the form made before Astro Sync 1.2.0 keeps it:
+//! `<target>/input/lights/`), the image a
+//! known device stacked in `<night>/<target>/input/device/` (the Seestar's
 //! `Stacked_*.fit`; copied, moved or linked like the
 //! poses), the night's calibration
 //! in `<night>/calibration/<darks|flats|dark-flats|bias>/` (a set shared
@@ -287,7 +289,15 @@ pub fn plan_organise_named(
             None => destination.join(night_folder(proposal, session, naming)),
         };
         for target in &session.targets {
-            let lights = night_dir.join(clean(&target.designation)).join("lights");
+            // The new form for a new target folder; the form of one already
+            // there otherwise ([`crate::working_folder::target_layout`]).
+            let target_dir = night_dir.join(clean(&target.designation));
+            let layout = crate::working_folder::target_layout(&target_dir);
+            let lights = crate::working_folder::target_part_dir_in(
+                &target_dir,
+                crate::working_folder::TargetPart::Lights,
+                layout,
+            );
             for (index, file) in target.files.iter().enumerate() {
                 let dir = match target.file_filters.get(index).filter(|f| !f.is_empty()) {
                     Some(filter) => lights.join(clean(filter)),
@@ -297,9 +307,11 @@ pub fn plan_organise_named(
             }
             // What the device stacked itself: its own folder of the target,
             // no filter level (the file's name says the filter).
-            let device = night_dir
-                .join(clean(&target.designation))
-                .join(crate::working_folder::DEVICE_DIR);
+            let device = crate::working_folder::target_part_dir_in(
+                &target_dir,
+                crate::working_folder::TargetPart::Device,
+                layout,
+            );
             for file in &target.device_images {
                 wanted.push((file.clone(), device.join(file_name(file))));
             }

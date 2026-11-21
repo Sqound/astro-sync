@@ -103,7 +103,7 @@ fn night(root: &Path) -> PathBuf {
     let folder = PathBuf::from(made["folder"].as_str().unwrap());
     for minute in 1..=3 {
         std::fs::write(
-            folder.join(format!("M31/lights/Light_{minute}.fits")),
+            folder.join(format!("M31/input/lights/Light_{minute}.fits")),
             fits(&[
                 ("IMAGETYP", "'LIGHT'"),
                 ("OBJECT", "'M31'"),
@@ -115,7 +115,7 @@ fn night(root: &Path) -> PathBuf {
         )
         .unwrap();
     }
-    std::fs::write(folder.join("M31/final/M31.png"), png(300, 200)).unwrap();
+    std::fs::write(folder.join("M31/input/processed/M31.png"), png(300, 200)).unwrap();
     folder
 }
 
@@ -199,7 +199,7 @@ fn night_folder_run_again_creates_nothing_and_a_copy_is_followed_on_request() {
     let root = parent.join("Astro Sync");
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
-    let dropped = folder.join("M31/lights/Light_9.fits");
+    let dropped = folder.join("M31/input/lights/Light_9.fits");
     std::fs::write(&dropped, b"kept").unwrap();
     let before = files_under(&root);
 
@@ -256,7 +256,7 @@ fn night_folder_run_again_creates_nothing_and_a_copy_is_followed_on_request() {
     let (ok, followed, all) = run_args(args(&["--follow", &s(&copy)]));
     assert!(ok, "{all}");
     assert_eq!(followed["folder"], s(&copy));
-    assert!(copy.join("M31/lights").is_dir());
+    assert!(copy.join("M31/input/lights").is_dir());
 }
 
 #[test]
@@ -341,7 +341,7 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
         plan["jobs"][0]["job"]["outputDir"]
             .as_str()
             .unwrap()
-            .ends_with("M31/stacked")
+            .ends_with("M31/output/stacked")
     );
     assert_eq!(plan["jobs"].as_array().unwrap().len(), 1, "one family");
     assert_eq!(
@@ -355,10 +355,10 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
     let list = parent.join("nuages.txt");
     std::fs::write(
         &list,
-        "# clouds\nLight_2.fits\n\nM31/lights/Light_9.fits\nLight_99.fits\n",
+        "# clouds\nLight_2.fits\n\nM31/input/lights/Light_9.fits\nLight_99.fits\n",
     )
     .unwrap();
-    let lights_before = files_under(&folder.join("M31/lights"));
+    let lights_before = files_under(&folder.join("M31/input/lights"));
     let (ok, left_out, all) = run(&[
         "stack",
         "--night",
@@ -386,17 +386,17 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
     );
     assert!(
         all.contains(
-            "1 frame left out according to nuages.txt (they stay in lights/, nothing is deleted)"
+            "1 frame left out according to nuages.txt (they stay in input/lights/, nothing is deleted)"
         ),
         "{all}"
     );
     assert!(
         all.contains(
-            "2 names in nuages.txt are not frames of this night: M31/lights/Light_9.fits, Light_99.fits"
+            "2 names in nuages.txt are not frames of this night: M31/input/lights/Light_9.fits, Light_99.fits"
         ),
         "{all}"
     );
-    assert_eq!(files_under(&folder.join("M31/lights")), lights_before);
+    assert_eq!(files_under(&folder.join("M31/input/lights")), lights_before);
     // The room is measured on the night's disk (where the scratch is), and
     // the plan names that folder, as the refusal for lack of room does.
     assert_eq!(plan["folder"].as_str(), Some(s(&folder).as_str()));
@@ -698,7 +698,10 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
         all.contains("astro-sync tools --install") && !all.contains("Settings ›"),
         "{all}"
     );
-    assert!(!folder.join("M31/stacked").exists(), "nothing written");
+    assert!(
+        !folder.join("M31/output/stacked").exists(),
+        "nothing written"
+    );
 
     let (ok, rows, all) = run(&["tools", "--data", &s(&data), "--json"]);
     assert!(ok, "{all}");
@@ -801,7 +804,7 @@ fn the_read_only_commands_and_the_dry_runs_of_the_treatments() {
     assert_eq!(report["report"]["reportVersion"], 3);
 
     // A header written for the PNG: solved without any solver, sent nowhere.
-    let image = folder.join("M31/final/M31.png");
+    let image = folder.join("M31/input/processed/M31.png");
     let wcs: String = [
         ("NAXIS1", "300"),
         ("NAXIS2", "200"),
@@ -1025,7 +1028,7 @@ fn the_milestones_of_a_progression_the_folder_holds_are_part_of_the_sending() {
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
     // A progression made earlier: three milestones and the record of their poses.
-    let progression = folder.join("M31/progression");
+    let progression = folder.join("M31/output/progression");
     std::fs::create_dir_all(&progression).unwrap();
     for (index, frames) in [(1, 1), (2, 2), (3, 3)] {
         std::fs::write(
@@ -1112,10 +1115,14 @@ fn the_summary_proposes_a_renders_title_in_the_language_asked() {
     let root = parent.join("Astro Sync");
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
-    std::fs::create_dir_all(folder.join("M31/stacked")).unwrap();
-    std::fs::write(folder.join("M31/stacked/M31_2026-10-07_raw.tif"), b"tiff").unwrap();
+    std::fs::create_dir_all(folder.join("M31/output/stacked")).unwrap();
     std::fs::write(
-        folder.join("M31/stacked/M31_2026-10-07_stacking.json"),
+        folder.join("M31/output/stacked/M31_2026-10-07_raw.tif"),
+        b"tiff",
+    )
+    .unwrap();
+    std::fs::write(
+        folder.join("M31/output/stacked/M31_2026-10-07_stacking.json"),
         r#"{"format":1,"frames":{"lights":3,"darks":0},"stackedFrames":3,"tools":{"siril":"siril 1.4.4"},"outputs":[{"pipeline":"raw","file":"M31_2026-10-07_raw.tif"}]}"#,
     )
     .unwrap();
@@ -1179,7 +1186,7 @@ fn the_logs_clock_is_found_from_the_frames_and_said_by_send_logs_and_send_night(
     let parent = temp("logs-clock");
     let folder = parent.join("night");
     std::fs::create_dir_all(folder.join("logs")).unwrap();
-    std::fs::create_dir_all(folder.join("Sh2-190/lights")).unwrap();
+    std::fs::create_dir_all(folder.join("Sh2-190/input/lights")).unwrap();
     let clock = |seconds: u32, hours_ahead: u32| {
         let total = (21 + hours_ahead) * 3600 + seconds;
         format!(
@@ -1204,7 +1211,7 @@ fn the_logs_clock_is_found_from_the_frames_and_said_by_send_logs_and_send_night(
     std::fs::write(folder.join("logs/PHD2_GuideLog_2026-08-09.txt"), phd2).unwrap();
     for index in 0..6_u32 {
         std::fs::write(
-            folder.join(format!("Sh2-190/lights/Light_{index:04}.fits")),
+            folder.join(format!("Sh2-190/input/lights/Light_{index:04}.fits")),
             fits(&[
                 ("IMAGETYP", "'LIGHT'"),
                 ("OBJECT", "'Sh2-190'"),

@@ -3,7 +3,7 @@
 
 Astro Sync writes a job (``--job FILE``, JSON, ``astro_sync_core::plan_image::
 PlanImageJob``) naming the masters kept by the stacking of each night
-(``<night>/<target>/stacked/<family>_integration.fit``), the reference one
+(``<night>/<target>/output/stacked/<family>_integration.fit``), the reference one
 (the longest), the render chosen and the plan's folder.  This script then:
 
 1. **aligns** the masters on the reference night: Siril converts them into a
@@ -67,7 +67,7 @@ PlanImageJob``) naming the masters kept by the stacking of each night
 What it reads: the masters, never modified.  What it writes: a scratch tree
 in the job's ``work`` folder (``<plan>/.astro-sync-work/plan-image/``,
 marked, removed at the end unless ``--keep-work``), and in the job's ``out``
-folder (``<plan>/stacked/``) the render and ``<name>_plan.json`` (``<name>.json`` when the name already ends in ``_plan``), the record
+folder (``<plan>/output/stacked/``) the render and ``<name>_plan.json`` (``<name>.json`` when the name already ends in ``_plan``), the record
 of what was combined.  Nothing leaves the computer.
 
 ``--json`` prints the events of ``astro_sync_stack.py`` (``plan``, ``step``,
@@ -128,8 +128,8 @@ def read_job(path: Path) -> dict[str, object]:
     for key in ("out", "work", "name"):
         if not job.get(key):
             raise stack.StackingError("bad_job", f"the job has no {key}", stack.EXIT_INPUT)
-    if Path(str(job["out"])).name.lower() == "final":
-        raise stack.StackingError("output_is_final", "the image of the plan never goes to final/", stack.EXIT_INPUT)
+    if stack.is_persons_folder(Path(str(job["out"]))):
+        raise stack.StackingError("output_is_final", "the image of the plan never goes to input/ nor to final/", stack.EXIT_INPUT)
     try:
         plan_crop.mode_of(job)
     except ValueError as error:

@@ -62,6 +62,11 @@ export const STRUCTURE_ROWS: readonly StructureRow[] = [
     contentsKey: "guide.row.final.contents",
     useKey: "guide.row.final.use",
   },
+  {
+    path: { key: "guide.row.output.path" },
+    contentsKey: "guide.row.output.contents",
+    useKey: "guide.row.output.use",
+  },
 ];
 
 /** The notes under the table (the last one: the band read from names). */
@@ -70,6 +75,7 @@ export const STRUCTURE_NOTES = [
   "guide.note.minimum",
   "guide.note.results",
   "guide.note.never",
+  "guide.note.earlier",
   "guide.note.band",
 ] as const;
 
@@ -79,21 +85,15 @@ export const EXAMPLE_NIGHT = "2026-10-07 · Col des Étoiles · 7f3a2c";
 export const EXAMPLE_TARGETS = ["NGC 7000", "IC 1396", "M31"] as const;
 
 /** The columns of the Finder drawn grey (« dessiné, non capturé »): the
- * working folder beside the user's folders, the nights, one night, one
- * target. `open` marks the folder each column opens. */
+ * working folder's nights, one night, one target with its `input/` and
+ * `output/`, its `input/`, its poses. `open` marks the folder each column
+ * opens. */
 export interface FinderColumn {
   items: { name: string; key?: string; folder: boolean; open?: boolean }[];
 }
 
-export function finderColumns(rootName: string): FinderColumn[] {
+export function finderColumns(): FinderColumn[] {
   return [
-    {
-      items: [
-        { name: rootName, folder: true, open: true },
-        { name: "", key: "guide.finder.desktop", folder: true },
-        { name: "", key: "guide.finder.downloads", folder: true },
-      ],
-    },
     {
       items: [
         { name: "ASSISTANT-IA.md", folder: false },
@@ -113,8 +113,18 @@ export function finderColumns(rootName: string): FinderColumn[] {
     },
     {
       items: [
-        { name: "final", folder: true },
+        { name: "input", folder: true, open: true },
+        { name: "output", folder: true },
+      ],
+    },
+    {
+      items: [
         { name: "lights", folder: true, open: true },
+        { name: "processed", folder: true },
+      ],
+    },
+    {
+      items: [
         { name: "Light_M31_120s_0001.fits", folder: false },
         { name: "Light_M31_120s_0002.fits", folder: false },
         { name: "Light_M31_120s_0003.fits", folder: false },
@@ -151,16 +161,17 @@ export function finderCaptureFor(
 }
 
 /** The symbolic link of the tip (macOS, Linux): the frames left on an
- * external disk, a link in place of `lights/`. `disk` is the placeholder of
- * the language (« <disque externe> »); the paths are the example's. */
+ * external disk, a link in place of `input/lights/`. `disk` is the
+ * placeholder of the language (« <disque externe> »); the paths are the
+ * example's. */
 export function linkCommand(rootDisplay: string, disk: string): string {
-  return `ln -s "${disk}/2026-10-07/Light" \\\n  "${rootDisplay}/${EXAMPLE_NIGHT}/M31/lights"`;
+  return `ln -s "${disk}/2026-10-07/Light" \\\n  "${rootDisplay}/${EXAMPLE_NIGHT}/M31/input/lights"`;
 }
 
 /** NINA's two settings: the night's folder as the image path,
- * and the file name pattern that puts the lights in `<cible>/lights/`. */
+ * and the file name pattern that puts the lights in `<cible>/input/lights/`. */
 export const NINA_PATTERN =
-  "$$TARGETNAME$$\\lights\\$$DATETIME$$_$$FILTER$$_$$EXPOSURETIME$$s_$$FRAMENR$$";
+  "$$TARGETNAME$$\\input\\lights\\$$DATETIME$$_$$FILTER$$_$$EXPOSURETIME$$s_$$FRAMENR$$";
 
 export function ninaPath(rootDisplay: string): string {
   return `${rootDisplay}/${EXAMPLE_NIGHT}`;

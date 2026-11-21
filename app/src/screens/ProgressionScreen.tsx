@@ -33,6 +33,7 @@ import {
   type ToolRow,
 } from "../lib/bridge";
 import { formatError } from "../lib/format";
+import { targetPath } from "../lib/targetFolders";
 import { detectionInput } from "../lib/nights";
 import {
   canGenerate,
@@ -414,7 +415,7 @@ export function ProgressionScreen({
             {!greyed && target?.folderName && (
               <p className={helpTextClassName}>
                 {t("progression.readFrom", {
-                  path: `${target.folderName}/lights/`,
+                  path: targetPath(target.folderName, "lights", target.layout),
                 })}
               </p>
             )}

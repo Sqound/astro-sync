@@ -92,6 +92,7 @@ fn detect_then_organise_through_the_window_commands() {
     assert!(destination
         .join("2026-08-17 · Maison · 3e7a91")
         .join("NGC 7000")
+        .join("input")
         .join("lights")
         .join("l0.fit")
         .is_file());

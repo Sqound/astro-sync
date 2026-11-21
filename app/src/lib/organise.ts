@@ -8,6 +8,11 @@ import type {
   OrganisePlan,
   OrganiseAction,
 } from "./bridge";
+import {
+  partOfNightPath,
+  targetFolders,
+  type TargetLayout,
+} from "./targetFolders.ts";
 
 export const ORGANISE_MODES: readonly OrganiseMode[] = [
   "leave-in-place",
@@ -87,6 +92,9 @@ export interface Placed {
   group: string;
   /** The filter level of the lights, empty when there is none. */
   filter: string;
+  /** The form of the target's folder (lights and device only): `input/` and
+   * `output/`, or the earlier form of a target folder already there. */
+  layout?: TargetLayout;
 }
 
 function segments(path: string): string[] {
@@ -101,7 +109,8 @@ export function placed(
   const root = segments(plan.destination);
   const parts = segments(action.destination);
   const under = parts.slice(root.length);
-  // <night>/<target>/lights/[<filter>/]<file>, <night>/calibration/<type>/<file>
+  // <night>/<target>/input/lights/[<filter>/]<file> (<target>/lights/ in a
+  // target folder of the earlier form), <night>/calibration/<type>/<file>
   // or <night>/logs/<file>.
   if (under.length < 3) return null;
   const [night, second, third] = under;
@@ -111,15 +120,25 @@ export function placed(
   if (second === "calibration" && under.length === 4) {
     return { night, kind: "calibration", group: third, filter: "" };
   }
-  // The image a device stacked: <night>/<target>/device/<file>.
-  if (third === "device" && under.length === 4) {
-    return { night, kind: "device", group: second, filter: "" };
+  const part = partOfNightPath(under.slice(1));
+  if (!part) return null;
+  const layout: TargetLayout =
+    third.toLowerCase() === "input" ? "inputOutput" : "legacy";
+  // The image a device stacked: <night>/<target>/input/device/<file>.
+  if (part.part === "device" && part.under.length === 1) {
+    return { night, kind: "device", group: second, filter: "", layout };
   }
-  if (third === "lights" && under.length >= 5) {
-    return { night, kind: "lights", group: second, filter: under[3] };
+  if (part.part === "lights" && part.under.length >= 2) {
+    return {
+      night,
+      kind: "lights",
+      group: second,
+      filter: part.under[0],
+      layout,
+    };
   }
-  if (third === "lights" && under.length === 4) {
-    return { night, kind: "lights", group: second, filter: "" };
+  if (part.part === "lights" && part.under.length === 1) {
+    return { night, kind: "lights", group: second, filter: "", layout };
   }
   return null;
 }
@@ -146,7 +165,10 @@ export function organiseCounts(plan: OrganisePlan): OrganiseCounts {
 
 export interface TreeTarget {
   name: string;
-  /** The images a device stacked, in `device/`. */
+  /** The form of its folder (the new one unless the folder was already
+   * there in the earlier form). */
+  layout?: TargetLayout;
+  /** The images a device stacked, in `input/device/`. */
   device: number;
   frames: number;
   filters: { name: string; frames: number }[];
@@ -178,7 +200,13 @@ export function organiseTree(plan: OrganisePlan): TreeNight[] {
     } else if (where.kind === "device") {
       let target = night.targets.find((item) => item.name === where.group);
       if (!target) {
-        target = { name: where.group, device: 0, frames: 0, filters: [] };
+        target = {
+          name: where.group,
+          layout: where.layout,
+          device: 0,
+          frames: 0,
+          filters: [],
+        };
         night.targets.push(target);
       }
       target.device += 1;
@@ -189,7 +217,13 @@ export function organiseTree(plan: OrganisePlan): TreeNight[] {
     } else {
       let target = night.targets.find((item) => item.name === where.group);
       if (!target) {
-        target = { name: where.group, device: 0, frames: 0, filters: [] };
+        target = {
+          name: where.group,
+          layout: where.layout,
+          device: 0,
+          frames: 0,
+          filters: [],
+        };
         night.targets.push(target);
       }
       target.frames += 1;
@@ -240,18 +274,21 @@ export function organiseTreeText(
     rows.push({ left: `${branch}${night.name}/`, note: "" });
     const items: { left: string; note: string }[] = night.targets.flatMap(
       (target) => {
+        const folders = targetFolders(target.layout);
         const device =
           target.device > 0
-            ? [{ left: `${target.name}/device/`, note: "" }]
+            ? [{ left: `${target.name}/${folders.device}`, note: "" }]
             : [];
         if (target.frames === 0) return device;
         const lights =
           target.filters.length > 0
             ? [
-                `${target.name}/lights/${target.filters[0].name}/`,
-                ...target.filters.slice(1).map((f) => `lights/${f.name}/`),
+                `${target.name}/${folders.lights}${target.filters[0].name}/`,
+                ...target.filters
+                  .slice(1)
+                  .map((f) => `${folders.lights}${f.name}/`),
               ].join("  ")
-            : `${target.name}/lights/`;
+            : `${target.name}/${folders.lights}`;
         return [{ left: lights, note: words.poses(target.frames) }, ...device];
       },
     );

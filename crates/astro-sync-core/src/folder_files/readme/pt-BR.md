@@ -8,8 +8,9 @@ Esta é a pasta de trabalho do Astro Sync. Ela guarda as suas noites de astrofot
 - Dentro de uma noite:
   - `logs/`: os registros do NINA, do PHD2 e do ASIAIR da noite;
   - `calibration/`: `darks/`, `flats/`, `dark-flats/` e `biases/`;
-  - uma pasta por alvo (`M31`, `NGC 7000`…), com `lights/` para os quadros brutos (FITS ou arquivos RAW de câmera) e `final/` para a sua imagem processada (TIFF, JPEG ou PNG);
-  - `stacked/` e `progression/`, que o Astro Sync só cria quando produz ele mesmo uma imagem. As imagens que você ajusta antes de enviar são escritas em `stacked/adjusted/`, ao lado da renderização original, nunca por cima.
+  - uma pasta por alvo (`M31`, `NGC 7000`…), com `input/` para o que você entrega ao Astro Sync, `input/lights/` para os quadros brutos (FITS ou arquivos RAW de câmera) e `input/processed/` para a exportação do seu software de processamento (TIFF, JPEG ou PNG), e `output/` para o que o Astro Sync produz;
+  - em `output/`, `stacked/` e `progression/`, que o Astro Sync só cria quando produz ele mesmo uma imagem. É a única pasta de um alvo em que o Astro Sync escreve, nunca em `input/`. As imagens que você ajusta antes de enviar são escritas em `output/stacked/adjusted/`, ao lado da renderização original, nunca por cima;
+  - uma noite organizada antes do Astro Sync 1.2.0 mantém sua forma, com `lights/`, `final/` e `stacked/` diretamente no alvo. O Astro Sync a lê como está e não move nada nela.
 - Os arquivos e pastas cujo nome começa com um ponto (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) são do Astro Sync: guardam a identidade de uma noite ou de um alvo e o trabalho temporário de uma tarefa em andamento. Deixe-os onde estão.
 
 ## Os arquivos .md na raiz

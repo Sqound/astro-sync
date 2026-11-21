@@ -595,14 +595,17 @@ pub fn analyze_folder_with(
 }
 
 /// The folders of a night that never hold a pose: the calibration frames,
-/// what the stacking makes (`stacked/`, its scratch), the person's own final
-/// images (`final/`) and the images a device stacked itself (`device/`: a
+/// what Astro Sync makes (`output/`, `stacked/`, its scratch), the person's
+/// own final images (`input/processed/`, `final/` of the earlier form) and
+/// the images a device stacked itself (`device/`: a
 /// Seestar `Stacked_*.fit` carries the end of the night as its `DATE-OBS`, a
 /// « pose » that would close every list of incidents with a gap that never
 /// happened).
-const NOT_POSES_FOLDERS: [&str; 5] = [
+const NOT_POSES_FOLDERS: [&str; 7] = [
     "calibration",
+    "output",
     "stacked",
+    "processed",
     "final",
     "device",
     ".astro-sync-work",
@@ -1067,6 +1070,7 @@ mod tests {
             Some(FrameType::Light)
         ));
         assert!(is_light_frame("M45/lights/Light_001.fit", None));
+        assert!(is_light_frame("M45/input/lights/Light_001.fit", None));
         // The image the Seestar stacked, put in `device/`: its `DATE-OBS`
         // is the end of the night, it is no pose.
         assert!(!is_light_frame(
@@ -1075,7 +1079,15 @@ mod tests {
         ));
         assert!(!is_light_frame("M45/Device/Stacked_8.fit", None));
         // The other folders that never hold a pose.
-        for folder in ["calibration", "stacked", "final", ".astro-sync-work"] {
+        for folder in [
+            "calibration",
+            "stacked",
+            "final",
+            ".astro-sync-work",
+            "output/stacked",
+            "input/processed",
+            "input/device",
+        ] {
             assert!(
                 !is_light_frame(&format!("M45/{folder}/a.fit"), None),
                 "{folder}"

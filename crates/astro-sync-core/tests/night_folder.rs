@@ -62,17 +62,17 @@ fn a_night_prepared_then_filled_is_read_by_its_headers() {
     // lights; the dark is where it belongs.
     fs::copy(
         fixture("light_ngc7000_oiii.fits"),
-        night.join("NGC 7000/lights/Light_0001.fits"),
+        night.join("NGC 7000/input/lights/Light_0001.fits"),
     )
     .unwrap();
     fs::copy(
         fixture("light_ngc7000_oiii.fits"),
-        night.join("IC 1396/lights/Light_0002.fits"),
+        night.join("IC 1396/input/lights/Light_0002.fits"),
     )
     .unwrap();
     fs::copy(
         fixture("flat_oiii.xisf"),
-        night.join("NGC 7000/lights/Flat_0001.xisf"),
+        night.join("NGC 7000/input/lights/Flat_0001.xisf"),
     )
     .unwrap();
     fs::copy(
@@ -80,7 +80,7 @@ fn a_night_prepared_then_filled_is_read_by_its_headers() {
         night.join("calibration/darks/Dark_0001.fits"),
     )
     .unwrap();
-    fs::write(night.join("NGC 7000/final/NGC 7000.tif"), b"tiff").unwrap();
+    fs::write(night.join("NGC 7000/input/processed/NGC 7000.tif"), b"tiff").unwrap();
 
     // Renamed by the person: still found by its identity.
     let renamed = root.join("Ma nuit");
@@ -118,9 +118,9 @@ fn a_night_prepared_then_filled_is_read_by_its_headers() {
     let detection = detect_night(&renamed, &input, &DetectOptions::default()).unwrap();
     let lines = detection.sentences();
     let expected = [
-        "Neither FITS frames nor a final image: put the frames in IC 1396/lights/ or a final image (TIFF, JPEG or PNG) in IC 1396/final/.",
-        "1 flat filed in NGC 7000/lights/: its header says FLAT. To move into calibration/flats/.",
-        "1 frame of NGC 7000 in IC 1396/lights/ (OBJECT header).",
+        "Neither FITS frames nor a final image: put the frames in IC 1396/input/lights/ or a final image (TIFF, JPEG or PNG) in IC 1396/input/processed/.",
+        "1 flat filed in NGC 7000/input/lights/: its header says FLAT. To move into calibration/flats/.",
+        "1 frame of NGC 7000 in IC 1396/input/lights/ (OBJECT header).",
         "No log: no steps, no guiding quality.",
     ];
     for line in expected {
@@ -170,7 +170,7 @@ fn the_hidden_work_folder_of_a_night_is_never_read_as_the_night() {
         .folder;
     fs::copy(
         fixture("light_ngc7000_oiii.fits"),
-        night.join("NGC 7000/lights/Light_0001.fits"),
+        night.join("NGC 7000/input/lights/Light_0001.fits"),
     )
     .unwrap();
     let input = DetectionInput {

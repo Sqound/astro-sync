@@ -5,7 +5,7 @@
 //!
 //! For each session created that holds a target to treat: the night's folder
 //! is prepared as the "Folder" step does ([`prepare_night_folder`]: its
-//! identity, `calibration/`, `logs/`, `<target>/lights/`), then the frames,
+//! identity, `calibration/`, `logs/`, `<target>/input/lights/`), then the frames,
 //! the calibration and the logs of the session are **linked** into it
 //! ([`super::organise`], "Symbolic link"): the originals never move, a
 //! file already in place is left, a different one is never overwritten. On

@@ -3,9 +3,12 @@
 //! when the person asks, cleaned -- and nothing else.
 //!
 //! **The rule.** What the person copied, moved or linked into the working
-//! folder (`lights/`, `calibration/`, `logs/`, `final/`, `device/`, anything
-//! no pipeline wrote) is **never** deleted, and is never read as a thing to
-//! clean: it is measured only, as "Your files" ([`ProcessingScan::user_bytes`]).
+//! folder (a target's `input/` -- `input/lights/`, `input/processed/`,
+//! `input/device/` --, `calibration/`, `logs/`, the `lights/`, `final/` and
+//! `device/` of a target of the earlier form, anything no pipeline wrote) is
+//! **never** deleted, and is never read as a thing to clean: it is measured
+//! only, as "Your files" ([`ProcessingScan::user_bytes`]). Nothing is ever
+//! deleted under a folder named `input/`, whatever it holds.
 //! A symbolic link is never followed (it weighs nothing here, its target is
 //! the person's frame) and is never deleted as a result.
 //!
@@ -14,17 +17,22 @@
 //! [`crate::working_folder::TARGET_IDENTITY_FILE`],
 //! [`crate::plan_image::PLAN_IDENTITY_FILE`]), never by a name:
 //!
-//! - **masters** ([`CategoryKind::Masters`]): `<night>/<target>/stacked/<family>_integration.fit`,
+//! - **masters** ([`CategoryKind::Masters`]): `<night>/<target>/output/stacked/<family>_integration.fit`,
 //!   the linear master `integration_master.py` keeps; the next stacking makes
 //!   it again;
 //! - **night results** ([`CategoryKind::NightResults`]): the other files the
-//!   stacking writes in `<night>/<target>/stacked/` (renders, their pictures,
+//!   stacking writes in `<night>/<target>/output/stacked/` (renders, their pictures,
 //!   `<name>_stacking.json`);
 //! - **plan renders** ([`CategoryKind::PlanRenders`]): the files
-//!   `plan_stack.py` writes in `<plan>/stacked/`;
+//!   `plan_stack.py` writes in `<plan>/output/stacked/`;
 //! - **temporaries** ([`CategoryKind::Temp`]): `<night>/.astro-sync-work/`,
 //!   `<plan>/.astro-sync-work/` and the scratch an older build left in
 //!   Astro Sync's data (`stacking-work/`).
+//!
+//! Both forms are read: a target (or plan) of the earlier form keeps its
+//! results in `<target>/output/stacked/` (`<plan>/output/stacked/`), measured and cleaned
+//! the same way ([`crate::working_folder::TargetLayout`]); `output/` itself
+//! must be a real folder, never a link, as `stacked/` must.
 //!
 //! A result is **sent** when every TIFF of its `stacked/` folder is a
 //! `completed` row of the upload queue ([`sent_files`]); anything else --
@@ -37,7 +45,8 @@
 //!
 //! **What this module deletes**, besides what the other modules already
 //! remove: only regular files of those four places, each checked before it
-//! goes (not a link; its parent resolves inside the working folder). Inside a
+//! goes (not a link; its parent resolves inside the working folder, and no
+//! folder between the working folder and it is named `input`). Inside a
 //! scratch folder the links Astro Sync made to the lights are unlinked with
 //! the scratch -- the link only, never its target.
 
@@ -53,8 +62,8 @@ use crate::python_env;
 use crate::stacking::{FIELD_SUFFIX, INTEGRATION_SUFFIX};
 use crate::upload_queue::UploadQueue;
 use crate::working_folder::{
-    ASSISTANT_FILE_NAME, NIGHT_IDENTITY_FILE, PROGRESSION_DIR, STACKED_DIR, TARGET_IDENTITY_FILE,
-    WORK_DIR,
+    ASSISTANT_FILE_NAME, INPUT_DIR, NIGHT_IDENTITY_FILE, OUTPUT_DIR, PROGRESSION_DIR, STACKED_DIR,
+    TARGET_IDENTITY_FILE, WORK_DIR,
 };
 
 /// Where an older build kept the stacking's scratch, in Astro Sync's data.
@@ -125,7 +134,8 @@ pub struct ProcessingScan {
 #[serde(rename_all = "camelCase")]
 pub struct CleanFailure {
     pub path: PathBuf,
-    /// `not_a_plain_file`, `outside_working_folder` or `io_error`.
+    /// `not_a_plain_file`, `outside_working_folder`, `inside_input` or
+    /// `io_error`.
     pub code: &'static str,
 }
 
@@ -181,6 +191,22 @@ struct Inventory {
 
 fn real_dir(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+}
+
+/// The folders named `name` (`stacked`, `progression`) Astro Sync writes in
+/// under `home` (a target or a plan folder): `home/output/<name>/`, then the
+/// earlier form's `home/<name>/`. Each one, and `output/` above it, is a real
+/// folder (a link is the person's: never read, never cleaned).
+fn produced_dirs(home: &Path, name: &str) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let output = home.join(OUTPUT_DIR);
+    if real_dir(&output) && real_dir(&output.join(name)) {
+        dirs.push(output.join(name));
+    }
+    if real_dir(&home.join(name)) {
+        dirs.push(home.join(name));
+    }
+    dirs
 }
 
 fn plain_file_len(path: &Path) -> Option<u64> {
@@ -329,8 +355,7 @@ fn inventory(root: &Path, data_dir: &Path, sent: &HashSet<PathBuf>) -> Inventory
             found.scratch.push((work, true));
         }
         if plan.is_some() {
-            let stacked = home.join(STACKED_DIR);
-            if real_dir(&stacked) {
+            for stacked in produced_dirs(&home, STACKED_DIR) {
                 found
                     .sets
                     .push(read_stacked(Owner::Plan, &home, &stacked, sent));
@@ -349,12 +374,10 @@ fn inventory(root: &Path, data_dir: &Path, sent: &HashSet<PathBuf>) -> Inventory
                     continue;
                 };
                 found.other_produced_bytes += identity;
-                let progression = folder.join(PROGRESSION_DIR);
-                if real_dir(&progression) {
+                for progression in produced_dirs(&folder, PROGRESSION_DIR) {
                     found.other_produced_bytes += tree_bytes(&progression);
                 }
-                let stacked = folder.join(STACKED_DIR);
-                if real_dir(&stacked) {
+                for stacked in produced_dirs(&folder, STACKED_DIR) {
                     found
                         .sets
                         .push(read_stacked(Owner::Night, &home, &stacked, sent));
@@ -465,7 +488,8 @@ pub fn scan(root: &Path, data_dir: &Path, sent: &HashSet<PathBuf>) -> Processing
 /* --------------------------------- The clean ------------------------------- */
 
 /// Deletes `path` if it is a regular file (not a link) whose folder resolves
-/// inside `canonical_root`; the size freed.
+/// inside `canonical_root`, through no folder named `input` (what the person
+/// gives Astro Sync); the size freed.
 fn remove_plain_file(path: &Path, canonical_root: &Path) -> Result<u64, &'static str> {
     let meta = fs::symlink_metadata(path).map_err(|_| "io_error")?;
     if !meta.is_file() {
@@ -476,8 +500,23 @@ fn remove_plain_file(path: &Path, canonical_root: &Path) -> Result<u64, &'static
     if !resolved.starts_with(canonical_root) {
         return Err("outside_working_folder");
     }
+    if in_input(&resolved, canonical_root) {
+        return Err("inside_input");
+    }
     fs::remove_file(path).map_err(|_| "io_error")?;
     Ok(meta.len())
+}
+
+/// Whether `resolved` (a canonical folder under `canonical_root`) lies in a
+/// folder named `input` (case ignored), below the working folder.
+fn in_input(resolved: &Path, canonical_root: &Path) -> bool {
+    resolved.strip_prefix(canonical_root).is_ok_and(|relative| {
+        relative.components().any(|part| {
+            part.as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case(INPUT_DIR)
+        })
+    })
 }
 
 /// Removes a folder of Astro Sync's own work, entry by entry: a regular file

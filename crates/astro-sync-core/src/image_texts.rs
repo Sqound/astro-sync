@@ -31,7 +31,7 @@ use crate::service_wait::RequestFactory;
 use crate::stacking::{Colour, Contrast, Retouch, SoftStars};
 
 /// How deep under the folder given the records are looked for: a working
-/// folder holds `<night>/<target>/stacked/` and `<plan>/stacked/`.
+/// folder holds `<night>/<target>/output/stacked/` and `<plan>/output/stacked/`.
 const MAX_DEPTH: usize = 6;
 
 /// What Astro Sync recorded of one file it made.

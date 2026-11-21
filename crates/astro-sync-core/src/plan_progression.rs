@@ -8,7 +8,7 @@
 //! image [`crate::plan_image`] makes of those nights -- the same alignment,
 //! level match and render as the plan's image, with **one** pipeline (the main
 //! image's), so the milestones read as one sequence -- written as a JPEG in
-//! `<plan>/progression/` (the folder name makes it a
+//! `<plan>/output/progression/` (the folder name makes it a
 //! [`ResultKind::Progression`]) with the poses combined so far. The
 //! milestones of an earlier run are replaced.
 //!
@@ -48,7 +48,7 @@ use crate::plan_image::{
 };
 use crate::stacking::{PipelineChoice, StackEvent, StackFailure};
 use crate::upload_queue::{EntryTarget, ResultFile, ResultKind};
-use crate::working_folder::{PROGRESSION_DIR, WORK_DIR};
+use crate::working_folder::{TargetPart, WORK_DIR};
 
 /// The scratch of the milestones: `<plan>/.astro-sync-work/plan-progression/`.
 pub const PLAN_PROGRESSION_SCRATCH_DIR: &str = "plan-progression";
@@ -66,7 +66,7 @@ pub struct PlanProgressionStep {
     pub frames: u64,
     /// The integration time combined so far, seconds.
     pub seconds: f64,
-    /// `<plan>/progression/<name>_night-NN_NNN-frames.jpg`; empty until made.
+    /// `<plan>/output/progression/<name>_night-NN_NNN-frames.jpg`; empty until made.
     pub jpeg: PathBuf,
     pub sha256: String,
     pub size: u64,
@@ -168,7 +168,7 @@ pub struct PlanProgressionRun {
     pub failure: Option<StackFailure>,
 }
 
-/// Makes the milestones, each into `<plan>/progression/`: the last one (every
+/// Makes the milestones, each into `<plan>/output/progression/`: the last one (every
 /// night) first, whose frame master, rectangle and display the others take (see the
 /// module documentation), then the others in their order; stops at the first
 /// that fails (the ones made stay made). The steps come back in the order of
@@ -193,7 +193,7 @@ pub fn run_plan_progression(
         message,
         logs: None,
     };
-    let folder = plan_dir.join(PROGRESSION_DIR);
+    let folder = crate::working_folder::plan_part_dir(plan_dir, TargetPart::Progression);
     let stem = first.job.name.clone();
     if let Err(error) = fs::create_dir_all(&folder) {
         run.failure = Some(failed("io_error", error.to_string()));

@@ -3,6 +3,37 @@
 All notable changes to Astro Sync are documented in this file. The project
 follows [Semantic Versioning](https://semver.org/).
 
+## 1.2.0 (2026-11-21)
+
+- The folder of each target is now split in two: `input/` for what you give
+  Astro Sync (`input/lights/` for the frames, `input/processed/` for the export
+  of your processing software, which was `final/`, and `input/device/` for the
+  image a smart telescope stacked) and `output/` for what Astro Sync makes
+  (`output/stacked/`, `output/progression/`). Astro Sync writes and cleans only
+  in `output/` and in its hidden folders, never in `input/`.
+- Nights filed by earlier versions are read as they are. A target with
+  `lights/`, `final/` and `stacked/` side by side is detected, stacked again,
+  sent, measured and cleaned in that form, and nothing in it is moved, renamed
+  or deleted. New nights and new targets take the new form, and a target
+  folder that is already there keeps its own.
+- A target that holds both forms is read in the new one. The Files step says
+  which folders of the earlier form it leaves unread, and nothing is merged.
+- The image of a multi-night plan is written to `<plan>/output/stacked/`. A
+  plan folder of the earlier form keeps `<plan>/stacked/`.
+- The folder guide, the README of the working folder, `ASSISTANT-IA.md` and
+  the guide given to an AI assistant describe the new form and say that the
+  earlier one is still read. Files written by an earlier version and left
+  unchanged are updated.
+- Cleaning the processing files never deletes a file under a folder named
+  `input/`.
+- A Siril that Settings › Dependencies shows as present is no longer called
+  « not found » by the « Progression » option of a session. A version that is
+  not in the list checked for the progression is now a note on its line, not a
+  refusal.
+- A working folder on a disk that is not connected is no longer created: Astro
+  Sync says that the disk is missing, and says so too when the system does not
+  let it write in the folder, in plain words and in the ten languages.
+
 ## 1.1.5 (2026-11-20)
 
 - Reference stars: installing them works again. The server of the CDS that

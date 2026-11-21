@@ -21,7 +21,9 @@ use crate::catalogue_targets::header_target;
 use crate::multi_night::{IntegrationMaster, night_masters, target_masters};
 use crate::plan_image::read_plan_identity;
 use crate::scanner::file_sha256;
-use crate::working_folder::{STACKED_DIR, list_night_folders, read_target_identity};
+use crate::working_folder::{
+    STACKED_DIR, TargetPart, list_night_folders, read_target_identity, target_part_dirs_both,
+};
 
 /// An image of the working folder the space holds as a capture, and what its
 /// master says of where it points and how big its pixels are.
@@ -104,7 +106,8 @@ pub fn hints_of_image(image: &Path) -> SolveHints {
     let Some(stacked) = image.parent().filter(|p| p.ends_with(STACKED_DIR)) else {
         return SolveHints::default();
     };
-    let Some(container) = stacked.parent() else {
+    // `<x>/output/stacked/`, or `<x>/stacked/` of the earlier form.
+    let Some(container) = crate::working_folder::owner_of_part_dir(stacked) else {
         return SolveHints::default();
     };
     if let Some(plan) = read_plan_identity(container) {
@@ -175,10 +178,14 @@ pub fn local_results(root: &Path, wanted: &[MissingCapture]) -> BTreeMap<String,
             continue;
         }
         if read_plan_identity(&folder).is_some() {
-            look(&folder.join(STACKED_DIR));
+            for stacked in target_part_dirs_both(&folder, TargetPart::Stacked) {
+                look(&stacked);
+            }
         } else if let Ok(targets) = std::fs::read_dir(&folder) {
             for target in targets.filter_map(Result::ok) {
-                look(&target.path().join(STACKED_DIR));
+                for stacked in target_part_dirs_both(&target.path(), TargetPart::Stacked) {
+                    look(&stacked);
+                }
             }
         }
     }

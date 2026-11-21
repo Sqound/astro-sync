@@ -12,9 +12,10 @@ The person writes to you in their own language: answer in that language; this fi
 - `calibration/flats/`: the flats (one sub-folder per filter is allowed)
 - `calibration/dark-flats/`: the dark-flats
 - `calibration/biases/`: the offsets (biases)
-- `<target>/lights/`: one folder per target ("M31", "NGC 7000"…): its raw frames, FITS or XISF (sub-folders are allowed)
-- `<target>/final/`: the target's processed final image: TIFF, JPEG or PNG
-- `<target>/stacked/`: written by Astro Sync's stacking only: write nothing there. `<family>_integration.fit` in it is the linear master of a family of the night (filter, exposure, gain, binning), kept on purpose: never move, rename or delete it
+- `<target>/input/lights/`: one folder per target ("M31", "NGC 7000"…); its `input/` holds what the person gives Astro Sync, and `input/lights/` its raw frames, FITS or XISF (sub-folders are allowed)
+- `<target>/input/processed/`: the export of the person's processing software, the target's final image: TIFF, JPEG or PNG
+- `<target>/output/`: what Astro Sync makes, the only folder of a target it writes in: write nothing there. `output/stacked/<family>_integration.fit` is the linear master of a family of the night (filter, exposure, gain, binning), kept on purpose: never move, rename or delete it
+- `<target>/lights/, <target>/final/, <target>/stacked/`: the earlier form of a target folder, made before Astro Sync 1.2.0: Astro Sync still reads it as it is. In such a target, place the frames in `lights/` and the final image in `final/`; never move these folders and never add `input/` or `output/` beside them
 - `.astro-sync-work/`: a hidden folder, at the root of a night's folder, that may exist while Astro Sync is processing the night (the stacking's temporary files); it is removed when the work ends. Put nothing in it and do not touch it
 
 Folder names stay in English. A frame's type is read from its FITS header (`IMAGETYP`: LIGHT, DARK, FLAT, DARKFLAT, BIAS or OFFSET), its target from `OBJECT`, its filter from `FILTER`, its time from `DATE-OBS` (in UTC).
@@ -37,9 +38,9 @@ Keep **one folder per night**, as above: never put the frames of two nights in t
 
 Use **the same target folder name** from one night to the next ("IC 1805" every night, not "Heart" one night and "IC1805" the next): Astro Sync finds the plan's target in each night by it.
 
-Each night's integration is kept as `<target>/stacked/<family>_integration.fit`, one per family: the linear master Astro Sync combines later. Never move, rename or delete it. To combine a night stacked on another computer, copy that whole night's folder into this working folder.
+Each night's integration is kept as `<target>/output/stacked/<family>_integration.fit` (`<target>/stacked/` in a night of the earlier form), one per family: the linear master Astro Sync combines later. Never move, rename or delete it. To combine a night stacked on another computer, copy that whole night's folder into this working folder.
 
-The image of a multi-night plan is written by Astro Sync in the plan's own folder, at the root of this folder (`<target> · <short identifier>/stacked/`): write nothing there.
+The image of a multi-night plan is written by Astro Sync in the plan's own folder, at the root of this folder (`<target> · <short identifier>/output/stacked/`, or `stacked/` for a plan of the earlier form): write nothing there.
 
 ## Procedure: gathering a night's files
 
@@ -63,11 +64,11 @@ Follow these steps in order; the answers decide the next step.
 
 **Step 4.** Search for the light frames (raw FITS), the darks, the flats, the dark-flats, the offsets (biases), the logs of the night (NINA, PHD2, ASIAIR) and the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 5.
 
-**Step 5.** Propose placing the light frames (raw FITS) in `<target>/lights/` (the target its `OBJECT` header names); the darks in `calibration/darks/`; the flats in `calibration/flats/`; the dark-flats in `calibration/dark-flats/`; the offsets (biases) in `calibration/biases/`; the logs of the night (NINA, PHD2, ASIAIR) in `logs/`; the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+**Step 5.** Propose placing the light frames (raw FITS) in `<target>/input/lights/` (the target its `OBJECT` header names; `<target>/lights/` in a target folder of the earlier form); the darks in `calibration/darks/`; the flats in `calibration/flats/`; the dark-flats in `calibration/dark-flats/`; the offsets (biases) in `calibration/biases/`; the logs of the night (NINA, PHD2, ASIAIR) in `logs/`; the final image (TIFF, JPEG or PNG) in `<target>/input/processed/` (`<target>/final/` in a target folder of the earlier form), by the rule "Placing a file". Then step 38.
 
 **Step 6.** Search for the logs of the night (NINA, PHD2, ASIAIR) and the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 7.
 
-**Step 7.** Propose placing the logs of the night (NINA, PHD2, ASIAIR) in `logs/`; the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+**Step 7.** Propose placing the logs of the night (NINA, PHD2, ASIAIR) in `logs/`; the final image (TIFF, JPEG or PNG) in `<target>/input/processed/` (`<target>/final/` in a target folder of the earlier form), by the rule "Placing a file". Then step 38.
 
 **Step 8.** Ask: "Did you take raw frames (FITS) this night, or do you only have an image already processed?"
   - If the answer is "Raw frames (FITS)": step 9.
@@ -81,7 +82,7 @@ Follow these steps in order; the answers decide the next step.
 
 **Step 11.** Search for the light frames (raw FITS), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 12.
 
-**Step 12.** Propose placing the light frames (raw FITS) in `<target>/lights/` (the target its `OBJECT` header names), by the rule "Placing a file". Then step 13.
+**Step 12.** Propose placing the light frames (raw FITS) in `<target>/input/lights/` (the target its `OBJECT` header names; `<target>/lights/` in a target folder of the earlier form), by the rule "Placing a file". Then step 13.
 
 **Step 13.** Ask: "Do you want me to search for the darks of this night, or would you rather give me the full path? Tell me as well if you had none."
   - If the answer is "Please search": step 15.
@@ -150,6 +151,6 @@ Follow these steps in order; the answers decide the next step.
 
 **Step 36.** Search for the final image (TIFF, JPEG or PNG), by the rule "Following links": in the folder the person gave, if they gave one; otherwise in the usual places of this computer (Pictures, Documents, Desktop, Downloads, external drives). Show the list you found. Then step 37.
 
-**Step 37.** Propose placing the final image (TIFF, JPEG or PNG) in `<target>/final/`, by the rule "Placing a file". Then step 38.
+**Step 37.** Propose placing the final image (TIFF, JPEG or PNG) in `<target>/input/processed/` (`<target>/final/` in a target folder of the earlier form), by the rule "Placing a file". Then step 38.
 
 **Step 38.** Sum up: what was placed, where, by link, copy or move, and what is still missing. Then tell the person to go back to Astro Sync and open the night again.

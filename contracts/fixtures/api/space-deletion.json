@@ -74,6 +74,428 @@
         },
         "schema": "space-deletion.schema.json#/$defs/deleted"
       }
+    },
+    {
+      "id": "request-deletion",
+      "description": "« Supprimer mon espace » → « Envoyer le courriel »: the request is recorded and its message (a link and a code) leaves. Nothing is deleted; the space stays usable. From the application (bearer) or the web (session and CSRF header).",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-20T21:22:00.000Z"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {
+          "language": "fr",
+          "timeZone": "Europe/Paris"
+        }
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "deletionRequest": {
+            "state": "pending",
+            "requestedAt": "2026-11-20T21:22:00.000Z",
+            "expiresAt": "2026-11-21T21:22:00.000Z",
+            "sentTo": "vous@exemple.fr",
+            "resendAt": "2026-11-20T21:23:00.000Z"
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/requestAccepted"
+      }
+    },
+    {
+      "id": "request-deletion-again-too-soon",
+      "description": "« Renvoyer le courriel » within the minute after a message: refused, nothing changes.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-20T21:22:30.000Z",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 429,
+        "headers": {
+          "cache-control": "no-store",
+          "retry-after": "30"
+        },
+        "body": {
+          "error": {
+            "code": "deletion_request_rate_limited",
+            "message": "A message left a moment ago. Try again shortly."
+          },
+          "retryAt": "2026-11-20T21:23:00.000Z"
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    },
+    {
+      "id": "current-space-with-deletion-request",
+      "description": "GET /v1/space says the request waiting for its e-mail, so that the application and the web show « Suppression demandée ».",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-20T21:30:00.000Z",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "GET",
+        "path": "/api/v1/space",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "space": {
+            "id": "4ec83832-fbb7-4f8d-91ca-8c7eefd8ab71",
+            "email": "vous@exemple.fr",
+            "webUrl": "https://portal.example.test"
+          },
+          "device": {
+            "id": "6daf99d9-1c14-4206-bae2-3cec9456a714",
+            "name": "iPhone 16 Pro"
+          },
+          "deletionRequest": {
+            "state": "pending",
+            "requestedAt": "2026-11-20T21:22:00.000Z",
+            "expiresAt": "2026-11-21T21:22:00.000Z",
+            "sentTo": "vous@exemple.fr",
+            "resendAt": "2026-11-20T21:30:00.000Z"
+          }
+        },
+        "schema": "sign-in.schema.json#/$defs/currentSpace"
+      }
+    },
+    {
+      "id": "cancel-deletion-request",
+      "description": "« Annuler la demande »: the request goes, its link and its code stop working.",
+      "given": {
+        "authMode": "email-code",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "DELETE",
+        "path": "/api/v1/space/deletion-request",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4"
+        }
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "cache-control": "no-store"
+        }
+      }
+    },
+    {
+      "id": "read-deletion-link",
+      "description": "The page of the link reads the request before anything is done: no credential, the token is the proof of the mailbox; the address is masked.",
+      "given": {
+        "authMode": "email-code",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/link",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "deletionRequest": {
+            "state": "pending",
+            "expiresAt": "2026-11-21T21:22:00.000Z",
+            "sentTo": "v…@exemple.fr"
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/linkRead"
+      }
+    },
+    {
+      "id": "read-deletion-link-no-longer-valid",
+      "description": "A link whose request was cancelled, replaced or used.",
+      "given": {
+        "authMode": "email-code"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/link",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "error": {
+            "code": "deletion_request_invalid",
+            "message": "This deletion request is no longer valid. Ask for a new message."
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    },
+    {
+      "id": "keep-space-by-link",
+      "description": "« Garder mon espace » on the page of the link: the request goes.",
+      "given": {
+        "authMode": "email-code",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/keep",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ"
+        }
+      },
+      "response": {
+        "status": 204,
+        "headers": {
+          "cache-control": "no-store"
+        }
+      }
+    },
+    {
+      "id": "confirm-deletion-by-link",
+      "description": "« Supprimer définitivement mon espace » on the page of the link: the deletion as DELETE /v1/space makes it.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-20T21:40:00.000Z",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/confirm",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ"
+        }
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "deletion": {
+            "requestedAt": "2026-11-20T21:40:00.000Z",
+            "completesBy": "2026-12-20T21:40:00.000Z"
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionAccepted"
+      }
+    },
+    {
+      "id": "confirm-deletion-by-code",
+      "description": "The code of the e-mail typed in the application (or on the web, with the session and its CSRF header).",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-20T21:40:00.000Z",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/confirm",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": "482913"
+        }
+      },
+      "response": {
+        "status": 202,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "deletion": {
+            "requestedAt": "2026-11-20T21:40:00.000Z",
+            "completesBy": "2026-12-20T21:40:00.000Z"
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionAccepted"
+      }
+    },
+    {
+      "id": "confirm-deletion-wrong-code",
+      "description": "A wrong code: counted; the fifth voids the request.",
+      "given": {
+        "authMode": "email-code",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/confirm",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": "000001"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "error": {
+            "code": "deletion_code_incorrect",
+            "message": "This code does not match."
+          },
+          "attemptsRemaining": 4
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    },
+    {
+      "id": "confirm-deletion-code-locked",
+      "description": "The fifth wrong code: the request is void, nothing is deleted.",
+      "given": {
+        "authMode": "email-code",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/confirm",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {
+          "code": "000005"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "error": {
+            "code": "deletion_code_locked",
+            "message": "Too many wrong codes: this request is void. Ask for a new message."
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    },
+    {
+      "id": "confirm-deletion-expired",
+      "description": "A request older than 24 hours.",
+      "given": {
+        "authMode": "email-code",
+        "now": "2026-11-21T21:23:00.000Z",
+        "deletionRequested": true
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request/confirm",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ"
+        }
+      },
+      "response": {
+        "status": 400,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "error": {
+            "code": "deletion_request_expired",
+            "message": "This deletion request has expired. Ask for a new message."
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    },
+    {
+      "id": "request-deletion-on-private-server",
+      "description": "A private server has no deletion of its space: the routes of the request answer 404.",
+      "given": {
+        "authMode": "email-code",
+        "spaceCreation": "closed"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/space/deletion-request",
+        "headers": {
+          "authorization": "Bearer wl2zxC3Dt4HJgMfhEiU4pUwq0oeW9ODmY8T3moyhKm4",
+          "content-type": "application/json"
+        },
+        "body": {}
+      },
+      "response": {
+        "status": 404,
+        "headers": {
+          "cache-control": "no-store"
+        },
+        "body": {
+          "error": {
+            "code": "not_found",
+            "message": "Not found."
+          }
+        },
+        "schema": "space-deletion.schema.json#/$defs/deletionError"
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "deletion-link",
+      "description": "The link of the e-mail of a deletion request.",
+      "url": "https://portal.example.test/auth/delete#v=1&token=Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ&lang=fr",
+      "fragment": {
+        "v": "1",
+        "token": "Qm9uam91ciBsZXMgw6l0b2lsZXMsIGJvbm5lIG51aXQ",
+        "lang": "fr"
+      },
+      "schema": "space-deletion.schema.json#/$defs/linkFragment"
     }
   ]
 }

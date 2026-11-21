@@ -140,7 +140,7 @@ test("the night's integration is said family by family, with the frames left out
   assert.equal(view.families[0].duration, "4 h 00");
   assert.equal(
     view.families[0].master ?? "",
-    "Master gardé : IC 1805/stacked/UV_IR-cut_120s_g100_integration.fit · 312 Mo, le seul intermédiaire conservé.",
+    "Master gardé : IC 1805/output/stacked/UV_IR-cut_120s_g100_integration.fit · 312 Mo, le seul intermédiaire conservé.",
   );
   assert.equal(
     view.outside ?? "",
@@ -366,7 +366,7 @@ test("the summary says the lines of the plan, its image and the masters kept, an
     open.never.map((row) => [plain(row.segs), row.value]),
     [
       [
-        "Masters des intégrations : 3 (9 août, 10 août, 12 août), gardés dans stacked/",
+        "Masters des intégrations : 3 (9 août, 10 août, 12 août), gardés dans output/stacked/",
         "936 Mo",
       ],
     ],
@@ -462,7 +462,7 @@ test("a refusal of the service is said in the person's words, the lines sent are
 const flat = (text: string | null) => (text ?? "").replace(/\u202f/g, " ");
 
 const DEVICE = (poses: number, seconds: number) => ({
-  path: "/w/device/Stacked.fit",
+  path: "/w/input/device/Stacked.fit",
   device: "Seestar S50 Pro",
   frameCount: poses,
   totalSeconds: seconds,

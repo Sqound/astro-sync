@@ -8,8 +8,9 @@ Voici le dossier de travail d’Astro Sync. Il contient vos nuits d’astrophoto
 - Dans une nuit :
   - `logs/` : les journaux NINA, PHD2 et ASIAIR de la nuit ;
   - `calibration/` : `darks/`, `flats/`, `dark-flats/` et `biases/` ;
-  - un dossier par cible (`M31`, `NGC 7000`…), avec `lights/` pour les poses brutes (FITS ou RAW d’appareil photo) et `final/` pour votre image traitée (TIFF, JPEG ou PNG) ;
-  - `stacked/` et `progression/`, qu’Astro Sync ne crée que lorsqu’il fabrique lui-même une image. Les images que vous réglez avant de les envoyer sont écrites dans `stacked/adjusted/`, à côté du rendu d’origine, jamais dessus.
+  - un dossier par cible (`M31`, `NGC 7000`…), avec `input/` pour ce que vous donnez à Astro Sync, `input/lights/` pour les poses brutes (FITS ou RAW d’appareil photo) et `input/processed/` pour l’export de votre logiciel de traitement (TIFF, JPEG ou PNG), et `output/` pour ce qu’Astro Sync fabrique ;
+  - dans `output/`, `stacked/` et `progression/`, qu’Astro Sync ne crée que lorsqu’il fabrique lui-même une image. C’est le seul dossier d’une cible où il écrit, jamais dans `input/`. Les images que vous réglez avant de les envoyer sont écrites dans `output/stacked/adjusted/`, à côté du rendu d’origine, jamais dessus ;
+  - une nuit rangée avant Astro Sync 1.2.0 garde sa forme, avec `lights/`, `final/` et `stacked/` directement dans la cible. Astro Sync la lit telle quelle et n’y déplace rien.
 - Les fichiers et dossiers dont le nom commence par un point (`.astro-sync-night.json`, `.astro-sync-target.json`, `.astro-sync-work/`) sont ceux d’Astro Sync : ils gardent l’identité d’une nuit ou d’une cible et le travail temporaire d’une tâche en cours. Laissez-les où ils sont.
 
 ## Les fichiers .md à la racine

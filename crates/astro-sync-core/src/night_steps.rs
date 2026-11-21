@@ -51,7 +51,7 @@ use crate::sky_solution::{
     SkySolutionTransport, SolveHints, SolveOutcome, SolveSetup, solve_and_send,
 };
 use crate::upload_queue::ResultKind;
-use crate::working_folder::{FINAL_DIR, STACKED_DIR};
+use crate::working_folder::TargetPart;
 
 /// Astro Sync's own folders under its data folder.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,8 +99,9 @@ fn is_final_image(name: &str) -> bool {
         })
 }
 
-/// The final images (`<target>/final/`, the proposed one first) and the
-/// renders of `<target>/stacked/` of the night's ticked targets, each with
+/// The final images (`<target>/input/processed/`, the proposed one first) and
+/// the renders of `<target>/output/stacked/` of the night's ticked targets (or
+/// `final/` and `stacked/` in a target of the earlier form), each with
 /// its SHA-256 (the cache spares the files already read). A render written as
 /// PNG and TIFF gives both, each naming the other (`twin_sha256`): which of
 /// the two leaves is the check's to decide ([`precheck_candidates`]).
@@ -121,7 +122,10 @@ pub fn local_images(
             .iter()
             .filter(|f| {
                 f.relative_path
-                    .strip_prefix(&format!("{folder}/{FINAL_DIR}/"))
+                    .strip_prefix(&format!(
+                        "{folder}/{}",
+                        TargetPart::Processed.label(target.layout)
+                    ))
                     .is_some_and(|rest| !rest.contains('/') && is_final_image(rest))
             })
             .collect();
@@ -139,7 +143,7 @@ pub fn local_images(
             };
             (rank, f.relative_path.clone())
         });
-        // `<target>/final/` is the person's own: it leaves as it is,
+        // `<target>/input/processed/` is the person's own: it leaves as it is,
         // whatever its format.
         for file in finals {
             images.push(LocalImage {
@@ -156,7 +160,10 @@ pub fn local_images(
             .iter()
             .filter(|f| {
                 f.relative_path
-                    .strip_prefix(&format!("{folder}/{STACKED_DIR}/"))
+                    .strip_prefix(&format!(
+                        "{folder}/{}",
+                        TargetPart::Stacked.label(target.layout)
+                    ))
                     .is_some_and(|rest| !rest.contains('/'))
             })
             .collect();
@@ -213,7 +220,7 @@ pub fn local_images(
 /// It is the person's choice, never the default. The person's own `final/`
 /// image is never concerned.
 ///
-/// A stacked image an earlier stacking left in `<target>/stacked/` is **never
+/// A stacked image an earlier stacking left in `<target>/output/stacked/` is **never
 /// a final image to send again**: when this sending stacks the target again
 /// -- `restack` names it before the stacking runs, or `extra` already holds
 /// its new renders -- the new stacking replaces what the folder held, so the

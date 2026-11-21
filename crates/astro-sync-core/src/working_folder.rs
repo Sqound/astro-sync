@@ -2,8 +2,17 @@
 //! (`Documents/Astro Sync/`), one folder per night named
 //! `YYYY-MM-DD · <plan, or place outside a plan> · <id court>`, created at
 //! the wizard's "Folder" step with `logs/`, `calibration/{darks,flats,
-//! dark-flats,biases}/` and, for the ticked targets only, `<target>/lights/`
-//! and `<target>/final/`. The folder names are English in every language.
+//! dark-flats,biases}/` and, for the ticked targets only,
+//! `<target>/input/lights/`, `<target>/input/processed/` and `<target>/output/`.
+//! The folder names are English in every language.
+//!
+//! **Input and output.** `input/` is what the person gives Astro Sync (the
+//! poses, the export of a processing software, the image a device stacked);
+//! `output/` is what Astro Sync makes (`output/stacked/`, `output/progression/`).
+//! Astro Sync writes and cleans only in `output/` and in its hidden
+//! `.astro-sync-work/`, never in `input/`. A target folder made before
+//! Astro Sync 1.2.0 (`lights/`, `final/`, `stacked/` side by side) is read
+//! and written in its own form, never converted ([`TargetLayout`]).
 //!
 //! **Identity, not names.** A night folder carries `.astro-sync-night.json`
 //! and each target folder `.astro-sync-target.json` (hidden on Windows):
@@ -65,8 +74,21 @@ pub const IDENTITY_FORMAT: u32 = 1;
 
 pub const LOGS_DIR: &str = "logs";
 pub const CALIBRATION_DIR: &str = "calibration";
+/// `<target>/input/`: what the person gives Astro Sync (its poses, the
+/// export of its processing software, the image a device stacked). Astro
+/// Sync reads it and never writes, cleans or deletes anything in it.
+pub const INPUT_DIR: &str = "input";
+/// `<target>/output/` (and `<plan>/output/`): what Astro Sync makes. The only
+/// folder of a target where it writes, and the only one « Nettoyer » looks in.
+pub const OUTPUT_DIR: &str = "output";
 pub const LIGHTS_DIR: &str = "lights";
-pub const FINAL_DIR: &str = "final";
+/// `<target>/input/processed/`: the export of the person's processing
+/// software, the final image (TIFF, JPEG or PNG).
+pub const PROCESSED_DIR: &str = "processed";
+/// The name the final image's folder had before `input/processed/`, directly
+/// under the target (`<target>/input/processed/`): still read in a target of the
+/// earlier form ([`TargetLayout::Legacy`]), never created in a new one.
+pub const LEGACY_FINAL_DIR: &str = "final";
 /// Where the image a device already stacked (the Seestar's `Stacked_*.fit`)
 /// lies in a target's folder; never created in advance
 /// ("Tidy the files" makes it when it has such an image to put there).
@@ -78,6 +100,217 @@ pub const STACKED_DIR: &str = "stacked";
 /// milestone (`milestone_01.jpg`…): a result of Astro Sync like `stacked/`,
 /// small, kept after the sending; never created in advance.
 pub const PROGRESSION_DIR: &str = "progression";
+
+/// The two forms of a target folder (and of a plan folder).
+///
+/// - [`TargetLayout::InputOutput`], the form of every target Astro Sync
+///   creates: `<target>/input/{lights,processed,device}/` for what the person
+///   gives, `<target>/output/{stacked,progression}/` for what Astro Sync makes.
+/// - [`TargetLayout::Legacy`], the form before Astro Sync 1.2.0:
+///   `<target>/{lights,final,device,stacked,progression}/` side by side.
+///
+/// **The folder decides, never a setting** ([`target_layout`]): a target that
+/// holds `input/` or `output/` is of the new form; one that holds none of them
+/// but one of the earlier folders is of the earlier form; an empty one is of
+/// the new form. A target of the earlier form is read, stacked again and
+/// cleaned in that form, and nothing in it is ever moved, renamed or deleted
+/// to change its form: Astro Sync never mixes the two forms in a target. A
+/// target the person gave both forms is read in the new form only, and the
+/// detection says which folders of the earlier form it leaves unread
+/// ([`legacy_folders_beside`], `detection.targetTwoLayouts`); nothing is
+/// merged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TargetLayout {
+    InputOutput,
+    Legacy,
+}
+
+/// The folders of a target, whatever its form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TargetPart {
+    /// The person's poses.
+    Lights,
+    /// The export of the person's processing software.
+    Processed,
+    /// The image a device stacked.
+    Device,
+    /// What the stacking writes.
+    Stacked,
+    /// The progression images.
+    Progression,
+}
+
+impl TargetPart {
+    pub const ALL: [TargetPart; 5] = [
+        TargetPart::Lights,
+        TargetPart::Processed,
+        TargetPart::Device,
+        TargetPart::Stacked,
+        TargetPart::Progression,
+    ];
+
+    /// Whether Astro Sync makes it (`output/`), or the person gives it
+    /// (`input/`).
+    #[must_use]
+    pub fn is_output(self) -> bool {
+        matches!(self, TargetPart::Stacked | TargetPart::Progression)
+    }
+
+    /// The part's folder names under the target, in `layout`.
+    #[must_use]
+    pub fn components(self, layout: TargetLayout) -> &'static [&'static str] {
+        match (layout, self) {
+            (TargetLayout::InputOutput, TargetPart::Lights) => &[INPUT_DIR, LIGHTS_DIR],
+            (TargetLayout::InputOutput, TargetPart::Processed) => &[INPUT_DIR, PROCESSED_DIR],
+            (TargetLayout::InputOutput, TargetPart::Device) => &[INPUT_DIR, DEVICE_DIR],
+            (TargetLayout::InputOutput, TargetPart::Stacked) => &[OUTPUT_DIR, STACKED_DIR],
+            (TargetLayout::InputOutput, TargetPart::Progression) => &[OUTPUT_DIR, PROGRESSION_DIR],
+            (TargetLayout::Legacy, TargetPart::Lights) => &[LIGHTS_DIR],
+            (TargetLayout::Legacy, TargetPart::Processed) => &[LEGACY_FINAL_DIR],
+            (TargetLayout::Legacy, TargetPart::Device) => &[DEVICE_DIR],
+            (TargetLayout::Legacy, TargetPart::Stacked) => &[STACKED_DIR],
+            (TargetLayout::Legacy, TargetPart::Progression) => &[PROGRESSION_DIR],
+        }
+    }
+
+    /// The part's folder under the target as the window writes it, with `/`
+    /// and a trailing `/` (`input/lights/`, `final/`).
+    #[must_use]
+    pub fn label(self, layout: TargetLayout) -> String {
+        let mut label = self.components(layout).join("/");
+        label.push('/');
+        label
+    }
+}
+
+/// The subfolder of `parent` named `name`, compared as the detection compares
+/// names (case and Unicode form ignored), when it is a folder.
+fn named_subfolder(parent: &Path, name: &str) -> bool {
+    if parent.join(name).is_dir() {
+        return true;
+    }
+    fs::read_dir(parent).is_ok_and(|entries| {
+        entries.filter_map(Result::ok).any(|entry| {
+            same_name(&entry.file_name().to_string_lossy(), name) && entry.path().is_dir()
+        })
+    })
+}
+
+/// The folders of the earlier form, directly under a target or a plan.
+const LEGACY_TARGET_FOLDERS: [&str; 5] = [
+    LIGHTS_DIR,
+    LEGACY_FINAL_DIR,
+    DEVICE_DIR,
+    STACKED_DIR,
+    PROGRESSION_DIR,
+];
+
+/// The form of the target (or plan) folder `folder` (see [`TargetLayout`]).
+#[must_use]
+pub fn target_layout(folder: &Path) -> TargetLayout {
+    if named_subfolder(folder, INPUT_DIR) || named_subfolder(folder, OUTPUT_DIR) {
+        return TargetLayout::InputOutput;
+    }
+    if LEGACY_TARGET_FOLDERS
+        .iter()
+        .any(|name| named_subfolder(folder, name))
+    {
+        TargetLayout::Legacy
+    } else {
+        TargetLayout::InputOutput
+    }
+}
+
+/// The folders of the earlier form a target of the new form also holds (the
+/// person made them by hand or copied an older night into it): left unread,
+/// said by the detection, never moved. Empty for a target of the earlier form.
+#[must_use]
+pub fn legacy_folders_beside(folder: &Path) -> Vec<&'static str> {
+    if target_layout(folder) == TargetLayout::Legacy {
+        return Vec::new();
+    }
+    LEGACY_TARGET_FOLDERS
+        .iter()
+        .copied()
+        .filter(|name| named_subfolder(folder, name))
+        .collect()
+}
+
+/// `part`'s folder in the target folder `target`, in the target's form.
+#[must_use]
+pub fn target_part_dir(target: &Path, part: TargetPart) -> PathBuf {
+    target_part_dir_in(target, part, target_layout(target))
+}
+
+/// `part`'s folder in the target folder `target`, in `layout`.
+#[must_use]
+pub fn target_part_dir_in(target: &Path, part: TargetPart, layout: TargetLayout) -> PathBuf {
+    part.components(layout)
+        .iter()
+        .fold(target.to_path_buf(), |path, name| path.join(name))
+}
+
+/// The `stacked/` folder of a plan folder, in its form: `<plan>/output/
+/// stacked/`, or `<plan>/output/stacked/` for a plan of the earlier form.
+#[must_use]
+pub fn plan_part_dir(plan: &Path, part: TargetPart) -> PathBuf {
+    target_part_dir(plan, part)
+}
+
+/// Every `part` folder a target (or plan) may hold, in both forms, the
+/// current one first: what the cleaning and the searches read, so that a
+/// result of the earlier form is still found.
+#[must_use]
+pub fn target_part_dirs_both(target: &Path, part: TargetPart) -> [PathBuf; 2] {
+    [
+        target_part_dir_in(target, part, TargetLayout::InputOutput),
+        target_part_dir_in(target, part, TargetLayout::Legacy),
+    ]
+}
+
+/// What a path relative to a target folder (its segments after the target's
+/// name) lies in: the part, the form it is written in, and how many segments
+/// name the part's folder. `None` for anything else (a file directly under the
+/// target, `input/` or `output/` alone, another folder).
+#[must_use]
+pub fn part_of_target_path(segments: &[&str]) -> Option<(TargetPart, TargetLayout, usize)> {
+    let first = segments.first()?;
+    if same_name(first, INPUT_DIR) || same_name(first, OUTPUT_DIR) {
+        let second = segments.get(1)?;
+        return TargetPart::ALL.into_iter().find_map(|part| {
+            let names = part.components(TargetLayout::InputOutput);
+            (same_name(names[0], first) && same_name(names[1], second)).then_some((
+                part,
+                TargetLayout::InputOutput,
+                2,
+            ))
+        });
+    }
+    TargetPart::ALL.into_iter().find_map(|part| {
+        same_name(part.components(TargetLayout::Legacy)[0], first).then_some((
+            part,
+            TargetLayout::Legacy,
+            1,
+        ))
+    })
+}
+
+/// The target (or plan) folder a part's folder lies in: `dir`'s parent, or its
+/// grandparent when the parent is `input/` or `output/`.
+#[must_use]
+pub fn owner_of_part_dir(dir: &Path) -> Option<&Path> {
+    let parent = dir.parent()?;
+    let wrapped = parent.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy();
+        same_name(&name, INPUT_DIR) || same_name(&name, OUTPUT_DIR)
+    });
+    if wrapped {
+        parent.parent()
+    } else {
+        Some(parent)
+    }
+}
 
 /// Where the stackings of `night_folder` keep their scratch: on the disk of
 /// the night, never in Astro Sync's data.
@@ -176,6 +409,11 @@ const WINDOWS_RESERVED: [&str; 22] = [
 pub enum WorkingFolderError {
     #[error("io error at {path}: {source}")]
     Io { path: PathBuf, source: io::Error },
+    /// The working folder is on a disk (or share) that is not mounted: its
+    /// mount point is missing, so nothing is created under it (creating
+    /// the mount point itself would be refused, or worse, succeed).
+    #[error("{}", .root.display())]
+    VolumeNotMounted { root: PathBuf, volume: PathBuf },
     #[error("no documents folder could be found for the working folder")]
     NoDocumentsFolder,
     #[error("the working folder must be an existing folder: {0}")]
@@ -207,7 +445,13 @@ impl WorkingFolderError {
     #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
+            WorkingFolderError::Io { source, .. }
+                if source.kind() == io::ErrorKind::PermissionDenied =>
+            {
+                "folder_access_denied"
+            }
             WorkingFolderError::Io { .. } => "io_error",
+            WorkingFolderError::VolumeNotMounted { .. } => "folder_volume_missing",
             WorkingFolderError::NoDocumentsFolder => "no_documents_folder",
             WorkingFolderError::RootNotADirectory(_) => "folder_not_found",
             WorkingFolderError::BadEveningDate(_) => "bad_evening_date",
@@ -403,11 +647,75 @@ fn windows_documents_folder() -> Option<PathBuf> {
     None
 }
 
+/// The mount point of the disk `root` should be on, when that disk is not
+/// there: `/Volumes/<name>` (macOS), `/mnt/<name>`, `/media/<user>/<name>`,
+/// `/run/media/<user>/<name>`, or the drive letter of a Windows path. `None`
+/// for a folder that is not on a mounted-disk location, or whose disk is
+/// there. Nothing is read below the mount point.
+fn missing_mount_point(root: &Path) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        use std::path::Component;
+        let Some(Component::Prefix(prefix)) = root.components().next() else {
+            return None;
+        };
+        let drive = PathBuf::from(format!("{}\\", prefix.as_os_str().to_string_lossy()));
+        return (!drive.exists()).then_some(drive);
+    }
+    #[cfg(not(windows))]
+    {
+        use std::path::Component;
+        let names: Vec<_> = root
+            .components()
+            .map(|component| match component {
+                Component::Normal(name) => name.to_str().map(str::to_string),
+                _ => None,
+            })
+            .collect();
+        if !root.is_absolute() {
+            return None;
+        }
+        // Component 0 is the root `/`: the names start at 1.
+        let depth = match names.get(1).and_then(Option::as_deref) {
+            Some("Volumes" | "mnt") => 2,
+            Some("media") => 3,
+            Some("run") if names.get(2).and_then(Option::as_deref) == Some("media") => 4,
+            _ => return None,
+        };
+        // The mount point itself must be named, with something under it.
+        if names.len() <= depth + 1 {
+            return None;
+        }
+        let mount: PathBuf = root.components().take(depth + 1).collect();
+        match fs::symlink_metadata(&mount) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Some(mount),
+            _ => None,
+        }
+    }
+}
+
 /// Creates the root if it does not exist yet (at the first signed-in
 /// launch). Returns whether it was created. Nothing else is written here.
+///
+/// A root on a disk that is not mounted is **not** created: the mount point
+/// is missing and `create_dir_all` would try to make it (refused with
+/// "permission denied" under `/Volumes`, which is not the person's to
+/// write). That is [`WorkingFolderError::VolumeNotMounted`], to be said as
+/// "connect the disk", and the call can be repeated once it is there.
+/// A root the system refuses to look at is the refusal itself
+/// (`folder_access_denied`), not a folder to create.
 pub fn ensure_root(root: &Path) -> Result<bool, WorkingFolderError> {
-    if root.is_dir() {
-        return Ok(false);
+    match fs::metadata(root) {
+        Ok(metadata) if metadata.is_dir() => return Ok(false),
+        Ok(_) => return Err(WorkingFolderError::RootNotADirectory(root.to_path_buf())),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_at(root)(error)),
+    }
+    if let Some(volume) = missing_mount_point(root) {
+        return Err(WorkingFolderError::VolumeNotMounted {
+            root: root.to_path_buf(),
+            volume,
+        });
     }
     fs::create_dir_all(root).map_err(io_at(root))?;
     Ok(true)
@@ -871,6 +1179,9 @@ pub struct TargetFolder {
     /// The folder's name in the night folder.
     pub folder_name: String,
     pub state: TargetFolderState,
+    /// Its form: `input/` and `output/`, or the earlier one of a folder made
+    /// before Astro Sync 1.2.0 ([`TargetLayout`]).
+    pub layout: TargetLayout,
 }
 
 /// What the "Folder" step does (or did) to the disk.
@@ -910,9 +1221,11 @@ pub fn plan_night_folder(
 /// The "Folder" step: creates the night's folder if no folder carries
 /// the night yet (named by [`night_folder_name`]), then whatever is missing
 /// of `logs/`, `calibration/{darks,flats,dark-flats,biases}/` and, for each
-/// ticked target, `<target>/lights/` and `<target>/final/` with the identity
-/// files. Run again at each opening of the step: a target ticked since gets
-/// its folder; nothing existing is touched.
+/// ticked target, `<target>/input/lights/`, `<target>/input/processed/` and
+/// `<target>/output/` with the identity files (a target folder of the earlier
+/// form gets its missing `lights/` or `final/` instead: it keeps its form).
+/// Run again at each opening of the step: a target ticked since gets its
+/// folder; nothing existing is touched.
 pub fn prepare_night_folder(
     root: &Path,
     remembered: &[PathBuf],
@@ -1028,12 +1341,31 @@ fn plan(
         };
         claimed.push(folder_name.clone());
         let target_dir = folder.join(&folder_name);
+        // A target folder already there keeps its form (an earlier night's
+        // `lights/` and `final/` are never joined by `input/`); a new one
+        // takes `input/{lights,processed}/` and `output/`.
+        let layout = if target_dir.is_dir() {
+            target_layout(&target_dir)
+        } else {
+            TargetLayout::InputOutput
+        };
+        let mut subs: Vec<String> = vec![String::new()];
+        if layout == TargetLayout::InputOutput {
+            subs.push(INPUT_DIR.to_string());
+        }
+        for part in [TargetPart::Lights, TargetPart::Processed] {
+            subs.push(part.components(layout).join("/"));
+        }
+        if layout == TargetLayout::InputOutput {
+            subs.push(OUTPUT_DIR.to_string());
+        }
         let mut new_here = false;
-        for sub in ["", LIGHTS_DIR, FINAL_DIR] {
+        for sub in &subs {
             let path = if sub.is_empty() {
                 target_dir.clone()
             } else {
-                target_dir.join(sub)
+                sub.split('/')
+                    .fold(target_dir.clone(), |path, name| path.join(name))
             };
             if !path.is_dir() {
                 creations.push(Creation::Folder(path));
@@ -1068,6 +1400,7 @@ fn plan(
             designation: target.designation.clone(),
             folder_name,
             state,
+            layout,
         });
     }
     // The folders of targets no longer ticked (or no longer of the night):
@@ -1086,6 +1419,7 @@ fn plan(
             designation,
             folder_name: name.clone(),
             state: TargetFolderState::OutOfNight,
+            layout: target_layout(&folder.join(name)),
         });
     }
 
@@ -1109,7 +1443,7 @@ fn identity_json<T: Serialize>(value: &T) -> String {
 
 /// `logs`, `calibration`, `stacked`…: names a target folder never takes.
 fn is_reserved_night_entry(name: &str) -> bool {
-    [LOGS_DIR, CALIBRATION_DIR]
+    [LOGS_DIR, CALIBRATION_DIR, INPUT_DIR, OUTPUT_DIR]
         .iter()
         .any(|reserved| same_name(reserved, name))
 }
@@ -1353,15 +1687,28 @@ mod tests {
             "calibration/flats",
             "calibration/dark-flats",
             "calibration/biases",
-            "NGC 7000/lights",
-            "NGC 7000/final",
-            "IC 1396/lights",
-            "IC 1396/final",
+            "NGC 7000/input/lights",
+            "NGC 7000/input/processed",
+            "NGC 7000/output",
+            "IC 1396/input/lights",
+            "IC 1396/input/processed",
+            "IC 1396/output",
         ] {
             assert!(folder.join(dir).is_dir(), "{dir}");
         }
         assert!(!folder.join("M31").exists());
-        assert!(!folder.join("NGC 7000/stacked").exists());
+        // Nothing of the earlier form, and `output/stacked/` only when the
+        // stacking writes in it.
+        for dir in ["NGC 7000/lights", "NGC 7000/final", "NGC 7000/stacked"] {
+            assert!(!folder.join(dir).exists(), "{dir}");
+        }
+        assert!(!folder.join("NGC 7000/output/stacked").exists());
+        assert!(
+            outcome
+                .targets
+                .iter()
+                .all(|t| t.layout == TargetLayout::InputOutput)
+        );
         let identity = read_night_identity(&folder).unwrap();
         assert_eq!(identity.night_id, night.night_id);
         assert_eq!(identity.created_at, NOW);
@@ -1382,8 +1729,10 @@ mod tests {
             second.created_paths,
             vec![
                 "M31/",
-                "M31/lights/",
-                "M31/final/",
+                "M31/input/",
+                "M31/input/lights/",
+                "M31/input/processed/",
+                "M31/output/",
                 "M31/.astro-sync-target.json"
             ]
         );
@@ -1398,7 +1747,118 @@ mod tests {
         assert_eq!(state("t-m31"), TargetFolderState::Created);
         assert_eq!(state("t-ngc7000"), TargetFolderState::Existing);
         assert_eq!(state("t-ic1396"), TargetFolderState::OutOfNight);
-        assert!(folder.join("IC 1396/lights").is_dir(), "never deleted");
+        assert!(
+            folder.join("IC 1396/input/lights").is_dir(),
+            "never deleted"
+        );
+    }
+
+    /// A night made before Astro Sync 1.2.0: its targets keep `lights/` and
+    /// `final/` side by side, the step adds nothing of the new form to them
+    /// and moves nothing; a target ticked since is made in the new form.
+    #[test]
+    fn a_target_folder_of_the_earlier_form_keeps_its_form() {
+        let root = TempDir::new("wf-legacy");
+        let night = spec(&[("t-m31", "M31", true), ("t-m45", "M45", false)]);
+        let first = prepare_night_folder(root.path(), &[], &night, NOW).unwrap();
+        // Turn M31 into a folder of the earlier form, with the person's files.
+        let m31 = first.folder.join("M31");
+        fs::remove_dir_all(m31.join("input")).unwrap();
+        fs::remove_dir_all(m31.join("output")).unwrap();
+        fs::create_dir_all(m31.join("lights")).unwrap();
+        fs::write(m31.join("lights/a.fits"), b"frame").unwrap();
+        fs::create_dir_all(m31.join("stacked")).unwrap();
+        fs::write(m31.join("stacked/M31_natural.tif"), b"render").unwrap();
+        assert_eq!(target_layout(&m31), TargetLayout::Legacy);
+
+        let mut later = night.clone();
+        later.targets[1].ticked = true;
+        let second = prepare_night_folder(root.path(), &[], &later, NOW).unwrap();
+        assert_eq!(
+            second.created_paths,
+            vec![
+                "M31/final/",
+                "M45/",
+                "M45/input/",
+                "M45/input/lights/",
+                "M45/input/processed/",
+                "M45/output/",
+                "M45/.astro-sync-target.json"
+            ]
+        );
+        assert!(!m31.join("input").exists() && !m31.join("output").exists());
+        assert_eq!(fs::read(m31.join("lights/a.fits")).unwrap(), b"frame");
+        assert_eq!(
+            fs::read(m31.join("stacked/M31_natural.tif")).unwrap(),
+            b"render"
+        );
+        let layout = |id: &str| {
+            second
+                .targets
+                .iter()
+                .find(|t| t.target_id == id)
+                .unwrap()
+                .layout
+        };
+        assert_eq!(layout("t-m31"), TargetLayout::Legacy);
+        assert_eq!(layout("t-m45"), TargetLayout::InputOutput);
+        assert_eq!(
+            target_part_dir(&m31, TargetPart::Stacked),
+            m31.join("stacked")
+        );
+        assert_eq!(
+            target_part_dir(&first.folder.join("M45"), TargetPart::Stacked),
+            first.folder.join("M45").join("output").join("stacked")
+        );
+    }
+
+    #[test]
+    fn the_form_of_a_target_is_read_from_its_folders() {
+        let root = TempDir::new("wf-layout");
+        let target = root.path().join("M31");
+        fs::create_dir_all(&target).unwrap();
+        // Empty: the new form.
+        assert_eq!(target_layout(&target), TargetLayout::InputOutput);
+        fs::create_dir_all(target.join("Lights")).unwrap();
+        assert_eq!(target_layout(&target), TargetLayout::Legacy);
+        assert!(legacy_folders_beside(&target).is_empty());
+        fs::create_dir_all(target.join("output")).unwrap();
+        // Both forms: the new one, and the folders of the earlier one said.
+        assert_eq!(target_layout(&target), TargetLayout::InputOutput);
+        assert_eq!(legacy_folders_beside(&target), vec!["lights"]);
+        // The paths a part's folder is written in.
+        assert_eq!(
+            part_of_target_path(&["input", "lights", "a.fits"]),
+            Some((TargetPart::Lights, TargetLayout::InputOutput, 2))
+        );
+        assert_eq!(
+            part_of_target_path(&["Input", "Processed", "a.tif"]),
+            Some((TargetPart::Processed, TargetLayout::InputOutput, 2))
+        );
+        assert_eq!(
+            part_of_target_path(&["final", "a.tif"]),
+            Some((TargetPart::Processed, TargetLayout::Legacy, 1))
+        );
+        assert_eq!(
+            part_of_target_path(&["output", "stacked", "a.tif"]),
+            Some((TargetPart::Stacked, TargetLayout::InputOutput, 2))
+        );
+        // `input/stacked/` and `output/lights/` are no part's folder.
+        assert_eq!(part_of_target_path(&["input", "stacked", "a.tif"]), None);
+        assert_eq!(part_of_target_path(&["output", "lights", "a.fits"]), None);
+        assert_eq!(
+            owner_of_part_dir(&target.join("output").join("stacked")),
+            Some(target.as_path())
+        );
+        assert_eq!(
+            owner_of_part_dir(&target.join("stacked")),
+            Some(target.as_path())
+        );
+        assert_eq!(TargetPart::Processed.label(TargetLayout::Legacy), "final/");
+        assert_eq!(
+            TargetPart::Processed.label(TargetLayout::InputOutput),
+            "input/processed/"
+        );
     }
 
     #[test]
@@ -1448,7 +1908,7 @@ mod tests {
         follow.follow = Some(copy.clone());
         let outcome = prepare_night_folder(root.path(), &[], &follow, NOW).unwrap();
         assert_eq!(outcome.folder, copy);
-        assert!(copy.join("M31/lights").is_dir());
+        assert!(copy.join("M31/input/lights").is_dir());
     }
 
     /// "Folder" is run again at each opening of the step: the second run
@@ -1462,7 +1922,7 @@ mod tests {
         assert!(first.created);
         assert!(!first.created_paths.is_empty());
 
-        let dropped = first.folder.join("NGC 7000/lights/light_0001.fits");
+        let dropped = first.folder.join("NGC 7000/input/lights/light_0001.fits");
         fs::write(&dropped, b"SIMPLE  =                    T").unwrap();
         let before = fs::read(&dropped).unwrap();
 
@@ -1587,6 +2047,49 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), before);
         assert!(!write_identity_file(&path, "{}").unwrap());
         assert_eq!(fs::read(&path).unwrap(), before);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_root_on_a_disk_that_is_not_mounted_is_not_created() {
+        // A disk that no machine has; the path is built so that it is not
+        // written out as a machine path.
+        let disk = Path::new("/").join("Volumes").join("AstroSyncTestNoSuchDisk-5f3c9a");
+        let missing_root = disk.join("AstroSync");
+        let missing = missing_root.as_path();
+        let error = ensure_root(missing).unwrap_err();
+        assert_eq!(error.code(), "folder_volume_missing");
+        match error {
+            WorkingFolderError::VolumeNotMounted { root, volume } => {
+                assert_eq!(root, missing);
+                assert_eq!(volume, disk);
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+        assert!(!disk.exists());
+        // Other places are the person's to create.
+        for fine in [Path::new("/").join("Volumes"), disk.clone()] {
+            assert!(missing_mount_point(&fine).is_none());
+        }
+        assert_eq!(
+            missing_mount_point(Path::new("/media/someone/Disk/Astro")),
+            Some(PathBuf::from("/media/someone/Disk")).filter(|m| !m.exists())
+        );
+        assert!(missing_mount_point(&Path::new("relative").join("Volumes").join("x/y")).is_none());
+        // A refused look is the refusal, not a folder to create.
+        let parent = TempDir::new("wf-denied");
+        let locked = parent.path().join("locked");
+        fs::create_dir(&locked).unwrap();
+        let root = locked.join("Astro Sync");
+        fs::create_dir(&root).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let refused = ensure_root(&root);
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        // Running as root sees through the lock: only check when it is refused.
+        if let Err(error) = refused {
+            assert_eq!(error.code(), "folder_access_denied");
+        }
     }
 
     #[test]

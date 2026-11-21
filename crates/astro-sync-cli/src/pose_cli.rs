@@ -19,7 +19,7 @@ type Outcome = Result<(), Box<dyn Error>>;
 pub struct PoseStatsArgs {
     /// Folder of the night.
     pub night: PathBuf,
-    /// Folder of the target in the night (its frames are in `<target>/lights/`).
+    /// Folder of the target in the night (its frames are in `<target>/input/lights/`).
     pub target_folder: String,
     /// Astro Sync data (stacking-env/ environment).
     #[arg(long)]

@@ -18,6 +18,7 @@ import type {
   SessionSummary,
 } from "./bridge";
 import type { ReportStorage } from "./lastReport";
+import { partOfNightPath } from "./targetFolders.ts";
 
 /* ------------------------------ The locations ----------------------------- */
 
@@ -507,7 +508,7 @@ export function intoNightFolder(
   };
 }
 
-/** « IC 1805/lights/, Sh2-103/lights/, calibration/, logs/ »: the folders
+/** « IC 1805/input/lights/, Sh2-103/input/lights/, calibration/, logs/ »: the folders
  * the plan makes in the night's folder, from its actions (the engine's plan,
  * before `intoNightFolder`). */
 export function treeFolders(plan: OrganisePlan): string[] {
@@ -520,15 +521,21 @@ export function treeFolders(plan: OrganisePlan): string[] {
     const clean = normal(action.destination);
     if (!clean.startsWith(`${root}/`)) continue;
     const parts = clean.slice(root.length + 1).split("/");
-    // <night>/<target>/lights/[<filter>/]<file>, <night>/calibration/..., <night>/logs/...
+    // <night>/<target>/input/lights/[<filter>/]<file> (<target>/lights/ in a
+    // target folder of the earlier form), <night>/calibration/...,
+    // <night>/logs/...
     if (parts[1] === "logs") logs = true;
     else if (parts[1] === "calibration") calibration.add("calibration/");
-    else if (parts[2] === "lights") {
-      const filtered =
-        parts.length >= 5
-          ? `${parts[1]}/lights/${parts[3]}/`
-          : `${parts[1]}/lights/`;
-      if (!folders.includes(filtered)) folders.push(filtered);
+    else {
+      const part = partOfNightPath(parts.slice(1));
+      if (part?.part === "lights") {
+        const lights = parts
+          .slice(1, parts.length - part.under.length)
+          .join("/");
+        const filtered =
+          part.under.length >= 2 ? `${lights}/${part.under[0]}/` : `${lights}/`;
+        if (!folders.includes(filtered)) folders.push(filtered);
+      }
     }
   }
   return [...folders, ...calibration, ...(logs ? ["logs/"] : [])];

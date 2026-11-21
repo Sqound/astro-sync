@@ -104,7 +104,7 @@ fn night(root: &Path) -> PathBuf {
     let folder = PathBuf::from(made["folder"].as_str().unwrap());
     for minute in 1..=3 {
         std::fs::write(
-            folder.join(format!("M31/lights/Light_{minute}.fits")),
+            folder.join(format!("M31/input/lights/Light_{minute}.fits")),
             fits(&[
                 ("IMAGETYP", "'LIGHT'"),
                 ("OBJECT", "'M31'"),
@@ -236,9 +236,9 @@ fn a_service_that_cannot_be_reached_is_said_in_the_language_of_the_person() {
 fn the_refusal_of_the_report_is_the_sentence_of_the_dictionary() {
     let parent = temp("logs-refused");
     let folder = parent.join("night");
-    std::fs::create_dir_all(folder.join("Sh2-190/lights")).unwrap();
+    std::fs::create_dir_all(folder.join("Sh2-190/input/lights")).unwrap();
     std::fs::write(
-        folder.join("Sh2-190/lights/Light_1.fits"),
+        folder.join("Sh2-190/input/lights/Light_1.fits"),
         fits(&[
             ("IMAGETYP", "'LIGHT'"),
             ("OBJECT", "'Sh2-190'"),
@@ -501,24 +501,24 @@ fn the_stacking_takes_the_image_of_the_device_for_the_family_it_covers() {
             ("DATE-OBS", &format!("'2026-10-10T21:00:{second:02}'")),
         ])
     };
-    std::fs::create_dir_all(folder.join("M45/lights")).unwrap();
-    std::fs::create_dir_all(folder.join("M45/device")).unwrap();
+    std::fs::create_dir_all(folder.join("M45/input/lights")).unwrap();
+    std::fs::create_dir_all(folder.join("M45/input/device")).unwrap();
     for second in 0..3 {
         std::fs::write(
-            folder.join(format!("M45/lights/L30_{second}.fits")),
+            folder.join(format!("M45/input/lights/L30_{second}.fits")),
             seestar("30", second),
         )
         .unwrap();
     }
     for second in 10..12 {
         std::fs::write(
-            folder.join(format!("M45/lights/L10_{second}.fits")),
+            folder.join(format!("M45/input/lights/L10_{second}.fits")),
             seestar("10", second),
         )
         .unwrap();
     }
     std::fs::write(
-        folder.join("M45/device/Stacked_3_M45_30.0s_IRCUT.fit"),
+        folder.join("M45/input/device/Stacked_3_M45_30.0s_IRCUT.fit"),
         fits(&[
             ("SIMPLE", "T"),
             ("BITPIX", "16"),
@@ -599,12 +599,16 @@ fn a_stacked_image_over_the_ceiling_leaves_the_final_image_to_go_and_says_why() 
     let root = parent.join("Astro Sync");
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
-    std::fs::write(folder.join("M31/final/M31_final.png"), png(300, 200, 1000)).unwrap();
-    std::fs::create_dir_all(folder.join("M31/stacked")).unwrap();
+    std::fs::write(
+        folder.join("M31/input/processed/M31_final.png"),
+        png(300, 200, 1000),
+    )
+    .unwrap();
+    std::fs::create_dir_all(folder.join("M31/output/stacked")).unwrap();
     // 30 MB: over the 25 MB a file may weigh in this space (base 1 024, as
     // the space counts).
     std::fs::write(
-        folder.join("M31/stacked/M31_20261007_raw.tif"),
+        folder.join("M31/output/stacked/M31_20261007_raw.tif"),
         vec![9_u8; 30 * 1024 * 1024],
     )
     .unwrap();
@@ -693,7 +697,7 @@ fn a_limit_that_stops_the_sending_is_said_with_its_numbers() {
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
     std::fs::write(
-        folder.join("M31/final/M31.png"),
+        folder.join("M31/input/processed/M31.png"),
         png(300, 200, 30 * 1024 * 1024),
     )
     .unwrap();
@@ -783,8 +787,12 @@ fn a_night_with_nothing_to_send_says_why() {
         ]);
         let shown = text(&output.stdout);
         let words = dictionary(locale);
-        let expected = words["wizard.summary.nothingToSend"].as_str().unwrap();
-        assert!(shown.contains(expected), "{locale}: {shown}");
+        let expected = words["wizard.summary.nothingToSend"]
+            .as_str()
+            .unwrap()
+            .replace("{processed}", "input/processed/")
+            .replace("{stacked}", "output/stacked/");
+        assert!(shown.contains(&expected), "{locale}: {shown}");
         assert!(
             !shown
                 .split_whitespace()
@@ -1041,7 +1049,11 @@ fn a_server_without_a_quota_says_no_limit_and_an_unknown_target_names_the_comman
     let root = parent.join("Astro Sync");
     std::fs::create_dir_all(&root).unwrap();
     let folder = night(&root);
-    std::fs::write(folder.join("M31/final/M31.png"), png(300, 200, 2_000)).unwrap();
+    std::fs::write(
+        folder.join("M31/input/processed/M31.png"),
+        png(300, 200, 2_000),
+    )
+    .unwrap();
     let unlimited = "9007199254740991";
     let storage = fixture("space_storage.json")
         .replace("268435456000", unlimited)

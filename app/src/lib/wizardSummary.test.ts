@@ -187,7 +187,7 @@ test("a limit passed: « Envoi impossible : rien n'est envoyé », which file an
       findings: [
         {
           limit: "file_too_large",
-          path: `${NIGHT_FOLDER}/NGC 7000/final/NGC7000_final.tif`,
+          path: `${NIGHT_FOLDER}/NGC 7000/input/processed/NGC7000_final.tif`,
           size: 412_000_000,
           maxFileBytes: 100_000_000,
         },
@@ -407,7 +407,7 @@ test("after the run: « Images de progression : 5 pour IC 1805 », and a target 
         kind: "progression",
         targetId: "ic1805",
         size: 2_000_000,
-        path: `IC 1805/progression/milestone_0${n}.jpg`,
+        path: `IC 1805/output/progression/milestone_0${n}.jpg`,
       },
       decision: { decision: "progression_of_new", firstSha256: "e" },
     })),
@@ -469,7 +469,7 @@ function leftover(
   return {
     image: {
       targetId: M31,
-      path: `${NIGHT_FOLDER}/M31/stacked/M31_2026-08-10_raw.tif`,
+      path: `${NIGHT_FOLDER}/M31/output/stacked/M31_2026-08-10_raw.tif`,
       sha256,
       size: 47_900_000,
       kind: "stacked",
@@ -608,7 +608,7 @@ function render(name: string, quality?: ImageQuality): ImagePlan {
   return {
     image: {
       targetId: M31,
-      path: `${NIGHT_FOLDER}/M31/stacked/M31_2026-08-10_${name}.tif`,
+      path: `${NIGHT_FOLDER}/M31/output/stacked/M31_2026-08-10_${name}.tif`,
       sha256: name.padEnd(64, "0"),
       size: 47_900_000,
       kind: "stacked",
@@ -709,7 +709,7 @@ test("under a final image the quality is said as measured on the person's master
     ...render("raw"),
     image: {
       targetId: M31,
-      path: `${NIGHT_FOLDER}/M31/final/M31_final.tif`,
+      path: `${NIGHT_FOLDER}/M31/input/processed/M31_final.tif`,
       sha256: "f".repeat(64),
       size: 47_900_000,
       kind: "final",
@@ -754,7 +754,7 @@ function linearPlan(decision: ImagePlan["decision"]): ImagePlan {
   return {
     image: {
       targetId: M31,
-      path: `${NIGHT_FOLDER}/M31/stacked/M31_2026-08-10_linear.tif`,
+      path: `${NIGHT_FOLDER}/M31/output/stacked/M31_2026-08-10_linear.tif`,
       sha256: "linear".padEnd(64, "0"),
       size: 19_000_000,
       kind: "linear",
@@ -915,7 +915,7 @@ test("an image set taking the place of its render online says so, and one whose 
 
 function adjustedTiff(
   decision: ImagePlan["decision"],
-  path = `${NIGHT_FOLDER}/M31/stacked/M31_natural_adjusted.tif`,
+  path = `${NIGHT_FOLDER}/M31/output/stacked/M31_natural_adjusted.tif`,
 ): ImagePlan {
   return {
     image: {
@@ -1003,7 +1003,7 @@ test("nothing new is said when the TIFF replaces nothing: a plain variant, a PNG
     [
       adjustedTiff(
         REPLACING,
-        `${NIGHT_FOLDER}/M31/stacked/M31_natural_adjusted.png`,
+        `${NIGHT_FOLDER}/M31/output/stacked/M31_natural_adjusted.png`,
       ),
     ],
     [leftover({ decision: "replace", captureId: "c", imageId: "i" })],

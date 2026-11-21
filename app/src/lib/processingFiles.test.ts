@@ -109,7 +109,7 @@ test("a line per category, the total, the person's own files and the Python envi
   assert.equal(view.python.bytes, 308 * MB);
   same(view.stamp ?? "", "Calculé à 18:52");
   assert.equal(view.cleanable, true);
-  same(view.rows[1].note ?? "", "stacked/ de 7 nuits");
+  same(view.rows[1].note ?? "", "output/stacked/ de 7 nuits");
   same(view.rows[2].note ?? "", "1 plan");
 });
 

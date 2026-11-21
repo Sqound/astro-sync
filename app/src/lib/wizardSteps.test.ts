@@ -128,13 +128,36 @@ test("« Dossier »: the folder created with the ticked targets only, and its tr
       "      dark-flats/",
       "      biases/",
       "    NGC 7000/",
-      "      lights/",
-      "      final/",
+      "      input/",
+      "        lights/",
+      "        processed/",
+      "      output/",
       "    IC 1396/",
       "    M31/",
     ],
   );
-  assert.equal(tree[12].note, "lights/, final/");
+  assert.equal(tree[14].note, "input/, output/");
+  assert.equal(fr(tree[10].noteKey!), "ce que vous donnez à Astro Sync");
+  assert.equal(
+    fr(tree[13].noteKey!),
+    "ce qu’Astro Sync fabrique, le seul dossier où il écrit",
+  );
+  // A target folder made before Astro Sync 1.2.0 is drawn in its form.
+  const earlier = folderTree("Astro Sync", "2026-10-07 · Col · 7f3a2c", [
+    { name: "M31", layout: "legacy" },
+    { name: "M45", layout: "legacy" },
+    "IC 1396",
+  ]);
+  assert.deepEqual(
+    earlier.slice(9).map((r) => [r.depth, r.name, r.note ?? r.noteKey]),
+    [
+      [2, "M31/", "wizard.tree.target"],
+      [3, "lights/", "wizard.tree.lights"],
+      [3, "final/", "wizard.tree.final"],
+      [2, "M45/", "lights/, final/"],
+      [2, "IC 1396/", "input/, output/"],
+    ],
+  );
   assert.equal(
     fr(tree[1].noteKey!),
     "explique cette structure à un assistant IA",

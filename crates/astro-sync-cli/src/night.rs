@@ -510,7 +510,23 @@ fn finding_sentence(finding: &precheck::QuotaFinding, lang: &str) -> String {
 /// The contract's value for a ceiling the profile does not set (`2^53 - 1`).
 const UNLIMITED_BYTES: u64 = 9_007_199_254_740_991;
 
-fn print_precheck(check: &NightPrecheck, lang: &str) {
+/// The folders « Rien à envoyer » names: those of the night's first target in
+/// its form (`input/processed/` and `output/stacked/`, or `final/` and
+/// `stacked/` in a night made before Astro Sync 1.2.0).
+fn summary_folders(detection: &astro_sync_core::detection::NightDetection) -> (String, String) {
+    use astro_sync_core::working_folder::{TargetLayout, TargetPart};
+    let layout = detection
+        .targets
+        .iter()
+        .find(|target| target.in_night)
+        .map_or(TargetLayout::InputOutput, |target| target.layout);
+    (
+        TargetPart::Processed.label(layout),
+        TargetPart::Stacked.label(layout),
+    )
+}
+
+fn print_precheck(check: &NightPrecheck, lang: &str, folders: &(String, String)) {
     for plan in &check.plans {
         let decision = match &plan.decision {
             precheck::Decision::AlreadyOnline { .. } => "already online, identical".to_string(),
@@ -612,7 +628,11 @@ fn print_precheck(check: &NightPrecheck, lang: &str) {
     if check.quota.allowed && check.quota.to_send_files == 0 && !already_online {
         // Nothing leaves, and the person is told why and what to do (a
         // night without a final image, in a space that cannot stack).
-        if let Some(line) = words::say(lang, "wizard.summary.nothingToSend", &[]) {
+        if let Some(line) = words::say(
+            lang,
+            "wizard.summary.nothingToSend",
+            &[("processed", &folders.0), ("stacked", &folders.1)],
+        ) {
             println!("{line}");
         }
     }
@@ -634,7 +654,7 @@ fn print_precheck(check: &NightPrecheck, lang: &str) {
 }
 
 /// The milestones of the progression each ticked target of the night's folder
-/// holds (`<target>/progression/`), with the poses they stack.
+/// holds (`<target>/output/progression/`), with the poses they stack.
 fn recorded_progression(
     night_folder: &Path,
     detection: &NightDetection,
@@ -695,7 +715,10 @@ pub fn check(args: &CheckArgs) -> Outcome {
         &args.lang,
         None,
     );
-    print(args.json, &check, || print_precheck(&check, &args.lang))
+    let folders = summary_folders(&detection);
+    print(args.json, &check, || {
+        print_precheck(&check, &args.lang, &folders);
+    })
 }
 
 /// What Astro Sync proposes for each image of the check (`metadata` of
@@ -1025,7 +1048,7 @@ pub fn send_night(args: &SendNightArgs) -> Outcome {
     let refused = !answer.precheck.as_ref().is_some_and(|c| c.quota.allowed);
     print(args.json, &answer, || {
         if let Some(check) = &answer.precheck {
-            print_precheck(check, &args.lang);
+            print_precheck(check, &args.lang, &summary_folders(&detection));
         }
         if args.dry_run {
             println!("Dry run: nothing was queued or sent.");
@@ -1350,7 +1373,9 @@ pub fn progression_images(args: &ProgressionImagesArgs) -> Outcome {
             println!("Dry run: Siril was not started.");
         });
     }
-    let family = family.ok_or_else(|| fail("no frame family in lights/"))?;
+    let family = family.ok_or_else(|| {
+        fail("no frame family in input/lights/ (lights/ in a target of the earlier form)")
+    })?;
     let allowed = allowed_progression(args.portal.as_ref(), args.token.as_ref())?;
     let rows = tools::detect_tools(&DetectContext::system(
         &args.data,
@@ -1932,7 +1957,7 @@ fn leave_out(
         |n| n.to_string_lossy().into_owned(),
     );
     eprintln!(
-        "{left} frame{} left out according to {name} (they stay in lights/, nothing is deleted)",
+        "{left} frame{} left out according to {name} (they stay in input/lights/, nothing is deleted)",
         if left > 1 { "s" } else { "" },
     );
     if !unknown.is_empty() {
@@ -1983,11 +2008,11 @@ fn device_uses(args: &StackArgs) -> Vec<DeviceUse> {
             .map(|file| DeviceUse { file: file.clone() })
             .collect();
     }
-    if !args
-        .night
-        .join(&args.target_folder)
-        .join(working_folder::DEVICE_DIR)
-        .is_dir()
+    if !working_folder::target_part_dir(
+        &args.night.join(&args.target_folder),
+        working_folder::TargetPart::Device,
+    )
+    .is_dir()
     {
         return Vec::new();
     }

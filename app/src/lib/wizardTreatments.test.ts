@@ -82,7 +82,7 @@ test("Synchronisation avancée+: the five options ticked, each with its tool, no
         "Envoi de l’image finale déjà traitée",
         "available",
         true,
-        "Sans outil : le fichier de final/ part tel quel, avec son empreinte SHA-256.",
+        "Sans outil : le fichier de input/processed/ part tel quel, avec son empreinte SHA-256.",
       ],
       [
         "Annotations du ciel",
@@ -405,7 +405,7 @@ test("a target without FITS frames has no card; one with a final image only stil
   assert.deepEqual(none.cards, []);
   assert.equal(
     fr("wizard.stacking.noFrames"),
-    "Aucune pose FITS dans lights/\u00a0: il n’y a rien à empiler.",
+    "Aucune pose FITS dans input/lights/\u00a0: il n’y a rien à empiler.",
   );
 });
 test("« Sans traitement »: the core's ten-language texts (variant title and description) are the wizard's words", () => {

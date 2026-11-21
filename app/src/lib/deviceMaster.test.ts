@@ -53,7 +53,7 @@ const text = (segs: readonly Seg[]) =>
   );
 
 /* The night of 10 to 11 October 2026, as the engine reads it: two images of
-   10 s (28 and 8 poses) and one of 30 s (430), the 466 poses in lights/. */
+   10 s (28 and 8 poses) and one of 30 s (430), the 466 poses in input/lights/. */
 const STACKED_430 = "Stacked_430_M 45_30.0s_IRCUT_20261011-061931.fit";
 const STACKED_28 = "Stacked_28_M 45_10.0s_IRCUT_20261010-223400.fit";
 const STACKED_8 = "Stacked_8_M 45_10.0s_IRCUT_20261010-233016.fit";
@@ -65,7 +65,7 @@ function image(
   family: string,
 ): DeviceImage {
   return {
-    relativePath: `M45/device/${fileName}`,
+    relativePath: `M45/input/device/${fileName}`,
     fileName,
     bytes: 49_775_040,
     kind: "seestar",
@@ -259,7 +259,7 @@ test("one image found, the way its header says it, and where the choice is", () 
   assert.equal(box.groups.length, 1);
   assert.equal(box.groups[0].heading, null, "one family: no family title");
   const lines = box.groups[0].lines.map((line) => text(line.segs));
-  assert.equal(lines[0], `device/${STACKED_430} · 49,7 Mo`);
+  assert.equal(lines[0], `input/device/${STACKED_430} · 49,7 Mo`);
   assert.equal(
     lines[1],
     "Seestar S50 Pro · 430 poses de 30 s · 3 h 35 min · RVB linéaire, 16 bits · solution de champ dans l’en-tête",
@@ -292,9 +292,9 @@ test("the real night, three images and two families, the split one said why", ()
   assert.deepEqual(
     ten.lines.map((line) => text(line.segs)),
     [
-      `device/${STACKED_28} · 49,7 Mo`,
+      `input/device/${STACKED_28} · 49,7 Mo`,
       "28 poses · 4 min 40 s",
-      `device/${STACKED_8} · 49,7 Mo`,
+      `input/device/${STACKED_8} · 49,7 Mo`,
       "8 poses · 1 min 20 s",
     ],
   );
@@ -331,18 +331,22 @@ test("a split family whose poses are not here takes the biggest image and names 
 });
 
 test("the .jpg alone is never a master, with the poses and without anything else", () => {
-  const jpg = ["M45/device/Stacked_430_M 45_30.0s_IRCUT_20261011-061931.jpg"];
+  const jpg = [
+    "M45/input/device/Stacked_430_M 45_30.0s_IRCUT_20261011-061931.jpg",
+  ];
   const withPoses = deviceBox(fr, "fr", target([], [], 430, jpg))!;
   assert.deepEqual(withPoses.state, { tone: "warning", text: "Pas un master" });
   assert.equal(withPoses.groups.length, 0);
   const lines = withPoses.notes.map((line) => text(line.segs));
   assert.equal(
     lines[0],
-    "device/Stacked_430_M 45_30.0s_IRCUT_20261011-061931.jpg",
+    "input/device/Stacked_430_M 45_30.0s_IRCUT_20261011-061931.jpg",
   );
   assert.ok(lines[1].startsWith(n("Cette image est un .jpg : étirée")));
   assert.ok(
-    lines[1].endsWith("Astro Sync empile les poses de lights/, comme avant."),
+    lines[1].endsWith(
+      "Astro Sync empile les poses de input/lights/, comme avant.",
+    ),
   );
   assert.equal(
     lines[2],
@@ -351,7 +355,7 @@ test("the .jpg alone is never a master, with the poses and without anything else
   const alone = deviceBox(fr, "fr", target([], [], 0, jpg))!;
   const aloneLines = alone.notes.map((line) => text(line.segs));
   assert.ok(aloneLines[1].startsWith("Ni poses, ni fichier .fit"));
-  assert.ok(aloneLines[2].startsWith("Déposé dans final/"));
+  assert.ok(aloneLines[2].startsWith("Déposé dans input/processed/"));
   // A target with nothing in device/ has no card.
   assert.equal(deviceBox(fr, "fr", { ...ONE(), device: undefined }), null);
 });
@@ -381,7 +385,7 @@ test("the device's image is the default, the stacking of the poses the side line
   assert.equal(row.restack.isDefault, false);
   assert.equal(
     text(row.restack.segs),
-    "Les 430 poses de 30 s de lights/ · environ 10 min et 90,3 Go de place libre pendant le travail. Utile pour plusieurs nuits, une nuit coupée en plusieurs images, des poses ratées à écarter, des étoiles plus fines.",
+    "Les 430 poses de 30 s de input/lights/ · environ 10 min et 90,3 Go de place libre pendant le travail. Utile pour plusieurs nuits, une nuit coupée en plusieurs images, des poses ratées à écarter, des étoiles plus fines.",
   );
   assert.equal(
     n(view.pipelinesNote),
@@ -393,7 +397,7 @@ test("the device's image is the default, the stacking of the poses the side line
   assert.ok(n(view.unused).startsWith("Sans objet pour l’image de l’appareil"));
   assert.deepEqual(view.measure, {
     fileName: STACKED_430,
-    path: `/nuits/2026-10-10 · Maison · 3e7a91/M45/device/${STACKED_430}`,
+    path: `/nuits/2026-10-10 · Maison · 3e7a91/M45/input/device/${STACKED_430}`,
   });
 });
 
@@ -420,7 +424,7 @@ test("two families, two choices, the split one restacks and says why the image i
   assert.equal(ten.restack.isDefault, true);
   assert.equal(
     text(ten.restack.segs),
-    "Les 36 poses de 10 s de lights/ · environ 1 min et 7,5 Go de place libre pendant le travail.",
+    "Les 36 poses de 10 s de input/lights/ · environ 1 min et 7,5 Go de place libre pendant le travail.",
   );
   // The poses of the 10 s family are stacked again: their measure counts.
   assert.equal(view.unused, null);

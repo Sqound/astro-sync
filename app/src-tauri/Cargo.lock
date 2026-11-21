@@ -61,7 +61,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "1.1.5"
+version = "1.2.0"
 dependencies = [
  "astro-sync-core",
  "keyring",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "astro-sync-core"
-version = "1.1.5"
+version = "1.2.0"
 dependencies = [
  "flate2",
  "getrandom 0.2.17",

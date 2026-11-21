@@ -135,11 +135,11 @@ fn object_is_compared_by_alias_without_case_or_spaces() {
 #[test]
 fn the_minimum_per_target_and_the_final_folder() {
     let night = Night::new("detect-final");
-    night.write("NGC 7000/final/old.jpg", b"jpeg");
+    night.write("NGC 7000/input/processed/old.jpg", b"jpeg");
     std::thread::sleep(std::time::Duration::from_millis(20));
-    night.write("NGC 7000/final/new.tif", b"tiff");
-    night.frame("IC 1396/final/stack.fits", &[("SIMPLE", "T")]);
-    night.write("IC 1396/final/notes.xcf", b"gimp");
+    night.write("NGC 7000/input/processed/new.tif", b"tiff");
+    night.frame("IC 1396/input/processed/stack.fits", &[("SIMPLE", "T")]);
+    night.write("IC 1396/input/processed/notes.xcf", b"gimp");
 
     let mut input = input();
     input.targets[2].online_final = true;
@@ -147,8 +147,14 @@ fn the_minimum_per_target_and_the_final_folder() {
 
     let ngc = &detection.targets[0];
     assert_eq!(ngc.minimum, MinimumSource::FinalFile);
-    assert_eq!(ngc.final_image.as_deref(), Some("NGC 7000/final/new.tif"));
-    assert_eq!(ngc.other_final_images, vec!["NGC 7000/final/old.jpg"]);
+    assert_eq!(
+        ngc.final_image.as_deref(),
+        Some("NGC 7000/input/processed/new.tif")
+    );
+    assert_eq!(
+        ngc.other_final_images,
+        vec!["NGC 7000/input/processed/old.jpg"]
+    );
     assert_eq!(detection.targets[1].minimum, MinimumSource::Missing);
     assert_eq!(detection.targets[2].minimum, MinimumSource::Online);
 
@@ -166,10 +172,10 @@ fn the_minimum_per_target_and_the_final_folder() {
     );
     assert_eq!(
         missing[0].sentence(),
-        "Neither FITS frames nor a final image: put the frames in IC 1396/lights/ or a final image (TIFF, JPEG or PNG) in IC 1396/final/."
+        "Neither FITS frames nor a final image: put the frames in IC 1396/input/lights/ or a final image (TIFF, JPEG or PNG) in IC 1396/input/processed/."
     );
     let refused = finding(&detection, keys::FINAL_FRAME_REFUSED);
-    assert_eq!(refused[0].files, vec!["IC 1396/final/stack.fits"]);
+    assert_eq!(refused[0].files, vec!["IC 1396/input/processed/stack.fits"]);
     assert_eq!(
         refused[0].sentence(),
         "The service does not take FITS: export the final image as TIFF, JPEG or PNG."
@@ -177,7 +183,7 @@ fn the_minimum_per_target_and_the_final_folder() {
     assert!(
         detection
             .outside_structure
-            .contains(&"IC 1396/final/notes.xcf".to_string())
+            .contains(&"IC 1396/input/processed/notes.xcf".to_string())
     );
 
     // The stacking produces the final image: the minimum is met.
@@ -196,17 +202,17 @@ fn flats_in_lights_say_where_they_go() {
         ("EXPTIME", "1.5"),
     ];
     for index in 0..3 {
-        night.frame(&format!("M31/lights/flat-{index}.fits"), &flat);
+        night.frame(&format!("M31/input/lights/flat-{index}.fits"), &flat);
     }
     let detection = night.detect(&input());
     let misfiled = finding(&detection, keys::FRAMES_MISFILED);
     let texts: Vec<String> = misfiled.iter().map(|f| f.sentence()).collect();
     assert!(texts.contains(
-        &"3 flats filed in M31/lights/: their header says FLAT. To move into calibration/flats/.".to_string()
+        &"3 flats filed in M31/input/lights/: their header says FLAT. To move into calibration/flats/.".to_string()
     ), "{texts:?}");
     let flats = misfiled
         .iter()
-        .find(|f| f.params["from"] == "M31/lights/")
+        .find(|f| f.params["from"] == "M31/input/lights/")
         .unwrap();
     assert_eq!(flats.files.len(), 3);
     assert_eq!(flats.params["kind"], "flat");
@@ -252,7 +258,7 @@ fn darks_taken_in_light_mode_are_read_as_darks_with_a_warning() {
     let date = "2026-10-07T22:00:00";
     for index in 0..90 {
         night.frame(
-            &format!("IC 1396/lights/L{index:03}.fits"),
+            &format!("IC 1396/input/lights/L{index:03}.fits"),
             &cards(&light("IC 1396", "Ha", "90", date)),
         );
     }
@@ -369,11 +375,11 @@ fn a_dark_as_short_as_the_flats_outside_its_folders_is_sent_to_the_dark_flats() 
         &[("IMAGETYP", "'Flat'"), ("EXPTIME", "1.6"), ("GAIN", "100")],
     );
     night.frame(
-        "M31/lights/short-dark.fits",
+        "M31/input/lights/short-dark.fits",
         &[("IMAGETYP", "'Dark'"), ("EXPTIME", "1.5"), ("GAIN", "100")],
     );
     night.frame(
-        "M31/lights/long-dark.fits",
+        "M31/input/lights/long-dark.fits",
         &[("IMAGETYP", "'Dark'"), ("EXPTIME", "120"), ("GAIN", "100")],
     );
     let detection = night.detect(&input());
@@ -398,12 +404,12 @@ fn a_targets_frames_in_another_targets_folder_are_said() {
     let night = Night::new("detect-other-target");
     for index in 0..2 {
         night.frame(
-            &format!("IC 1396/lights/l-{index}.fits"),
+            &format!("IC 1396/input/lights/l-{index}.fits"),
             &cards(&light("NGC 7000", "Ha", "300", "2026-10-07T21:00:00")),
         );
     }
     night.frame(
-        "IC 1396/lights/own.fits",
+        "IC 1396/input/lights/own.fits",
         &cards(&light("IC1396", "Ha", "300", "2026-10-07T21:10:00")),
     );
     let detection = night.detect(&input());
@@ -411,7 +417,7 @@ fn a_targets_frames_in_another_targets_folder_are_said() {
     assert_eq!(other.len(), 1);
     assert_eq!(
         other[0].sentence(),
-        "2 frames of NGC 7000 in IC 1396/lights/ (OBJECT header)."
+        "2 frames of NGC 7000 in IC 1396/input/lights/ (OBJECT header)."
     );
     assert_eq!(detection.targets[1].light_frames, 1);
 }
@@ -420,15 +426,15 @@ fn a_targets_frames_in_another_targets_folder_are_said() {
 fn flats_and_darks_missing_are_warnings_per_filter_and_setting() {
     let night = Night::new("detect-calibration");
     night.frame(
-        "IC 1396/lights/ha.fits",
+        "IC 1396/input/lights/ha.fits",
         &cards(&light("IC 1396", "Ha", "300", "2026-10-07T21:00:00")),
     );
     night.frame(
-        "IC 1396/lights/oiii.fits",
+        "IC 1396/input/lights/oiii.fits",
         &cards(&light("IC 1396", "OIII", "300", "2026-10-07T21:30:00")),
     );
     night.frame(
-        "M31/lights/l.fits",
+        "M31/input/lights/l.fits",
         &cards(&light("M 31", "L", "120", "2026-10-07T22:00:00")),
     );
     // Flats of Ha by header, flats of L by their subfolder only.
@@ -575,12 +581,12 @@ fn lights_of_another_night_are_said_with_their_evening() {
     let night = Night::new("detect-other-night");
     for index in 0..2 {
         night.frame(
-            &format!("NGC 7000/lights/old-{index}.fits"),
+            &format!("NGC 7000/input/lights/old-{index}.fits"),
             &cards(&light("NGC 7000", "Ha", "300", "2026-10-05T22:00:00")),
         );
     }
     night.frame(
-        "NGC 7000/lights/tonight.fits",
+        "NGC 7000/input/lights/tonight.fits",
         &cards(&light("NGC 7000", "Ha", "300", "2026-10-08T03:00:00")),
     );
     let detection = night.detect(&input());
@@ -589,7 +595,7 @@ fn lights_of_another_night_are_said_with_their_evening() {
     assert_eq!(other[0].params["date"], "2026-10-05");
     assert_eq!(
         other[0].sentence(),
-        "2 frames outside the night (night of 5 Oct), left out of the integration; they stay counted in NGC 7000/lights/."
+        "2 frames outside the night (night of 5 Oct), left out of the integration; they stay counted in NGC 7000/input/lights/."
     );
     assert_eq!(other[0].severity, Severity::Warning);
     // Said, never dropped from the folder: the two old frames stay lights of
@@ -615,7 +621,7 @@ fn other_night_dates(
 ) -> (Vec<String>, usize) {
     for (index, date) in dates.iter().enumerate() {
         night.frame(
-            &format!("NGC 7000/lights/f-{index}.fits"),
+            &format!("NGC 7000/input/lights/f-{index}.fits"),
             &cards(&light("NGC 7000", "Ha", "300", date)),
         );
     }
@@ -754,11 +760,11 @@ fn the_heart_night_is_whole_and_a_frame_of_the_evening_before_is_set_aside() {
     assert_eq!(found[0].params["count"], 1);
     assert_eq!(
         found[0].files,
-        vec!["NGC 7000/lights/f-90.fits".to_string()]
+        vec!["NGC 7000/input/lights/f-90.fits".to_string()]
     );
     assert_eq!(
         found[0].sentence(),
-        "1 frame outside the night (night of 9 Aug), left out of the integration; it stays counted in NGC 7000/lights/."
+        "1 frame outside the night (night of 9 Aug), left out of the integration; it stays counted in NGC 7000/input/lights/."
     );
     assert!(
         detection
@@ -774,7 +780,7 @@ fn the_heart_night_is_whole_and_a_frame_of_the_evening_before_is_set_aside() {
 fn frames_without_a_final_image_are_a_warning_not_an_error() {
     let night = Night::new("detect-frames-only");
     night.frame(
-        "NGC 7000/lights/a.fits",
+        "NGC 7000/input/lights/a.fits",
         &cards(&light("NGC 7000", "Ha", "300", "2026-10-07T21:00:00")),
     );
     let detection = night.detect(&input());
@@ -805,10 +811,10 @@ fn files_outside_the_structure_are_counted() {
     night.write("M31/preview.jpg", b"x");
     night.write("Desktop stuff/a.fits", b"x");
     night.write("calibration/stray.fits", b"x");
-    night.write("M31/lights/thumb.png", b"x");
+    night.write("M31/input/lights/thumb.png", b"x");
     // Astro Sync's own results are never "outside the rules".
-    night.write("M31/stacked/M31_2026-10-07_raw.tif", b"x");
-    night.write("M31/progression/milestone_01.jpg", b"x");
+    night.write("M31/output/stacked/M31_2026-10-07_raw.tif", b"x");
+    night.write("M31/output/progression/milestone_01.jpg", b"x");
     let detection = night.detect(&input());
     let outside = finding(&detection, keys::FILES_OUTSIDE_STRUCTURE);
     assert_eq!(outside[0].files.len(), 5);
@@ -832,13 +838,13 @@ fn xisf_frames_are_read_like_fits() {
 <FITSKeyword name="FILTER" value="'OIII'" comment=""/>
 </Image></xisf>"#;
     night.write(
-        "IC 1396/lights/flat.xisf",
+        "IC 1396/input/lights/flat.xisf",
         &crate::xisf::build_xisf_bytes(xml),
     );
     let detection = night.detect(&input());
     let misfiled = finding(&detection, keys::FRAMES_MISFILED);
     assert_eq!(misfiled.len(), 1);
-    assert_eq!(misfiled[0].files, vec!["IC 1396/lights/flat.xisf"]);
+    assert_eq!(misfiled[0].files, vec!["IC 1396/input/lights/flat.xisf"]);
     assert_eq!(detection.calibration.flats, 1);
 }
 
@@ -852,14 +858,18 @@ fn linked_lights_are_read_and_a_missing_disk_is_said() {
         fits_bytes(&cards(&light("M31", "L", "120", "2026-10-07T22:00:00")), 64),
     )
     .unwrap();
-    fs::remove_dir(night.folder.join("M31/lights")).unwrap();
-    std::os::unix::fs::symlink(disk.path(), night.folder.join("M31/lights")).unwrap();
+    fs::remove_dir(night.folder.join("M31/input/lights")).unwrap();
+    std::os::unix::fs::symlink(disk.path(), night.folder.join("M31/input/lights")).unwrap();
     std::os::unix::fs::symlink(
         night.folder.join("missing-disk/PHD2"),
         night.folder.join("logs/phd2"),
     )
     .unwrap();
-    std::os::unix::fs::symlink(&night.folder, night.folder.join("IC 1396/lights/loop")).unwrap();
+    std::os::unix::fs::symlink(
+        &night.folder,
+        night.folder.join("IC 1396/input/lights/loop"),
+    )
+    .unwrap();
 
     let detection = night.detect(&input());
     assert_eq!(detection.targets[2].light_frames, 1);
@@ -873,7 +883,7 @@ fn linked_lights_are_read_and_a_missing_disk_is_said() {
 fn a_frame_without_imagetyp_takes_its_folders_type() {
     let night = Night::new("detect-no-imagetyp");
     night.frame(
-        "M31/lights/l.fits",
+        "M31/input/lights/l.fits",
         &[("OBJECT", "'M31'"), ("EXPTIME", "120"), ("FILTER", "'L'")],
     );
     night.frame("calibration/darks/d.fits", &[("EXPTIME", "120")]);
@@ -887,7 +897,7 @@ fn a_frame_without_imagetyp_takes_its_folders_type() {
 #[test]
 fn an_unticked_targets_folder_is_out_of_the_night_and_left_alone() {
     let night = Night::new("detect-out-of-night");
-    night.write("M31/lights/notes.txt", b"x");
+    night.write("M31/input/lights/notes.txt", b"x");
     let mut input = input();
     input.targets[2].ticked = false;
     let detection = night.detect(&input);
@@ -919,7 +929,7 @@ fn the_fingerprint_changes_with_the_folder_and_only_then() {
 #[test]
 fn the_detection_stops_on_the_switch() {
     let night = Night::new("detect-cancel");
-    night.frame("M31/lights/l.fits", &[("IMAGETYP", "'LIGHT'")]);
+    night.frame("M31/input/lights/l.fits", &[("IMAGETYP", "'LIGHT'")]);
     let cancel = CancelFlag::new();
     cancel.cancel();
     let error = detect_night(
@@ -940,15 +950,15 @@ fn files_says_the_frames_per_filter_the_exposures_gains_and_sizes() {
     let date = "2026-10-07T22:00:00";
     for (n, filter) in [(1, "Ha"), (2, "Ha"), (3, "OIII")] {
         night.frame(
-            &format!("NGC 7000/lights/L{n}.fits"),
+            &format!("NGC 7000/input/lights/L{n}.fits"),
             &cards(&light("NGC 7000", filter, "180", date)),
         );
     }
     night.frame(
-        "NGC 7000/lights/L4.fits",
+        "NGC 7000/input/lights/L4.fits",
         &cards(&light("NGC 7000", "OIII", "120", date)),
     );
-    night.write("NGC 7000/final/NGC7000_final.tif", &[0u8; 300]);
+    night.write("NGC 7000/input/processed/NGC7000_final.tif", &[0u8; 300]);
     for (n, exposure) in [(1, "180"), (2, "120")] {
         night.frame(
             &format!("calibration/darks/D{n}.fits"),
@@ -1049,12 +1059,12 @@ fn a_device_image_is_found_in_its_folder_and_covers_the_family_of_the_poses() {
     let night = Night::new("detect-device");
     for second in 0..3 {
         night.frame(
-            &format!("M31/lights/IRCUT/Light_{second}.fit"),
+            &format!("M31/input/lights/IRCUT/Light_{second}.fit"),
             &cards(&seestar_light("30", second)),
         );
     }
     night.frame(
-        "M31/device/Stacked_3_M31_30.0s_IRCUT.fit",
+        "M31/input/device/Stacked_3_M31_30.0s_IRCUT.fit",
         &cards(&seestar_stack(3, "30")),
     );
     let detection = night.detect(&input());
@@ -1064,7 +1074,7 @@ fn a_device_image_is_found_in_its_folder_and_covers_the_family_of_the_poses() {
     let image = &device.images[0];
     assert_eq!(
         image.relative_path,
-        "M31/device/Stacked_3_M31_30.0s_IRCUT.fit"
+        "M31/input/device/Stacked_3_M31_30.0s_IRCUT.fit"
     );
     assert_eq!(image.info.poses, 3);
     assert_eq!(image.info.device, "Seestar S50 Pro");
@@ -1087,14 +1097,20 @@ fn a_family_cut_in_two_images_is_split_and_restacked_when_its_poses_are_here() {
     // 10 s poses here, 30 s poses not: two images of 10 s, one of 30 s.
     for second in 0..3 {
         night.frame(
-            &format!("M31/lights/IRCUT/Light_{second}.fit"),
+            &format!("M31/input/lights/IRCUT/Light_{second}.fit"),
             &cards(&seestar_light("10", second)),
         );
     }
-    night.frame("M31/device/Stacked_2.fit", &cards(&seestar_stack(2, "10")));
-    night.frame("M31/device/Stacked_1x.fit", &cards(&seestar_stack(2, "10")));
     night.frame(
-        "M31/device/Stacked_30.fit",
+        "M31/input/device/Stacked_2.fit",
+        &cards(&seestar_stack(2, "10")),
+    );
+    night.frame(
+        "M31/input/device/Stacked_1x.fit",
+        &cards(&seestar_stack(2, "10")),
+    );
+    night.frame(
+        "M31/input/device/Stacked_30.fit",
         &cards(&seestar_stack(30, "30")),
     );
     let detection = night.detect(&input());
@@ -1123,7 +1139,10 @@ fn a_family_cut_in_two_images_is_split_and_restacked_when_its_poses_are_here() {
 #[test]
 fn a_target_with_only_the_device_image_has_something_to_stack() {
     let night = Night::new("detect-device-only");
-    night.frame("M31/device/Stacked_8.fit", &cards(&seestar_stack(8, "10")));
+    night.frame(
+        "M31/input/device/Stacked_8.fit",
+        &cards(&seestar_stack(8, "10")),
+    );
     let detection = night.detect(&input());
     let m31 = &detection.targets[2];
     assert_eq!(m31.light_frames, 0);
@@ -1146,22 +1165,28 @@ fn a_device_image_makes_the_missing_final_image_say_it_is_the_source() {
     // (restacked from the poses here).
     for second in 0..3 {
         night.frame(
-            &format!("M31/lights/IRCUT/Light_30_{second}.fit"),
+            &format!("M31/input/lights/IRCUT/Light_30_{second}.fit"),
             &cards(&seestar_light("30", second)),
         );
     }
     for second in 10..12 {
         night.frame(
-            &format!("M31/lights/IRCUT/Light_10_{second}.fit"),
+            &format!("M31/input/lights/IRCUT/Light_10_{second}.fit"),
             &cards(&seestar_light("10", second)),
         );
     }
     night.frame(
-        "M31/device/Stacked_3_M31_30.0s_IRCUT.fit",
+        "M31/input/device/Stacked_3_M31_30.0s_IRCUT.fit",
         &cards(&seestar_stack(3, "30")),
     );
-    night.frame("M31/device/Stacked_a.fit", &cards(&seestar_stack(1, "10")));
-    night.frame("M31/device/Stacked_b.fit", &cards(&seestar_stack(1, "10")));
+    night.frame(
+        "M31/input/device/Stacked_a.fit",
+        &cards(&seestar_stack(1, "10")),
+    );
+    night.frame(
+        "M31/input/device/Stacked_b.fit",
+        &cards(&seestar_stack(1, "10")),
+    );
     let detection = night.detect(&input());
     let m31 = detection.targets[2].target_id.clone();
     assert!(
@@ -1188,12 +1213,12 @@ fn a_device_image_makes_the_missing_final_image_say_it_is_the_source() {
     let night = Night::new("detect-device-final-covered");
     for second in 0..3 {
         night.frame(
-            &format!("M31/lights/IRCUT/Light_{second}.fit"),
+            &format!("M31/input/lights/IRCUT/Light_{second}.fit"),
             &cards(&seestar_light("30", second)),
         );
     }
     night.frame(
-        "M31/device/Stacked_3_M31_30.0s_IRCUT.fit",
+        "M31/input/device/Stacked_3_M31_30.0s_IRCUT.fit",
         &cards(&seestar_stack(3, "30")),
     );
     let detection = night.detect(&input());
@@ -1209,28 +1234,31 @@ fn a_device_image_makes_the_missing_final_image_say_it_is_the_source() {
 #[test]
 fn the_jpg_of_the_device_is_never_a_master_and_a_thumbnail_is_not_noise() {
     let night = Night::new("detect-device-jpg");
-    night.frame("M31/device/Stacked_8.fit", &cards(&seestar_stack(8, "10")));
+    night.frame(
+        "M31/input/device/Stacked_8.fit",
+        &cards(&seestar_stack(8, "10")),
+    );
     // Beside its own .fit, and its thumbnail: nothing to say.
-    night.write("M31/device/Stacked_8.jpg", b"jpeg");
-    night.write("M31/device/Stacked_8_thn.jpg", b"jpeg");
+    night.write("M31/input/device/Stacked_8.jpg", b"jpeg");
+    night.write("M31/input/device/Stacked_8_thn.jpg", b"jpeg");
     // Alone: said.
-    night.write("M31/device/Stacked_9.jpg", b"jpeg");
+    night.write("M31/input/device/Stacked_9.jpg", b"jpeg");
     let detection = night.detect(&input());
     let device = detection.targets[2].device.as_ref().unwrap();
     assert_eq!(device.images.len(), 1);
-    assert_eq!(device.jpgs, vec!["M31/device/Stacked_9.jpg"]);
+    assert_eq!(device.jpgs, vec!["M31/input/device/Stacked_9.jpg"]);
     assert!(detection.outside_structure.is_empty());
 }
 
 #[test]
 fn only_the_jpg_is_left_when_the_fit_was_not_copied() {
     let night = Night::new("detect-device-jpg-alone");
-    night.write("M31/device/Stacked_430.jpg", b"jpeg");
+    night.write("M31/input/device/Stacked_430.jpg", b"jpeg");
     let detection = night.detect(&input());
     let device = detection.targets[2].device.as_ref().unwrap();
     assert!(device.images.is_empty());
     assert!(device.families.is_empty());
-    assert_eq!(device.jpgs, vec!["M31/device/Stacked_430.jpg"]);
+    assert_eq!(device.jpgs, vec!["M31/input/device/Stacked_430.jpg"]);
     // Nothing to stack: the target is still empty.
     assert!(
         finding(&detection, keys::TARGET_EMPTY)
@@ -1244,7 +1272,7 @@ fn a_stack_of_another_writer_in_device_is_not_a_device_image() {
     let night = Night::new("detect-device-asiair");
     // A Live stack of the ASIAIR: named `Stacked…`, counted, no known device.
     night.frame(
-        "M31/device/Stacked_40.fit",
+        "M31/input/device/Stacked_40.fit",
         &[
             ("SIMPLE", "T"),
             ("BITPIX", "16"),
@@ -1258,7 +1286,7 @@ fn a_stack_of_another_writer_in_device_is_not_a_device_image() {
     assert!(
         detection
             .outside_structure
-            .contains(&"M31/device/Stacked_40.fit".to_string())
+            .contains(&"M31/input/device/Stacked_40.fit".to_string())
     );
 }
 
@@ -1283,7 +1311,7 @@ fn a_night_of_camera_raw_files_is_read_like_a_night_of_fits() {
     let night = Night::new("detect-raw-night");
     for index in 0..3 {
         night.raw(
-            &format!("M31/lights/DSC_{index:04}.NEF"),
+            &format!("M31/input/lights/DSC_{index:04}.NEF"),
             &nikon("2026:10:07 23:15:42"),
         );
     }
@@ -1310,8 +1338,8 @@ fn a_night_of_camera_raw_files_is_read_like_a_night_of_fits() {
 #[test]
 fn raw_darks_of_another_iso_are_not_the_darks_of_the_lights() {
     let night = Night::new("detect-raw-iso");
-    night.raw("M31/lights/a.NEF", &nikon("2026:10:07 23:15:42"));
-    night.raw("M31/lights/b.NEF", &nikon("2026:10:07 23:16:42"));
+    night.raw("M31/input/lights/a.NEF", &nikon("2026:10:07 23:15:42"));
+    night.raw("M31/input/lights/b.NEF", &nikon("2026:10:07 23:16:42"));
     night.raw(
         "calibration/darks/d.NEF",
         &Shot::new("2026:10:08 05:10:00", 30, 1600),
@@ -1323,9 +1351,18 @@ fn raw_darks_of_another_iso_are_not_the_darks_of_the_lights() {
 #[test]
 fn a_raw_dark_in_the_lights_is_misfiled_by_the_word_of_its_name() {
     let night = Night::new("detect-raw-misfiled");
-    night.raw("M31/lights/Light_0001.NEF", &nikon("2026:10:07 23:15:42"));
-    night.raw("M31/lights/Dark_0001.NEF", &nikon("2026:10:07 23:20:42"));
-    night.raw("M31/lights/Dark_0002.NEF", &nikon("2026:10:07 23:21:42"));
+    night.raw(
+        "M31/input/lights/Light_0001.NEF",
+        &nikon("2026:10:07 23:15:42"),
+    );
+    night.raw(
+        "M31/input/lights/Dark_0001.NEF",
+        &nikon("2026:10:07 23:20:42"),
+    );
+    night.raw(
+        "M31/input/lights/Dark_0002.NEF",
+        &nikon("2026:10:07 23:21:42"),
+    );
     let detection = night.detect(&input());
     assert_eq!(detection.targets[2].light_frames, 1);
     let misfiled = finding(&detection, keys::FRAMES_MISFILED);
@@ -1341,15 +1378,18 @@ fn a_camera_clock_without_a_zone_is_compared_with_the_wall_clock_of_the_night() 
     // 03:00 one (next day) would be past the window's end and be dropped.
     let night = Night::new("detect-raw-wall-clock");
     let input = night_input("2026-10-07", Some(139.7));
-    night.raw("NGC 7000/lights/a.NEF", &nikon("2026:10:07 23:30:00"));
-    night.raw("NGC 7000/lights/b.NEF", &nikon("2026:10:08 03:00:00"));
+    night.raw("NGC 7000/input/lights/a.NEF", &nikon("2026:10:07 23:30:00"));
+    night.raw("NGC 7000/input/lights/b.NEF", &nikon("2026:10:08 03:00:00"));
     // After the next local noon: another night, said with its own evening.
-    night.raw("NGC 7000/lights/c.NEF", &nikon("2026:10:08 21:00:00"));
+    night.raw("NGC 7000/input/lights/c.NEF", &nikon("2026:10:08 21:00:00"));
     let detection = night.detect(&input);
     let other = finding(&detection, keys::FRAMES_OTHER_NIGHT);
     assert_eq!(other.len(), 1);
     assert_eq!(other[0].params["date"], "2026-10-08");
-    assert_eq!(other[0].files, vec!["NGC 7000/lights/c.NEF".to_string()]);
+    assert_eq!(
+        other[0].files,
+        vec!["NGC 7000/input/lights/c.NEF".to_string()]
+    );
 }
 
 #[test]
@@ -1359,7 +1399,7 @@ fn a_camera_clock_with_its_offset_is_compared_in_utc() {
     let at = |name: &str, taken: &'static str| {
         let mut shot = nikon(taken);
         shot.offset = Some("+09:00");
-        night.raw(&format!("NGC 7000/lights/{name}.NEF"), &shot);
+        night.raw(&format!("NGC 7000/input/lights/{name}.NEF"), &shot);
     };
     at("a", "2026:10:07 23:30:00");
     at("b", "2026:10:08 03:00:00");
@@ -1367,7 +1407,10 @@ fn a_camera_clock_with_its_offset_is_compared_in_utc() {
     let detection = night.detect(&input);
     let other = finding(&detection, keys::FRAMES_OTHER_NIGHT);
     assert_eq!(other.len(), 1);
-    assert_eq!(other[0].files, vec!["NGC 7000/lights/c.NEF".to_string()]);
+    assert_eq!(
+        other[0].files,
+        vec!["NGC 7000/input/lights/c.NEF".to_string()]
+    );
 }
 
 #[test]
@@ -1375,10 +1418,129 @@ fn a_raw_file_the_reader_does_not_know_is_a_light_without_a_header() {
     // Not a TIFF, not a CR3, not a RAF: the same as a FITS file whose header
     // cannot be read (counted, no figure).
     let night = Night::new("detect-raw-unknown");
-    night.write("M31/lights/odd.NEF", b"not a raw file");
-    night.raw("M31/lights/ok.NEF", &nikon("2026:10:07 23:15:42"));
+    night.write("M31/input/lights/odd.NEF", b"not a raw file");
+    night.raw("M31/input/lights/ok.NEF", &nikon("2026:10:07 23:15:42"));
     let detection = night.detect(&input());
     assert_eq!(detection.targets[2].light_frames, 2);
     let summary = &detection.targets[2].light_summary;
     assert_eq!(summary.exposures, vec![30.0]);
+}
+
+/* ----------------- The two forms of a target folder (Astro Sync 1.2.0) ----------------- */
+
+impl Night {
+    /// The night with `designation`'s folder turned into the form made before
+    /// Astro Sync 1.2.0: `lights/` and `final/` directly under the target.
+    fn with_legacy_target(label: &str, designation: &str) -> Self {
+        let night = Self::new(label);
+        let target = night.folder.join(designation);
+        fs::remove_dir_all(target.join("input")).unwrap();
+        fs::remove_dir_all(target.join("output")).unwrap();
+        fs::create_dir_all(target.join("lights")).unwrap();
+        fs::create_dir_all(target.join("final")).unwrap();
+        night
+    }
+}
+
+#[test]
+fn a_target_of_the_earlier_form_is_read_in_its_own_folders() {
+    let night = Night::with_legacy_target("detect-legacy", "M31");
+    for minute in 1..=2 {
+        night.frame(
+            &format!("M31/lights/Light_{minute}.fits"),
+            &cards(&light(
+                "M31",
+                "L",
+                "120",
+                &format!("2026-10-07T22:0{minute}:00"),
+            )),
+        );
+    }
+    night.write("M31/final/M31.tif", b"tiff");
+    night.write("M31/stacked/M31_2026-10-07_raw.tif", b"render");
+    // NGC 7000 keeps the new form in the same night.
+    night.frame(
+        "NGC 7000/input/lights/Light_1.fits",
+        &cards(&light("NGC 7000", "Ha", "300", "2026-10-07T23:00:00")),
+    );
+    let detection = night.detect(&input());
+    let m31 = &detection.targets[2];
+    assert_eq!(m31.layout, TargetLayout::Legacy);
+    assert_eq!(m31.light_frames, 2);
+    assert_eq!(m31.final_image.as_deref(), Some("M31/final/M31.tif"));
+    assert_eq!(m31.minimum, MinimumSource::FinalFile);
+    assert_eq!(detection.targets[0].layout, TargetLayout::InputOutput);
+    assert_eq!(detection.targets[0].light_frames, 1);
+    // The render of `stacked/` is Astro Sync's, never "outside the structure";
+    // nothing is said of a second form.
+    assert!(
+        detection.outside_structure.is_empty(),
+        "{:?}",
+        detection.outside_structure
+    );
+    assert!(finding(&detection, keys::TARGET_TWO_LAYOUTS).is_empty());
+    // An empty target of the earlier form names its own folders.
+    let empty = finding(&detection, keys::TARGET_EMPTY);
+    assert_eq!(empty.len(), 1, "IC 1396 has nothing");
+    assert_eq!(empty[0].params["lightsFolder"], "IC 1396/input/lights/");
+}
+
+#[test]
+fn an_empty_target_of_the_earlier_form_is_told_its_own_folders() {
+    let night = Night::with_legacy_target("detect-legacy-empty", "IC 1396");
+    let detection = night.detect(&input());
+    let empty: Vec<_> = finding(&detection, keys::TARGET_EMPTY)
+        .into_iter()
+        .filter(|f| f.target_id.as_deref() == Some("t-ic1396"))
+        .collect();
+    assert_eq!(empty[0].params["lightsFolder"], "IC 1396/lights/");
+    assert_eq!(empty[0].params["folder"], "IC 1396/final/");
+}
+
+#[test]
+fn a_target_holding_both_forms_is_read_in_the_new_one_and_says_the_other() {
+    let night = Night::new("detect-both-forms");
+    night.frame(
+        "M31/input/lights/Light_1.fits",
+        &cards(&light("M31", "L", "120", "2026-10-07T22:01:00")),
+    );
+    // The person copied an earlier night's folders beside the new form.
+    night.frame(
+        "M31/lights/Light_old.fits",
+        &cards(&light("M31", "L", "120", "2026-10-07T22:02:00")),
+    );
+    night.write("M31/final/M31_old.jpg", b"jpeg");
+    let before: Vec<_> = ["M31/lights/Light_old.fits", "M31/final/M31_old.jpg"]
+        .iter()
+        .map(|p| fs::read(night.folder.join(p)).unwrap())
+        .collect();
+    let detection = night.detect(&input());
+    let m31 = &detection.targets[2];
+    assert_eq!(m31.layout, TargetLayout::InputOutput);
+    assert_eq!(m31.light_frames, 1, "only input/lights/ is read");
+    assert_eq!(m31.final_image, None, "final/ is not read");
+    let both = finding(&detection, keys::TARGET_TWO_LAYOUTS);
+    assert_eq!(both.len(), 1);
+    assert_eq!(both[0].severity, Severity::Warning);
+    assert_eq!(both[0].target_id.as_deref(), Some("t-m31"));
+    assert_eq!(both[0].params["folders"], "M31/lights/, M31/final/");
+    assert_eq!(both[0].params["inputFolder"], "M31/input/");
+    assert_eq!(
+        both[0].files,
+        vec!["M31/final/M31_old.jpg", "M31/lights/Light_old.fits"]
+    );
+    assert!(both[0].sentence().contains("only M31/input/ is read"));
+    // Nothing moved, nothing merged.
+    for (path, bytes) in ["M31/lights/Light_old.fits", "M31/final/M31_old.jpg"]
+        .iter()
+        .zip(before)
+    {
+        assert_eq!(fs::read(night.folder.join(path)).unwrap(), bytes);
+    }
+    assert!(
+        !night
+            .folder
+            .join("M31/input/lights/Light_old.fits")
+            .exists()
+    );
 }

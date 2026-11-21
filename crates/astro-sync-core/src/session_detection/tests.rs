@@ -1221,14 +1221,24 @@ fn sessions_on_both_sides_of_midnight_are_told_apart_by_the_clock() {
     for i in 0..4 {
         tree.frame(
             &format!("fits/NGC_7000/lights/n{i}.fit"),
-            &light(Some("NGC 7000"), before + f64::from(i) * 190.0, 180.0, Some((314.82, 44.52))),
+            &light(
+                Some("NGC 7000"),
+                before + f64::from(i) * 190.0,
+                180.0,
+                Some((314.82, 44.52)),
+            ),
         );
     }
     let after = unix("2026-08-18T00:20:00Z");
     for i in 0..4 {
         tree.frame(
             &format!("fits/Mu_Cephei/lights/m{i}.fit"),
-            &light(Some("Mu Cephei"), after + f64::from(i) * 190.0, 180.0, Some(MU_CEPHEI)),
+            &light(
+                Some("Mu Cephei"),
+                after + f64::from(i) * 190.0,
+                180.0,
+                Some(MU_CEPHEI),
+            ),
         );
     }
     let mut user = advanced();
@@ -1517,9 +1527,9 @@ fn copy_builds_the_tree_with_a_filter_level_and_calibration_in_each_night() {
     let outcome = organise(&plan, &OrganiseOptions::default()).unwrap();
     assert_eq!(outcome.done, 10);
     for relative in [
-        &format!("{N17}/NGC 7000/lights/Ha/l0.fit"),
-        &format!("{N17}/NGC 7000/lights/OIII/l1.fit"),
-        &format!("{N19}/NGC 7000/lights/Ha/l2.fit"),
+        &format!("{N17}/NGC 7000/input/lights/Ha/l0.fit"),
+        &format!("{N17}/NGC 7000/input/lights/OIII/l1.fit"),
+        &format!("{N19}/NGC 7000/input/lights/Ha/l2.fit"),
         &format!("{N17}/calibration/darks/d0.fit"),
         &format!("{N19}/calibration/darks/d1.fit"),
     ] {
@@ -1552,7 +1562,7 @@ fn a_different_file_at_its_place_is_never_overwritten() {
     let proposal = mono(&tree);
     let destination = tree.path("organised");
     tree.write(
-        &format!("organised/{N17}/NGC 7000/lights/Ha/l0.fit"),
+        &format!("organised/{N17}/NGC 7000/input/lights/Ha/l0.fit"),
         b"someone else's",
     );
     let plan = plan_organise_named(
@@ -1567,7 +1577,7 @@ fn a_different_file_at_its_place_is_never_overwritten() {
     assert_eq!(plan.conflicts[0].reason, "destination-exists");
     organise(&plan, &OrganiseOptions::default()).unwrap();
     assert_eq!(
-        fs::read(destination.join(format!("{N17}/NGC 7000/lights/Ha/l0.fit"))).unwrap(),
+        fs::read(destination.join(format!("{N17}/NGC 7000/input/lights/Ha/l0.fit"))).unwrap(),
         b"someone else's"
     );
 }
@@ -1645,7 +1655,7 @@ fn a_symbolic_link_points_at_the_source() {
     .unwrap();
     assert!(!plan.windows_no_link);
     organise(&plan, &OrganiseOptions::default()).unwrap();
-    let link = destination.join(format!("{N17}/NGC 7000/lights/Ha/l0.fit"));
+    let link = destination.join(format!("{N17}/NGC 7000/input/lights/Ha/l0.fit"));
     assert!(
         fs::symlink_metadata(&link)
             .unwrap()
@@ -1754,7 +1764,7 @@ fn the_sessions_created_become_night_folders_of_the_working_folder_with_links() 
     let lights = first
         .night_folder
         .join(&first.targets[0].folder_name)
-        .join("lights");
+        .join("input/lights");
     let linked: Vec<_> = walkdir::WalkDir::new(&lights)
         .into_iter()
         .filter_map(Result::ok)
@@ -2036,6 +2046,19 @@ fn ranger_les_fichiers_puts_the_device_image_in_the_device_folder_of_the_target(
                 .unwrap()
                 .file_name()
                 .unwrap(),
+            "input",
+            "{place:?}"
+        );
+        assert_eq!(
+            place
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .file_name()
+                .unwrap(),
             "NGC 7000",
             "{place:?}"
         );
@@ -2104,7 +2127,7 @@ fn the_sessions_created_link_the_device_image_beside_the_poses() {
     let folder = nights[0]
         .night_folder
         .join(&nights[0].targets[0].folder_name);
-    let image = folder.join("device/Stacked_3_NGC 7000.fit");
+    let image = folder.join("input/device/Stacked_3_NGC 7000.fit");
     assert!(image.is_file(), "the image is linked in device/");
     // A symbolic link; on Windows without developer mode, a hard link.
     assert!(
